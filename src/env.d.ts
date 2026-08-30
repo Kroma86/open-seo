@@ -40,6 +40,9 @@ declare namespace Cloudflare {
 
     // Bearer token for GET /api/internal/agency-score-inputs (Hermes machine export).
     AGENCY_SCORE_EXPORT_TOKEN?: string;
+    // Agency board metrics for SAM pixel/OTTO status.
+    AGENCY_METRICS_URL?: string;
+    AGENCY_DASH_TOKEN?: string;
 
     // Cloudflare Turnstile — signup captcha (hosted only). Secret verifies
     // tokens server-side; site key is public and inlined into the client build.
@@ -53,6 +56,8 @@ declare namespace Cloudflare {
     OPENROUTER_API_KEY?: string;
     // Optional OpenRouter model slug override (defaults in openrouter.ts).
     OPENROUTER_MODEL?: string;
+    // Optional. Default true. Set "false" to allow non-ZDR providers (e.g. Anthropic).
+    OPENROUTER_ZDR?: string;
   }
 }
 

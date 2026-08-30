@@ -26,6 +26,7 @@ import {
   listHomegrownOttoProposalsTool,
   proposeHomegrownOttoFixesTool,
 } from "@/server/mcp/tools/homegrown-otto-tools";
+import { getNiceseoOpsStatusTool } from "@/server/mcp/tools/get-niceseo-ops-status";
 import { listSavedKeywordsTool } from "@/server/mcp/tools/list-saved-keywords";
 import { buildUpdateProjectContextTool } from "@/server/mcp/tools/project-context";
 import {
@@ -411,5 +412,6 @@ export function buildSamMcpTools(
     get_agency_otto_page_inputs: adaptTool(getAgencyOttoPageInputsTool),
     propose_homegrown_otto_fixes: adaptTool(proposeHomegrownOttoFixesTool),
     list_homegrown_otto_proposals: adaptTool(listHomegrownOttoProposalsTool),
+    get_niceseo_ops_status: adaptTool(getNiceseoOpsStatusTool),
   };
 }

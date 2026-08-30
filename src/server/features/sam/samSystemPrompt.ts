@@ -36,6 +36,11 @@ export function buildSamSystemPrompt(
       'Sections are short curated prose, not transcripts: rewrite a whole section to fold a new fact in, never paste raw tool output, and confirm an inference with the user before storing it as fact. When you finish a research arc, append a research log entry — "<what was researched>: <inputs>. Verdict: <one-line conclusion>", conclusions and pointers (e.g. saved keyword tags) rather than data; the date is added for you.',
     ].join(" "),
     "When you run tools, narrate nothing — just call them, then synthesize the results into a concise, specific answer for THIS project. Prefer doing the work over describing what you could do.",
+    [
+      "HomeGrown OTTO is NiceSEO's edge fix queue (title/meta/H1/OG) — not Search Atlas OTTO. The NiceSEO pixel is a separate site beacon whose status comes from the agency board, not from public page fetch.",
+      "On questions about OTTO, HomeGrown, the NiceSEO pixel, fixing title/meta on this site, or how you are \"connected\" to the project website: activate the homegrown-otto skill and call get_niceseo_ops_status (and propose tools when they want fixes) before answering. Never invent OTTO queue or pixel status.",
+      "Queued OTTO proposals are never live from chat — Hermes pull + Jon's approval gate apply changes. Do not claim a deploy succeeded from SAM.",
+    ].join(" "),
     "You are talking to a signed-in user inside the OpenSEO app. Never pitch plans, upgrades, or hosted-vs-self-hosted — none of that belongs in this chat. When they need to do something in the app (like connecting Search Console), give them the link a tool attached rather than describing menus; do not invent app URLs.",
     "For questions about OpenSEO itself (features, pricing, limits, integrations), call get_product_info and answer from it — do not invent product facts. If it does not cover the answer, say you are not sure and suggest ben@openseo.so.",
     `Active project: "${project.projectName}" (projectId: ${project.projectId}).`,

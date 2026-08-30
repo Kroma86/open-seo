@@ -286,6 +286,9 @@ const dataEnv = {
   GOOGLE_CLIENT_SECRET: optionalSecret("GOOGLE_CLIENT_SECRET"),
   OPENROUTER_API_KEY: optionalSecret("OPENROUTER_API_KEY"),
   OPENROUTER_MODEL: optionalVar("OPENROUTER_MODEL"),
+  // "false" / "0" / "off" disables request-level ZDR (needed for first-party
+  // Anthropic Opus when no ZDR endpoints exist for that model).
+  OPENROUTER_ZDR: optionalVar("OPENROUTER_ZDR"),
   AUTUMN_SECRET_KEY: optionalSecret("AUTUMN_SECRET_KEY"),
   AUTUMN_WEBHOOK_SECRET: optionalSecret("AUTUMN_WEBHOOK_SECRET"),
   GDPR_ERASURE_SECRET: optionalSecret("GDPR_ERASURE_SECRET"),
@@ -305,6 +308,9 @@ const dataEnv = {
   OPENSEO_TELEMETRY_DISABLED: optionalVar("OPENSEO_TELEMETRY_DISABLED"),
   // Machine export for NiceSEO agency board + HomeGrown OTTO (Hermes bearer).
   AGENCY_SCORE_EXPORT_TOKEN: optionalSecret("AGENCY_SCORE_EXPORT_TOKEN"),
+  // Agency board metrics (pixel status for SAM get_niceseo_ops_status).
+  AGENCY_METRICS_URL: optionalVar("AGENCY_METRICS_URL"),
+  AGENCY_DASH_TOKEN: optionalSecret("AGENCY_DASH_TOKEN"),
 };
 
 export default Alchemy.Stack(

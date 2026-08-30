@@ -71,6 +71,7 @@ import {
 import { whoamiTool } from "@/server/mcp/tools/whoami";
 import { getAgencyScoreInputsTool } from "@/server/mcp/tools/get-agency-score-inputs";
 import { getAgencyOttoPageInputsTool } from "@/server/mcp/tools/get-agency-otto-page-inputs";
+import { getNiceseoOpsStatusTool } from "@/server/mcp/tools/get-niceseo-ops-status";
 import {
   listHomegrownOttoProposalsTool,
   proposeHomegrownOttoFixesTool,
@@ -163,6 +164,7 @@ export function createOpenSeoMcpServer(authProps: McpProps) {
   register(getAgencyOttoPageInputsTool);
   register(proposeHomegrownOttoFixesTool);
   register(listHomegrownOttoProposalsTool);
+  register(getNiceseoOpsStatusTool);
   register(listProjectsTool);
   register(createProjectTool);
   register(getProjectContextTool);
