@@ -69,6 +69,12 @@ import {
   runSiteAuditTool,
 } from "@/server/mcp/tools/site-audit-tools";
 import { whoamiTool } from "@/server/mcp/tools/whoami";
+import { getAgencyScoreInputsTool } from "@/server/mcp/tools/get-agency-score-inputs";
+import { getAgencyOttoPageInputsTool } from "@/server/mcp/tools/get-agency-otto-page-inputs";
+import {
+  listHomegrownOttoProposalsTool,
+  proposeHomegrownOttoFixesTool,
+} from "@/server/mcp/tools/homegrown-otto-tools";
 
 type ToolSchema = z.ZodType | z.ZodRawShape;
 
@@ -153,6 +159,10 @@ export function createOpenSeoMcpServer(authProps: McpProps) {
   ) => registerOpenSeoTool(server, tool, authProps);
 
   register(whoamiTool);
+  register(getAgencyScoreInputsTool);
+  register(getAgencyOttoPageInputsTool);
+  register(proposeHomegrownOttoFixesTool);
+  register(listHomegrownOttoProposalsTool);
   register(listProjectsTool);
   register(createProjectTool);
   register(getProjectContextTool);

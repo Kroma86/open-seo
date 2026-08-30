@@ -29,6 +29,9 @@ import { Route as AppBillingRouteImport } from './routes/_app/billing'
 import { Route as AppAiRouteImport } from './routes/_app/ai'
 import { Route as Char91DotwellKnownChar93OpenaiAppsChallengeRouteImport } from './routes/[.well-known]/openai-apps-challenge'
 import { Route as AuthenticatedOnboardingIndexRouteImport } from './routes/_authenticated.onboarding.index'
+import { Route as ApiInternalAgencyScoreInputsRouteImport } from './routes/api/internal/agency-score-inputs'
+import { Route as ApiInternalAgencyOttoProposalsRouteImport } from './routes/api/internal/agency-otto-proposals'
+import { Route as ApiInternalAgencyOttoPageInputsRouteImport } from './routes/api/internal/agency-otto-page-inputs'
 import { Route as ApiAutumnSplatRouteImport } from './routes/api/autumn/$'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AuthenticatedOnboardingChatRouteImport } from './routes/_authenticated.onboarding.chat'
@@ -155,6 +158,24 @@ const AuthenticatedOnboardingIndexRoute =
     id: '/onboarding/',
     path: '/onboarding/',
     getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const ApiInternalAgencyScoreInputsRoute =
+  ApiInternalAgencyScoreInputsRouteImport.update({
+    id: '/api/internal/agency-score-inputs',
+    path: '/api/internal/agency-score-inputs',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiInternalAgencyOttoProposalsRoute =
+  ApiInternalAgencyOttoProposalsRouteImport.update({
+    id: '/api/internal/agency-otto-proposals',
+    path: '/api/internal/agency-otto-proposals',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiInternalAgencyOttoPageInputsRoute =
+  ApiInternalAgencyOttoPageInputsRouteImport.update({
+    id: '/api/internal/agency-otto-page-inputs',
+    path: '/api/internal/agency-otto-page-inputs',
+    getParentRoute: () => rootRouteImport,
   } as any)
 const ApiAutumnSplatRoute = ApiAutumnSplatRouteImport.update({
   id: '/api/autumn/$',
@@ -329,6 +350,9 @@ export interface FileRoutesByFullPath {
   '/onboarding/chat': typeof AuthenticatedOnboardingChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/autumn/$': typeof ApiAutumnSplatRoute
+  '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
+  '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
+  '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
   '/onboarding/': typeof AuthenticatedOnboardingIndexRoute
   '/p/$projectId/audit': typeof ProjectPProjectIdAuditRouteWithChildren
   '/p/$projectId/backlinks': typeof ProjectPProjectIdBacklinksRoute
@@ -373,6 +397,9 @@ export interface FileRoutesByTo {
   '/onboarding/chat': typeof AuthenticatedOnboardingChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/autumn/$': typeof ApiAutumnSplatRoute
+  '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
+  '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
+  '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
   '/onboarding': typeof AuthenticatedOnboardingIndexRoute
   '/p/$projectId/backlinks': typeof ProjectPProjectIdBacklinksRoute
   '/p/$projectId/brand-lookup': typeof ProjectPProjectIdBrandLookupRoute
@@ -420,6 +447,9 @@ export interface FileRoutesById {
   '/_authenticated/onboarding/chat': typeof AuthenticatedOnboardingChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/autumn/$': typeof ApiAutumnSplatRoute
+  '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
+  '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
+  '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
   '/_authenticated/onboarding/': typeof AuthenticatedOnboardingIndexRoute
   '/_project/p/$projectId/audit': typeof ProjectPProjectIdAuditRouteWithChildren
   '/_project/p/$projectId/backlinks': typeof ProjectPProjectIdBacklinksRoute
@@ -467,6 +497,9 @@ export interface FileRouteTypes {
     | '/onboarding/chat'
     | '/api/auth/$'
     | '/api/autumn/$'
+    | '/api/internal/agency-otto-page-inputs'
+    | '/api/internal/agency-otto-proposals'
+    | '/api/internal/agency-score-inputs'
     | '/onboarding/'
     | '/p/$projectId/audit'
     | '/p/$projectId/backlinks'
@@ -511,6 +544,9 @@ export interface FileRouteTypes {
     | '/onboarding/chat'
     | '/api/auth/$'
     | '/api/autumn/$'
+    | '/api/internal/agency-otto-page-inputs'
+    | '/api/internal/agency-otto-proposals'
+    | '/api/internal/agency-score-inputs'
     | '/onboarding'
     | '/p/$projectId/backlinks'
     | '/p/$projectId/brand-lookup'
@@ -557,6 +593,9 @@ export interface FileRouteTypes {
     | '/_authenticated/onboarding/chat'
     | '/api/auth/$'
     | '/api/autumn/$'
+    | '/api/internal/agency-otto-page-inputs'
+    | '/api/internal/agency-otto-proposals'
+    | '/api/internal/agency-score-inputs'
     | '/_authenticated/onboarding/'
     | '/_project/p/$projectId/audit'
     | '/_project/p/$projectId/backlinks'
@@ -593,6 +632,9 @@ export interface RootRouteChildren {
   ApiHealthRoute: typeof ApiHealthRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiAutumnSplatRoute: typeof ApiAutumnSplatRoute
+  ApiInternalAgencyOttoPageInputsRoute: typeof ApiInternalAgencyOttoPageInputsRoute
+  ApiInternalAgencyOttoProposalsRoute: typeof ApiInternalAgencyOttoProposalsRoute
+  ApiInternalAgencyScoreInputsRoute: typeof ApiInternalAgencyScoreInputsRoute
   ApiGa4OauthCallbackRoute: typeof ApiGa4OauthCallbackRoute
   ApiGscOauthCallbackRoute: typeof ApiGscOauthCallbackRoute
 }
@@ -738,6 +780,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/onboarding/'
       preLoaderRoute: typeof AuthenticatedOnboardingIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/api/internal/agency-score-inputs': {
+      id: '/api/internal/agency-score-inputs'
+      path: '/api/internal/agency-score-inputs'
+      fullPath: '/api/internal/agency-score-inputs'
+      preLoaderRoute: typeof ApiInternalAgencyScoreInputsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/agency-otto-proposals': {
+      id: '/api/internal/agency-otto-proposals'
+      path: '/api/internal/agency-otto-proposals'
+      fullPath: '/api/internal/agency-otto-proposals'
+      preLoaderRoute: typeof ApiInternalAgencyOttoProposalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/agency-otto-page-inputs': {
+      id: '/api/internal/agency-otto-page-inputs'
+      path: '/api/internal/agency-otto-page-inputs'
+      fullPath: '/api/internal/agency-otto-page-inputs'
+      preLoaderRoute: typeof ApiInternalAgencyOttoPageInputsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/autumn/$': {
       id: '/api/autumn/$'
@@ -1105,6 +1168,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHealthRoute: ApiHealthRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiAutumnSplatRoute: ApiAutumnSplatRoute,
+  ApiInternalAgencyOttoPageInputsRoute: ApiInternalAgencyOttoPageInputsRoute,
+  ApiInternalAgencyOttoProposalsRoute: ApiInternalAgencyOttoProposalsRoute,
+  ApiInternalAgencyScoreInputsRoute: ApiInternalAgencyScoreInputsRoute,
   ApiGa4OauthCallbackRoute: ApiGa4OauthCallbackRoute,
   ApiGscOauthCallbackRoute: ApiGscOauthCallbackRoute,
 }

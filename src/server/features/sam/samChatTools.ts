@@ -21,6 +21,11 @@ import {
   getAuditStatusTool,
   runSiteAuditTool,
 } from "@/server/mcp/tools/site-audit-tools";
+import { getAgencyOttoPageInputsTool } from "@/server/mcp/tools/get-agency-otto-page-inputs";
+import {
+  listHomegrownOttoProposalsTool,
+  proposeHomegrownOttoFixesTool,
+} from "@/server/mcp/tools/homegrown-otto-tools";
 import { listSavedKeywordsTool } from "@/server/mcp/tools/list-saved-keywords";
 import { buildUpdateProjectContextTool } from "@/server/mcp/tools/project-context";
 import {
@@ -403,5 +408,8 @@ export function buildSamMcpTools(
     get_audit_status: waitingAuditStatusTool(adaptTool),
     get_audit_issues: adaptTool(getAuditIssuesTool),
     get_audit_pages: adaptTool(getAuditPagesTool),
+    get_agency_otto_page_inputs: adaptTool(getAgencyOttoPageInputsTool),
+    propose_homegrown_otto_fixes: adaptTool(proposeHomegrownOttoFixesTool),
+    list_homegrown_otto_proposals: adaptTool(listHomegrownOttoProposalsTool),
   };
 }

@@ -38,6 +38,9 @@ declare namespace Cloudflare {
     // HMAC secret for the operator-only GDPR storage-erasure endpoint.
     GDPR_ERASURE_SECRET?: string;
 
+    // Bearer token for GET /api/internal/agency-score-inputs (Hermes machine export).
+    AGENCY_SCORE_EXPORT_TOKEN?: string;
+
     // Cloudflare Turnstile — signup captcha (hosted only). Secret verifies
     // tokens server-side; site key is public and inlined into the client build.
     TURNSTILE_SECRET_KEY?: string;

@@ -172,6 +172,7 @@ const resolveSelfHostAccess = (
   stage: string,
   provision: boolean,
   workersSubdomain: string,
+  customDomain: string,
 ) =>
   Effect.gen(function* () {
     let teamDomain = yield* optionalVar("TEAM_DOMAIN");
@@ -241,13 +242,29 @@ const resolveSelfHostAccess = (
       const allowedEmails = yield* requireAllowedEmails(
         "Set ACCESS_ALLOWED_EMAILS to the comma-separated emails allowed through Cloudflare Access — or set TEAM_DOMAIN and POLICY_AUD to manage the Access application yourself.",
       );
+      const workersHostname = `${workerName(stage)}.${subdomain}`;
+      // Prefer the public custom domain as the primary Access hostname when set,
+      // and keep workers.dev protected too so old bookmarks stay gated.
+      // Path bypass on /api/internal lets Hermes through Access; the Worker
+      // still requires AGENCY_SCORE_EXPORT_TOKEN on those routes.
       const application = yield* emailAccessGate({
         policyId: "SelfHostAllowUsers",
         applicationId: "SelfHostAccess",
         policyName: `open-seo ${stage} self-host users`,
-        applicationName: `open-seo ${stage}`,
-        domain: `${workerName(stage)}.${subdomain}`,
+        applicationName: customDomain
+          ? `open-seo ${stage} (${customDomain})`
+          : `open-seo ${stage}`,
+        domain: customDomain || workersHostname,
+        extraDomains: customDomain ? [workersHostname] : [],
         emails: allowedEmails,
+        internalApiBypass: {
+          policyId: "SelfHostInternalBypass",
+          applicationId: "SelfHostInternalAccess",
+          policyName: `open-seo ${stage} internal API bypass`,
+          applicationName: customDomain
+            ? `open-seo ${stage} internal (${customDomain})`
+            : `open-seo ${stage} internal`,
+        },
       });
       policyAud = application.aud;
     }
@@ -286,6 +303,8 @@ const dataEnv = {
   // Alchemy reconciles worker vars on every deploy, so the telemetry opt-out
   // must live in the env file — a dashboard-set var would be wiped.
   OPENSEO_TELEMETRY_DISABLED: optionalVar("OPENSEO_TELEMETRY_DISABLED"),
+  // Machine export for NiceSEO agency board + HomeGrown OTTO (Hermes bearer).
+  AGENCY_SCORE_EXPORT_TOKEN: optionalSecret("AGENCY_SCORE_EXPORT_TOKEN"),
 };
 
 export default Alchemy.Stack(
@@ -308,6 +327,11 @@ export default Alchemy.Stack(
     );
     const databaseProvider = yield* optionalVar("DATABASE_PROVIDER");
     const workersSubdomain = yield* readWorkersSubdomain({ required: false });
+    // Public hostname for self-host (e.g. seo.niceseo.ai). Must be a zone on
+    // this Cloudflare account. Kept behind Cloudflare Access with workers.dev.
+    const customDomain = (
+      yield* optionalVar("SELFHOST_CUSTOM_DOMAIN")
+    ).toLowerCase();
 
     // Auth needs an absolute BETTER_AUTH_URL. Prod sets it explicitly;
     // previews always derive it from the deterministic worker name — a wrong
@@ -331,6 +355,8 @@ export default Alchemy.Stack(
           ),
         );
       }
+    } else if (customDomain) {
+      authUrl = `https://${customDomain}`;
     } else if (workersSubdomain) {
       authUrl = `https://${workerName(stage)}.${workersSubdomain}`;
     } else if (authMode === "hosted") {
@@ -349,12 +375,18 @@ export default Alchemy.Stack(
       stage,
       authMode === "cloudflare_access" && !prod,
       workersSubdomain,
+      customDomain,
     );
 
     const app = yield* Cloudflare.Worker("open-seo", {
       name: workerName(stage),
-      // Prod serves the real domains; the zone is inferred from the hostname.
-      domain: prod ? ["app.openseo.so", "www.app.openseo.so"] : undefined,
+      // Prod serves the real domains; self-host may attach a custom domain
+      // (zone inferred from the hostname). workers.dev stays enabled either way.
+      domain: prod
+        ? ["app.openseo.so", "www.app.openseo.so"]
+        : customDomain
+          ? [customDomain]
+          : undefined,
       // Prebuilt worker from `vite build` (@cloudflare/vite-plugin). The entry
       // exports the DO + WorkflowEntrypoint classes (re-exported by
       // src/server.ts), which `bundle: false` requires. Sibling chunks under

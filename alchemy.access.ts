@@ -57,14 +57,33 @@ export const requireAllowedEmails = (remedy: string) =>
     return emails;
   });
 
-/** The gate itself: an email allow-policy on a self-hosted Access application. */
+/**
+ * The gate itself: an email allow-policy on a self-hosted Access application.
+ *
+ * When `internalApiBypass` is set, also provisions a more-specific Access
+ * application for `/api/internal` on each hostname with a Bypass (everyone)
+ * policy. Cloudflare Access prefers the longest matching path, so browser UI
+ * stays email-gated while Hermes can reach machine exports. The Worker still
+ * requires `AGENCY_SCORE_EXPORT_TOKEN` on those routes — Access is not the
+ * auth for them.
+ */
 export const emailAccessGate = (options: {
   policyId: string;
   applicationId: string;
   policyName: string;
   applicationName: string;
+  /** Primary hostname (also used when destinations are omitted). */
   domain: string;
+  /** Extra public hostnames to protect (custom domains). */
+  extraDomains?: string[];
   emails: string[];
+  /** Machine-export path bypass (self-host only; leave unset for previews). */
+  internalApiBypass?: {
+    policyId: string;
+    applicationId: string;
+    policyName: string;
+    applicationName: string;
+  };
 }) =>
   Effect.gen(function* () {
     const allow = yield* Cloudflare.Access.Policy(options.policyId, {
@@ -72,10 +91,54 @@ export const emailAccessGate = (options: {
       decision: "allow",
       include: options.emails.map((email) => ({ email: { email } })),
     });
-    return yield* Cloudflare.Access.Application(options.applicationId, {
-      type: "self_hosted",
-      name: options.applicationName,
-      domain: options.domain,
-      policies: [allow.policyId],
-    });
+    const hostnames = [
+      options.domain,
+      ...(options.extraDomains ?? []),
+    ].filter(
+      (hostname, index, all) => hostname && all.indexOf(hostname) === index,
+    );
+    const application = yield* Cloudflare.Access.Application(
+      options.applicationId,
+      {
+        type: "self_hosted",
+        name: options.applicationName,
+        domain: hostnames[0],
+        // Keep workers.dev + custom domain behind the same email allow-list.
+        destinations: hostnames.map((uri) => ({
+          type: "public" as const,
+          uri,
+        })),
+        policies: [allow.policyId],
+      },
+    );
+
+    if (options.internalApiBypass) {
+      const bypass = yield* Cloudflare.Access.Policy(
+        options.internalApiBypass.policyId,
+        {
+          name: options.internalApiBypass.policyName,
+          decision: "bypass",
+          include: [{ everyone: {} }],
+        },
+      );
+      // Path-scoped apps beat the hostname-wide gate for /api/internal/*.
+      const internalPaths = hostnames.map(
+        (hostname) => `${hostname}/api/internal`,
+      );
+      yield* Cloudflare.Access.Application(
+        options.internalApiBypass.applicationId,
+        {
+          type: "self_hosted",
+          name: options.internalApiBypass.applicationName,
+          domain: internalPaths[0],
+          destinations: internalPaths.map((uri) => ({
+            type: "public" as const,
+            uri,
+          })),
+          policies: [bypass.policyId],
+        },
+      );
+    }
+
+    return application;
   });
