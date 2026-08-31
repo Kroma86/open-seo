@@ -103,6 +103,9 @@ export const emailAccessGate = (options: {
         type: "self_hosted",
         name: options.applicationName,
         domain: hostnames[0],
+        // 1-month login sessions (Jon 2026-08-31) — set via API that day; kept
+        // here so a redeploy doesn't silently reset the app to the 24h default.
+        sessionDuration: "730h",
         // Keep workers.dev + custom domain behind the same email allow-list.
         destinations: hostnames.map((uri) => ({
           type: "public" as const,
