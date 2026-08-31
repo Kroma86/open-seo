@@ -55,6 +55,14 @@ Good starting points:
 - `competitor-analysis`: studies one competitor's keywords, content themes, backlink profile, and gaps.
 - `local-seo`: audits a Google Business Profile against local competitors and maps Maps visibility around a location.
 - `link-prospecting`: finds likely link opportunities, discovers contact paths, and drafts outreach.
+- `page-growth`: names our own pages that can win more Google clicks (Search Atlas: Find Page Growth Opportunities).
+- `ai-visibility`: question gaps for AI answers; mention rate only when measured (Search Atlas: Find Content Opportunities).
+- `authority-plan`: 30/90-day link plan, no buying links (Search Atlas: backlink / growth plans).
+- `site-health`: read-only crawl issues (Search Atlas: weekly site health). Does not auto-fix.
+- `rank-slippage`: OpenSEO rank tracker diffs; null is not #0 (Search Atlas: rank-slippage / drop warning).
+- `homegrown-otto`: queue title/meta/H1 fixes as pending (Search Atlas: On-Page Fix Critical Issues). Never apply from chat.
+- `niceseo-pillars`: how NiceSEO bars are allowed to speak.
+- `not-in-openseo`: Ads, Cloud Stacks, paid PR, auto-publish — say we cannot run them.
 
 ## Tool coaching
 

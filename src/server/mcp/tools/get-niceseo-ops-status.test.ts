@@ -82,7 +82,10 @@ describe("fetchAgencyPixelStatus", () => {
     expect(result.pixel.found).toBe(true);
     expect(result.pixel.status).toBe("none");
     expect(fetchImpl).toHaveBeenCalledOnce();
-    const calledUrl = String(fetchImpl.mock.calls[0]?.[0] ?? "");
+    const calls = fetchImpl.mock.calls as unknown as ReadonlyArray<
+      ReadonlyArray<unknown>
+    >;
+    const calledUrl = String(calls[0]?.[0] ?? "");
     expect(calledUrl).toContain("t=test-token");
   });
 });

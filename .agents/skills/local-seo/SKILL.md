@@ -1,6 +1,6 @@
 ---
 name: local-seo
-description: "Audit a Google Business Profile, compare it to local competitors, and map Maps visibility around a location."
+description: "Audit a Google Business Profile, compare it to local competitors, and map Maps visibility around a location. Search Atlas: Local SEO — Improve Map Rankings; Analyze Visibility Grid (read). Auto GBP posts are not-in-openseo."
 ---
 
 # OpenSEO Local SEO

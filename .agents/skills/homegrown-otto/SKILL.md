@@ -3,7 +3,8 @@ name: homegrown-otto
 description: >
   HomeGrown OTTO (NiceSEO edge fix queue) and NiceSEO pixel status — never Search Atlas OTTO.
   Triggers: OTTO, HomeGrown, pixel, fix title/meta/H1/OG, queue SEO fixes, how are you connected
-  to this site, where is OTTO/pixel, apply Safe SEO without Search Atlas.
+  to this site, where is OTTO/pixel, apply Safe SEO without Search Atlas,
+  On-Page SEO Fix Critical Issues.
 ---
 
 # HomeGrown OTTO + NiceSEO pixel (SAM)
@@ -18,6 +19,8 @@ Drive **our** ops layer from chat: report OTTO queue + pixel status, and queue o
 - NiceSEO pixel / beacon / "is the pixel live"
 - "How are you connected to this site?" / "where is OTTO and pixel"
 - Any ask that used to mean Search Atlas OTTO deploy
+
+Score / pillars / "is my NiceSEO number real" is **not** this skill — activate `niceseo-pillars`.
 
 ## Do not
 
