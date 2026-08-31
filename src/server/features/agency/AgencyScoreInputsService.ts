@@ -10,13 +10,51 @@ import { db } from "@/db";
 import { projects } from "@/db/schema";
 import { AuditRepository } from "@/server/features/audit/repositories/AuditRepository";
 import { BacklinkSnapshotRepository } from "@/server/features/dashboard/repositories/BacklinkSnapshotRepository";
+import { Ga4ConnectionRepository } from "@/server/features/ga4/repositories/Ga4ConnectionRepository";
+import { GscConnectionRepository } from "@/server/features/gsc/repositories/GscConnectionRepository";
+import { GscService } from "@/server/features/gsc/services/GscService";
 import { RankTrackingRepository } from "@/server/features/rank-tracking/repositories/RankTrackingRepository";
 import { getLatestResults } from "@/server/features/rank-tracking/services/rankTrackingResults";
+
+export type GscConnectionStatus = {
+  connected: boolean;
+  siteUrl: string | null;
+  connectedAt: string | null;
+};
+
+export type Ga4ConnectionStatus = {
+  connected: boolean;
+  propertyId: string | null;
+  propertyDisplayName: string | null;
+  connectedAt: string | null;
+};
+
+/** Native GBP OAuth is not in OpenSEO yet. Never pretend Google is connected. */
+export type GbpStatus = {
+  status: "not_connected_native" | "dfs_local";
+  source: "dataforseo" | null;
+  capturedAt: string | null;
+};
 
 export type AgencyScoreInputs = {
   domain: string;
   projectId: string | null;
   projectName: string | null;
+  connections: {
+    gsc: GscConnectionStatus;
+    ga4: Ga4ConnectionStatus;
+  };
+  /** GSC last-28-day site totals — one live searchAnalytics read when a
+   *  property is mapped; null when unmapped, empty, or errored. Never invent 0. */
+  gsc: {
+    clicks: number | null;
+    impressions: number | null;
+    ctr: number | null;
+    position: number | null;
+    capturedAt: string | null;
+    source: "google_search_console";
+  } | null;
+  gbp: GbpStatus;
   ranks: {
     capturedAt: string | null;
     keywords: Array<{
@@ -43,6 +81,111 @@ export type AgencyScoreInputs = {
     source: "openseo_audit";
   } | null;
 };
+
+const DISCONNECTED_GSC: GscConnectionStatus = {
+  connected: false,
+  siteUrl: null,
+  connectedAt: null,
+};
+
+const DISCONNECTED_GA4: Ga4ConnectionStatus = {
+  connected: false,
+  propertyId: null,
+  propertyDisplayName: null,
+  connectedAt: null,
+};
+
+const GBP_NATIVE_GAP: GbpStatus = {
+  status: "not_connected_native",
+  source: null,
+  capturedAt: null,
+};
+
+function emptyInputs(domain: string): AgencyScoreInputs {
+  return {
+    domain,
+    projectId: null,
+    projectName: null,
+    connections: { gsc: DISCONNECTED_GSC, ga4: DISCONNECTED_GA4 },
+    gsc: null,
+    gbp: GBP_NATIVE_GAP,
+    ranks: null,
+    backlinks: null,
+    audit: null,
+  };
+}
+
+async function loadGscTotals(
+  projectId: string,
+  connected: boolean,
+): Promise<AgencyScoreInputs["gsc"]> {
+  if (!connected) return null;
+  try {
+    // Per-day rows, then sum — the default GSC dimension is ["query"], whose
+    // first row is the top query, not site totals.
+    const result = await GscService.getPerformance({
+      projectId,
+      dateRange: "last_28_days",
+      dimensions: ["date"],
+    });
+    if (result.rows.length === 0) return null;
+    let clicks = 0;
+    let impressions = 0;
+    // Position is a per-row average; weight it by impressions so days with
+    // no visibility don't drag the mean.
+    let positionWeight = 0;
+    let positionSum = 0;
+    for (const row of result.rows) {
+      if (Number.isFinite(row.clicks)) clicks += row.clicks;
+      if (Number.isFinite(row.impressions)) {
+        impressions += row.impressions;
+        if (Number.isFinite(row.position)) {
+          positionSum += row.position * row.impressions;
+          positionWeight += row.impressions;
+        }
+      }
+    }
+    const position = positionWeight > 0 ? positionSum / positionWeight : null;
+    return {
+      clicks,
+      impressions,
+      ctr: impressions > 0 ? clicks / impressions : null,
+      position,
+      capturedAt: result.request.endDate ?? null,
+      source: "google_search_console",
+    };
+  } catch {
+    // Expired grant / API error → Not measured, never a fake zero.
+    return null;
+  }
+}
+
+async function loadConnections(projectId: string): Promise<{
+  gsc: GscConnectionStatus;
+  ga4: Ga4ConnectionStatus;
+}> {
+  const [gscRow, ga4Row] = await Promise.all([
+    GscConnectionRepository.getByProjectId(projectId),
+    Ga4ConnectionRepository.getByProjectId(projectId),
+  ]);
+  return {
+    gsc: gscRow
+      ? {
+          connected: true,
+          siteUrl: gscRow.siteUrl,
+          connectedAt: gscRow.createdAt ?? null,
+        }
+      : DISCONNECTED_GSC,
+    ga4: ga4Row
+      ? {
+          connected: true,
+          propertyId: ga4Row.propertyId,
+          propertyDisplayName: ga4Row.propertyDisplayName,
+          connectedAt: ga4Row.createdAt ?? null,
+        }
+      : DISCONNECTED_GA4,
+  };
+}
 
 function normalizeDomain(raw: string): string {
   let h = raw.trim().toLowerCase();
@@ -191,26 +334,23 @@ export async function getAgencyScoreInputs(input: {
   const project = await findProject(input.organizationId ?? null, domain);
 
   if (!project) {
-    return {
-      domain,
-      projectId: null,
-      projectName: null,
-      ranks: null,
-      backlinks: null,
-      audit: null,
-    };
+    return emptyInputs(domain);
   }
 
-  const [ranks, backlinks, audit] = await Promise.all([
+  const [ranks, backlinks, audit, connections] = await Promise.all([
     loadRanks(project.id),
     loadBacklinks(project.id),
     loadAudit(project.id),
+    loadConnections(project.id),
   ]);
 
   return {
     domain,
     projectId: project.id,
     projectName: project.name,
+    connections,
+    gsc: await loadGscTotals(project.id, connections.gsc.connected),
+    gbp: GBP_NATIVE_GAP,
     ranks,
     backlinks,
     audit,

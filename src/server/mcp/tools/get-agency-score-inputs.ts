@@ -16,7 +16,7 @@ export const getAgencyScoreInputsTool = {
   config: {
     title: "Get agency score inputs",
     description:
-      "DB-only export of rank tracker positions, backlink snapshot referring domains, and latest site-audit Lighthouse SEO + issue counts for a domain. Uses no credits — never calls DataForSEO. For NiceSEO agency board scoring. Prefer this over live DFS pulls when OpenSEO already has fresh cached data.",
+      "Export of rank tracker positions, backlink snapshot referring domains, latest site-audit Lighthouse SEO + issue counts, and GSC/GA4 connection status for a domain. Uses no credits — never calls DataForSEO. Everything is DB-only except one live Search Console totals read (last 28 days) when a GSC property is mapped. GBP is always not_connected_native until a native Google Business login exists. For NiceSEO agency board scoring. Apply niceseo-pillars law: Technical=lighthouseSeoAvg only; Visibility=100−GSC position else rank positions; Content=Not measured; Authority=log referringDomains; missing=Not measured. Never issue-density. Never Search Atlas.",
     inputSchema: {
       domain: z
         .string()
@@ -29,6 +29,34 @@ export const getAgencyScoreInputsTool = {
       domain: z.string(),
       projectId: z.string().nullable(),
       projectName: z.string().nullable(),
+      connections: z.object({
+        gsc: z.object({
+          connected: z.boolean(),
+          siteUrl: z.string().nullable(),
+          connectedAt: z.string().nullable(),
+        }),
+        ga4: z.object({
+          connected: z.boolean(),
+          propertyId: z.string().nullable(),
+          propertyDisplayName: z.string().nullable(),
+          connectedAt: z.string().nullable(),
+        }),
+      }),
+      gsc: z
+        .object({
+          clicks: z.number().nullable(),
+          impressions: z.number().nullable(),
+          ctr: z.number().nullable(),
+          position: z.number().nullable(),
+          capturedAt: z.string().nullable(),
+          source: z.literal("google_search_console"),
+        })
+        .nullable(),
+      gbp: z.object({
+        status: z.enum(["not_connected_native", "dfs_local"]),
+        source: z.enum(["dataforseo"]).nullable(),
+        capturedAt: z.string().nullable(),
+      }),
       ranks: z
         .object({
           capturedAt: z.string().nullable(),
@@ -74,6 +102,15 @@ export const getAgencyScoreInputsTool = {
       `Ranks: ${data.ranks ? `${data.ranks.keywords.length} keywords @ ${data.ranks.capturedAt ?? "unknown"}` : "none"}`,
       `Backlinks: ${data.backlinks ? `rd=${data.backlinks.referringDomains} @ ${data.backlinks.capturedAt ?? "unknown"}` : "none"}`,
       `Audit: ${data.audit ? `seo=${data.audit.lighthouseSeoAvg} issues=${data.audit.issueCount} pages=${data.audit.pagesCrawled}` : "none"}`,
+      `GSC: ${data.connections.gsc.connected ? `connected ${data.connections.gsc.siteUrl}` : "not connected"}`,
+      `GSC totals (28d): ${
+        data.gsc
+          ? `clicks=${data.gsc.clicks ?? "n/a"} impressions=${data.gsc.impressions ?? "n/a"} position=${data.gsc.position ?? "n/a"} as of ${data.gsc.capturedAt ?? "unknown"}`
+          : "not measured"
+      }`,
+      `GA4: ${data.connections.ga4.connected ? `connected ${data.connections.ga4.propertyId}` : "not connected"}`,
+      `GBP: ${data.gbp.status}`,
+      "Pillar law: Technical=lighthouseSeoAvg only; Visibility=max(0,100−GSC position) else rank positions with a number; Content=Not measured; Authority=round(min(99,20*log10(rd+1)*1.5),1); missing=Not measured. Never issue-density. Never Search Atlas.",
     ];
     return mcpResponse({
       text: lines.join("\n"),
