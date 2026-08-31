@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Link2,
   MessageSquare,
+  Repeat,
   Search,
   Sparkles,
   TrendingUp,
@@ -56,6 +57,11 @@ const projectNavItems = [
     to: "/p/$projectId/audit" as const,
     label: "Site Audit",
     icon: ClipboardCheck,
+  },
+  {
+    to: "/p/$projectId/loops" as const,
+    label: "Sam Loops",
+    icon: Repeat,
   },
   {
     to: "/p/$projectId/brand-lookup" as const,
@@ -120,6 +126,7 @@ export function getProjectNavGroups(projectId: string) {
         byPath("/p/$projectId/rank-tracking"),
         byPath("/p/$projectId/saved"),
         byPath("/p/$projectId/audit"),
+        byPath("/p/$projectId/loops"),
       ],
     },
   ];

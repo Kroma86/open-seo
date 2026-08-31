@@ -26,6 +26,10 @@ import {
   listHomegrownOttoProposalsTool,
   proposeHomegrownOttoFixesTool,
 } from "@/server/mcp/tools/homegrown-otto-tools";
+import {
+  getSamLoopRunsTool,
+  listSamLoopsTool,
+} from "@/server/mcp/tools/sam-loop-tools";
 import { getNiceseoOpsStatusTool } from "@/server/mcp/tools/get-niceseo-ops-status";
 import { getAgencyScoreInputsTool } from "@/server/mcp/tools/get-agency-score-inputs";
 import { listSavedKeywordsTool } from "@/server/mcp/tools/list-saved-keywords";
@@ -421,5 +425,7 @@ export function buildSamMcpTools(
     list_homegrown_otto_proposals: adaptTool(listHomegrownOttoProposalsTool),
     get_niceseo_ops_status: adaptTool(getNiceseoOpsStatusTool),
     get_agency_score_inputs: adaptTool(getAgencyScoreInputsTool),
+    list_sam_loops: adaptTool(listSamLoopsTool),
+    get_sam_loop_runs: adaptTool(getSamLoopRunsTool),
   };
 }

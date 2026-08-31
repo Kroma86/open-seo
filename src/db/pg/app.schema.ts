@@ -409,3 +409,158 @@ export const backlinkSnapshots = pgTable(
     ),
   ],
 );
+
+// ============================================================================
+// Sam Loops — scheduled skill/prompt runs through headless Sam
+// ============================================================================
+
+export const samLoops = pgTable(
+  "sam_loops",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    sourceType: text("source_type", { enum: ["skill", "custom"] }).notNull(),
+    skillName: text("skill_name"),
+    customPrompt: text("custom_prompt"),
+    cadence: text("cadence", { enum: ["daily", "weekly", "monthly"] })
+      .notNull()
+      .default("weekly"),
+    isEnabled: boolean("is_enabled").notNull().default(true),
+    lastRunAt: timestampColumn("last_run_at"),
+    nextRunAt: timestampColumn("next_run_at"),
+    createdAt: timestampColumn("created_at").notNull().default(isoNow),
+  },
+  (table) => [
+    index("sam_loops_project_enabled_next_idx").on(
+      table.projectId,
+      table.isEnabled,
+      table.nextRunAt,
+    ),
+    uniqueIndex("sam_loops_project_name_idx").on(table.projectId, table.name),
+  ],
+);
+
+export const samLoopRuns = pgTable(
+  "sam_loop_runs",
+  {
+    id: text("id").primaryKey(),
+    loopId: text("loop_id")
+      .notNull()
+      .references(() => samLoops.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    status: text("status", {
+      enum: ["pending", "running", "completed", "failed"],
+    })
+      .notNull()
+      .default("pending"),
+    startedAt: timestampColumn("started_at"),
+    finishedAt: timestampColumn("finished_at"),
+    report: text("report"),
+    proposalsQueued: integer("proposals_queued").notNull().default(0),
+    stepsUsed: integer("steps_used"),
+    costNote: text("cost_note"),
+    error: text("error"),
+    createdAt: timestampColumn("created_at").notNull().default(isoNow),
+  },
+  (table) => [
+    index("sam_loop_runs_loop_created_idx").on(table.loopId, table.createdAt),
+    uniqueIndex("sam_loop_runs_one_inflight_idx")
+      .on(table.loopId)
+      .where(sql`${table.status} IN ('pending', 'running')`),
+  ],
+);
+
+// ============================================================================
+// Tracked AI visibility (P2b) — mirror SQLite for schema-parity
+// ============================================================================
+
+export const aiVisibilityConfigs = pgTable(
+  "ai_visibility_configs",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    brand: text("brand").notNull(),
+    competitors: text("competitors").notNull().default("[]"),
+    platforms: text("platforms").notNull().default('["chat_gpt","google"]'),
+    scheduleInterval: text("schedule_interval", {
+      enum: ["weekly", "monthly", "manual"],
+    })
+      .notNull()
+      .default("weekly"),
+    promptSetVersion: integer("prompt_set_version").notNull().default(1),
+    isActive: boolean("is_active").notNull().default(true),
+    lastRunAt: timestampColumn("last_run_at"),
+    nextRunAt: timestampColumn("next_run_at"),
+    createdAt: timestampColumn("created_at").notNull().default(isoNow),
+  },
+  (table) => [
+    uniqueIndex("ai_visibility_configs_project_brand_idx").on(
+      table.projectId,
+      table.brand,
+    ),
+  ],
+);
+
+export const aiVisibilityPrompts = pgTable(
+  "ai_visibility_prompts",
+  {
+    id: text("id").primaryKey(),
+    configId: text("config_id")
+      .notNull()
+      .references(() => aiVisibilityConfigs.id, { onDelete: "cascade" }),
+    prompt: text("prompt").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestampColumn("created_at").notNull().default(isoNow),
+  },
+  (table) => [
+    uniqueIndex("ai_visibility_prompts_config_prompt_idx").on(
+      table.configId,
+      table.prompt,
+    ),
+  ],
+);
+
+export const aiVisibilityRuns = pgTable(
+  "ai_visibility_runs",
+  {
+    id: text("id").primaryKey(),
+    configId: text("config_id")
+      .notNull()
+      .references(() => aiVisibilityConfigs.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    promptSetVersion: integer("prompt_set_version").notNull(),
+    status: text("status", {
+      enum: ["pending", "running", "completed", "failed"],
+    })
+      .notNull()
+      .default("pending"),
+    startedAt: timestampColumn("started_at"),
+    finishedAt: timestampColumn("finished_at"),
+    totalMentions: integer("total_mentions"),
+    shareOfVoicePct: real("share_of_voice_pct"),
+    promptsWithBrand: integer("prompts_with_brand"),
+    promptsChecked: integer("prompts_checked"),
+    detail: text("detail"),
+    costNote: text("cost_note"),
+    error: text("error"),
+    createdAt: timestampColumn("created_at").notNull().default(isoNow),
+  },
+  (table) => [
+    index("ai_visibility_runs_config_created_idx").on(
+      table.configId,
+      table.createdAt,
+    ),
+    uniqueIndex("ai_visibility_runs_one_inflight_idx")
+      .on(table.configId)
+      .where(sql`${table.status} IN ('pending', 'running')`),
+  ],
+);

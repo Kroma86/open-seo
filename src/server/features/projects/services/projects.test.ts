@@ -12,11 +12,20 @@ const mocks = vi.hoisted(() => ({
   listProjects: vi.fn(),
   listArchivedProjects: vi.fn(),
   tryCreateDefaultProject: vi.fn(),
+  ensureDefaultLoops: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
   ProjectRepository: mocks,
 }));
+vi.mock(
+  "@/server/features/sam-loops/repositories/SamLoopRepository",
+  () => ({
+    SamLoopRepository: {
+      ensureDefaultLoops: mocks.ensureDefaultLoops,
+    },
+  }),
+);
 
 const defaultProject = {
   id: "project_default",
@@ -93,6 +102,7 @@ describe("project service", () => {
         "acme.com",
         undefined,
       );
+      expect(mocks.ensureDefaultLoops).toHaveBeenCalledWith("project_acme");
     });
 
     it("derives the native language when only the location is given", async () => {

@@ -80,6 +80,10 @@ import {
   listHomegrownOttoProposalsTool,
   proposeHomegrownOttoFixesTool,
 } from "@/server/mcp/tools/homegrown-otto-tools";
+import {
+  getSamLoopRunsTool,
+  listSamLoopsTool,
+} from "@/server/mcp/tools/sam-loop-tools";
 
 type ToolSchema = z.ZodType | z.ZodRawShape;
 
@@ -169,6 +173,8 @@ export function createOpenSeoMcpServer(authProps: McpProps) {
   register(proposeHomegrownOttoFixesTool);
   register(listHomegrownOttoProposalsTool);
   register(getNiceseoOpsStatusTool);
+  register(listSamLoopsTool);
+  register(getSamLoopRunsTool);
   register(listProjectsTool);
   register(createProjectTool);
   register(getProjectContextTool);

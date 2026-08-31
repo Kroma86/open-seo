@@ -7,6 +7,7 @@ import type {
   UpdateProjectInput,
 } from "@/types/schemas/projects";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
+import { SamLoopRepository } from "@/server/features/sam-loops/repositories/SamLoopRepository";
 import { normalizeBacklinksTarget } from "@/server/lib/dataforseoBacklinksTarget";
 import { AppError } from "@/server/lib/errors";
 import { assertLanguageForLocation } from "@/server/lib/market";
@@ -114,6 +115,12 @@ export async function createProject(
       normalizeProjectDomain(input.domain),
       resolveMarketInput(input),
     );
+    // Best-effort: seed default Sam loops so every new client has a loop set.
+    try {
+      await SamLoopRepository.ensureDefaultLoops(row.id);
+    } catch (err) {
+      console.error("[projects] Failed to seed default Sam loops:", err);
+    }
     return mapProject(row);
   } catch (error) {
     if (isReservedDefaultConflict(error, input)) {

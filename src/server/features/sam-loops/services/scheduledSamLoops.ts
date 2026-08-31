@@ -1,0 +1,112 @@
+import { SamLoopRepository } from "@/server/features/sam-loops/repositories/SamLoopRepository";
+import { beginSamLoopRun } from "@/server/features/sam-loops/services/samLoopRunGuards";
+import { computeNextSamLoopRunAt } from "@/shared/sam-loops";
+
+const TICK_DEADLINE_MS = 3 * 60_000;
+const ALREADY_RUNNING_IDS_CAP = 20;
+
+/** Cron body: claim due enabled loops and start SamLoopWorkflow for each. */
+export async function runScheduledSamLoops(env: Env) {
+  const nowIso = new Date().toISOString();
+  const dueLoops =
+    await SamLoopRepository.getDueLoopsWithOrganization(nowIso);
+
+  const deadline = Date.now() + TICK_DEADLINE_MS;
+  let started = 0;
+  let stoppedByDeadline = false;
+  let concurrentChangeSkips = 0;
+  let alreadyRunning = 0;
+  const alreadyRunningLoopIds: string[] = [];
+  let workflowStartErrors = 0;
+  let loopErrors = 0;
+
+  for (const loop of dueLoops) {
+    if (Date.now() >= deadline) {
+      stoppedByDeadline = true;
+      break;
+    }
+
+    try {
+      if (!loop.nextRunAt) continue;
+
+      const observedNextRunAt = loop.nextRunAt;
+      const nextRunAt = computeNextSamLoopRunAt(
+        loop.cadence,
+        observedNextRunAt,
+      );
+
+      const claimed = await SamLoopRepository.claimDueLoop({
+        loopId: loop.id,
+        projectId: loop.projectId,
+        observedNextRunAt,
+        nextRunAt,
+      });
+      if (!claimed) {
+        concurrentChangeSkips++;
+        continue;
+      }
+
+      let result;
+      try {
+        result = await beginSamLoopRun({
+          workflow: env.SAM_LOOP_WORKFLOW,
+          loopId: loop.id,
+          projectId: loop.projectId,
+          organizationId: loop.organizationId,
+          trigger: "scheduled",
+          workflowStartErrorMessage: "Failed to start scheduled Sam loop",
+        });
+      } catch (err) {
+        workflowStartErrors++;
+        console.error(
+          `[cron] Failed to start Sam loop ${loop.id} (${loop.name}):`,
+          err,
+        );
+        continue;
+      }
+
+      if (result.ok) {
+        started++;
+        continue;
+      }
+
+      alreadyRunning++;
+      if (alreadyRunningLoopIds.length < ALREADY_RUNNING_IDS_CAP) {
+        alreadyRunningLoopIds.push(loop.id);
+      }
+      // Restore schedule so the loop retries next tick once the blocker clears.
+      const restored = await SamLoopRepository.claimDueLoop({
+        loopId: loop.id,
+        projectId: loop.projectId,
+        observedNextRunAt: nextRunAt,
+        nextRunAt: observedNextRunAt,
+      });
+      if (!restored) {
+        console.log(
+          `[cron] Could not restore schedule for Sam loop ${loop.id} — changed concurrently`,
+        );
+      }
+    } catch (err) {
+      loopErrors++;
+      console.error(`[cron] Error processing Sam loop ${loop.id}:`, err);
+    }
+  }
+
+  const oldestDue = dueLoops[0]?.nextRunAt;
+  const logSummary =
+    workflowStartErrors + loopErrors > 0 ? console.error : console.log;
+  logSummary({
+    event: "sam_loops_scheduler_summary",
+    candidates: dueLoops.length,
+    started,
+    stoppedByDeadline,
+    concurrentChangeSkips,
+    alreadyRunning,
+    alreadyRunningLoopIds,
+    workflowStartErrors,
+    loopErrors,
+    oldestDueAgeMs: oldestDue
+      ? Date.now() - new Date(oldestDue).getTime()
+      : null,
+  });
+}
