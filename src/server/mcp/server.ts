@@ -42,6 +42,10 @@ import {
 } from "@/server/mcp/tools/project-context";
 import { listSavedKeywordsTool } from "@/server/mcp/tools/list-saved-keywords";
 import {
+  exploreAiPromptTool,
+  getAiBrandVisibilityTool,
+} from "@/server/mcp/tools/ai-search-tools";
+import {
   findSerpCompetitorsTool,
   getGoogleBusinessQuestionsTool,
   getKeywordMetricsTool,
@@ -194,6 +198,8 @@ export function createOpenSeoMcpServer(authProps: McpProps) {
   register(listBusinessCategoriesTool);
   register(getLocalRankGridTool);
   register(getKeywordMetricsTool);
+  register(getAiBrandVisibilityTool);
+  register(exploreAiPromptTool);
   register(getSearchConsolePerformanceTool);
   register(inspectUrlsTool);
   register(getGoogleAnalyticsOrganicLandingPagesTool);
