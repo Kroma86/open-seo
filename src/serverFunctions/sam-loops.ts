@@ -79,3 +79,10 @@ export const triggerSamLoop = createServerFn({ method: "POST" })
       organizationId: context.organizationId,
     });
   });
+
+export const seedDefaultSamLoops = createServerFn({ method: "POST" })
+  .middleware(requireProjectContext)
+  .validator(listSamLoopsSchema)
+  .handler(async ({ context }) => {
+    return SamLoopService.seedDefaultSamLoopsForProject(context.projectId);
+  });

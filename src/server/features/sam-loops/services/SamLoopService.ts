@@ -138,26 +138,42 @@ export async function triggerSamLoop(input: {
     return { ok: false, reason: "disabled" };
   }
 
-  // Manual trigger still advances nextRunAt so the schedule doesn't pile up.
+  // Manual trigger schedule rule:
+  // - nextRunAt in the future → leave it alone (manual run is extra; scheduled
+  //   run still happens).
+  // - nextRunAt missing or due/overdue → set to computeNextSamLoopRunAt(cadence)
+  //   anchored on now so due loops don't pile up.
+  // lastRunAt is written when the run completes (workflow), not here.
   // claimDueLoop is deliberately best-effort: a lost CAS (concurrent cron)
   // means someone else already advanced the schedule; single-in-flight is
   // still DB-enforced when we start the run below.
-  if (loop.nextRunAt) {
-    const claimed = await SamLoopRepository.claimDueLoop({
-      loopId: loop.id,
-      projectId: loop.projectId,
-      observedNextRunAt: loop.nextRunAt,
-      nextRunAt: computeNextSamLoopRunAt(loop.cadence, loop.nextRunAt),
-    });
-    if (!claimed) {
-      console.log(
-        `[sam-loop] manual trigger claim lost (best-effort) loop=${loop.id} project=${loop.projectId}`,
-      );
+  const nextRunMs = loop.nextRunAt
+    ? new Date(loop.nextRunAt).getTime()
+    : Number.NaN;
+  const nextRunIsFuture =
+    Number.isFinite(nextRunMs) && nextRunMs > Date.now();
+
+  if (!nextRunIsFuture) {
+    // CAS only when we have a parsable observed nextRunAt. A corrupt value
+    // would never match claimDueLoop's equality check and would leave the
+    // loop unscheduled forever — fall through to re-anchor from now instead.
+    if (loop.nextRunAt && Number.isFinite(nextRunMs)) {
+      const claimed = await SamLoopRepository.claimDueLoop({
+        loopId: loop.id,
+        projectId: loop.projectId,
+        observedNextRunAt: loop.nextRunAt,
+        nextRunAt: computeNextSamLoopRunAt(loop.cadence),
+      });
+      if (!claimed) {
+        console.log(
+          `[sam-loop] manual trigger claim lost (best-effort) loop=${loop.id} project=${loop.projectId}`,
+        );
+      }
+    } else {
+      await SamLoopRepository.updateLoop(loop.id, loop.projectId, {
+        nextRunAt: computeNextSamLoopRunAt(loop.cadence),
+      });
     }
-  } else {
-    await SamLoopRepository.updateLoop(loop.id, loop.projectId, {
-      nextRunAt: computeNextSamLoopRunAt(loop.cadence),
-    });
   }
 
   return beginSamLoopRun({

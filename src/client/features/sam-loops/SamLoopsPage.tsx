@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Loader2,
   Play,
@@ -13,6 +13,7 @@ import {
   createSamLoop,
   listSamLoopSkills,
   listSamLoops,
+  seedDefaultSamLoops,
   triggerSamLoop,
   updateSamLoop,
 } from "@/serverFunctions/sam-loops";
@@ -55,6 +56,7 @@ export function SamLoopsPage({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
   const [askDraft, setAskDraft] = useState<string>(ROTATING_ASKS[0]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const reportRef = useRef<HTMLElement>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [createMode, setCreateMode] = useState<"skill" | "custom">("skill");
   const [createName, setCreateName] = useState("");
@@ -117,6 +119,11 @@ export function SamLoopsPage({ projectId }: { projectId: string }) {
     },
   });
 
+  const seedDefaultsMutation = useMutation({
+    mutationFn: () => seedDefaultSamLoops({ data: { projectId } }),
+    onSuccess: invalidate,
+  });
+
   const loops = loopsQuery.data?.loops ?? [];
   const runs = loopsQuery.data?.runs ?? [];
   const skills = skillsQuery.data ?? [];
@@ -125,6 +132,14 @@ export function SamLoopsPage({ projectId }: { projectId: string }) {
     () => runs.find((run) => run.id === selectedRunId) ?? null,
     [runs, selectedRunId],
   );
+
+  // Mission card click selects a run whose report renders below the rail —
+  // often below the fold. Scroll once per selection id so background refetches
+  // (trigger/seed invalidations) don't yank the viewport back to the report.
+  useEffect(() => {
+    if (!selectedRunId || !reportRef.current) return;
+    reportRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [selectedRunId]);
 
   const chipSkills = useMemo(() => {
     const fromDefaults = DEFAULT_SAM_LOOP_TEMPLATES.map((t) => ({
@@ -178,7 +193,7 @@ export function SamLoopsPage({ projectId }: { projectId: string }) {
             search={{}}
             className="btn btn-primary gap-2"
             onClick={() => {
-              // Hand the draft to Sam via sessionStorage for the chat route to pick up later if desired.
+              // Hand the draft to Sam chat via sessionStorage (read on mount).
               try {
                 sessionStorage.setItem(
                   `sam-loops-ask:${projectId}`,
@@ -375,9 +390,31 @@ export function SamLoopsPage({ projectId }: { projectId: string }) {
             Loading loops…
           </div>
         ) : loops.length === 0 ? (
-          <p className="rounded-xl bg-base-200/50 px-4 py-8 text-center text-sm text-base-content/60">
-            No loops yet. Use a template chip or create a custom prompt loop.
-          </p>
+          <div className="space-y-3 rounded-xl bg-base-200/50 px-4 py-8 text-center">
+            <p className="text-sm text-base-content/60">
+              No loops yet. Use a template chip or create a custom prompt loop.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm gap-1"
+              disabled={seedDefaultsMutation.isPending}
+              onClick={() => seedDefaultsMutation.mutate()}
+            >
+              {seedDefaultsMutation.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Plus className="size-3.5" />
+              )}
+              Add Sam&apos;s starter loops
+            </button>
+            {seedDefaultsMutation.isError ? (
+              <p className="text-sm text-error">
+                {seedDefaultsMutation.error instanceof Error
+                  ? seedDefaultsMutation.error.message
+                  : "Could not add starter loops"}
+              </p>
+            ) : null}
+          </div>
         ) : (
           <ul className="divide-y divide-base-300/60 overflow-hidden rounded-xl ring-1 ring-base-300/50">
             {loops.map((loop) => (
@@ -488,7 +525,11 @@ export function SamLoopsPage({ projectId }: { projectId: string }) {
         )}
 
         {selectedRun ? (
-          <article className="space-y-2 rounded-xl bg-base-100 p-4 ring-1 ring-base-300/60">
+          <article
+            key={selectedRun.id}
+            ref={reportRef}
+            className="animate-in fade-in slide-in-from-bottom-1 space-y-2 rounded-xl bg-base-100 p-4 ring-1 ring-base-300/60 duration-200"
+          >
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-semibold">
                 {"loopName" in selectedRun
