@@ -54,6 +54,15 @@ export type AgencyScoreInputs = {
     capturedAt: string | null;
     source: "google_search_console";
   } | null;
+  /** Top GSC queries (last 28 days, by clicks then impressions, max 25) —
+   *  the real long tail the tracker's 3 keywords miss. Null when unmapped,
+   *  empty, or errored. */
+  gscTopQueries: Array<{
+    query: string;
+    clicks: number;
+    impressions: number;
+    position: number | null;
+  }> | null;
   gbp: GbpStatus;
   ranks: {
     capturedAt: string | null;
@@ -108,6 +117,7 @@ function emptyInputs(domain: string): AgencyScoreInputs {
     projectName: null,
     connections: { gsc: DISCONNECTED_GSC, ga4: DISCONNECTED_GA4 },
     gsc: null,
+    gscTopQueries: null,
     gbp: GBP_NATIVE_GAP,
     ranks: null,
     backlinks: null,
@@ -156,6 +166,34 @@ async function loadGscTotals(
     };
   } catch {
     // Expired grant / API error → Not measured, never a fake zero.
+    return null;
+  }
+}
+
+async function loadGscTopQueries(
+  projectId: string,
+  connected: boolean,
+): Promise<AgencyScoreInputs["gscTopQueries"]> {
+  if (!connected) return null;
+  try {
+    const result = await GscService.getPerformance({
+      projectId,
+      dateRange: "last_28_days",
+      dimensions: ["query"],
+    });
+    if (result.rows.length === 0) return null;
+    const rows = result.rows
+      .filter((row) => typeof row.keys?.[0] === "string")
+      .map((row) => ({
+        query: row.keys?.[0] ?? "",
+        clicks: Number.isFinite(row.clicks) ? row.clicks : 0,
+        impressions: Number.isFinite(row.impressions) ? row.impressions : 0,
+        position: Number.isFinite(row.position) ? row.position : null,
+      }))
+      .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
+      .slice(0, 25);
+    return rows.length > 0 ? rows : null;
+  } catch {
     return null;
   }
 }
@@ -350,6 +388,10 @@ export async function getAgencyScoreInputs(input: {
     projectName: project.name,
     connections,
     gsc: await loadGscTotals(project.id, connections.gsc.connected),
+    gscTopQueries: await loadGscTopQueries(
+      project.id,
+      connections.gsc.connected,
+    ),
     gbp: GBP_NATIVE_GAP,
     ranks,
     backlinks,
