@@ -26,6 +26,7 @@ import { buildSamSkillSource } from "@/server/features/sam/samSkills";
 import { buildSamSystemPrompt } from "@/server/features/sam/samSystemPrompt";
 import {
   buildChatAgentModel,
+  parseOpenRouterPromptCacheFlag,
   parseOpenRouterZdrFlag,
 } from "@/server/lib/openrouter";
 import {
@@ -139,6 +140,9 @@ export class SamChatAgent extends Think {
       {
         zdr: parseOpenRouterZdrFlag(
           getEnvValueSync(this.env, "OPENROUTER_ZDR"),
+        ),
+        promptCache: parseOpenRouterPromptCacheFlag(
+          getEnvValueSync(this.env, "OPENROUTER_PROMPT_CACHE"),
         ),
       },
     );

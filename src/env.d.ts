@@ -58,6 +58,8 @@ declare namespace Cloudflare {
     OPENROUTER_MODEL?: string;
     // Optional. Default true. Set "false" to allow non-ZDR providers (e.g. Anthropic).
     OPENROUTER_ZDR?: string;
+    // Optional. Default true. Set "false" to disable Anthropic prompt caching.
+    OPENROUTER_PROMPT_CACHE?: string;
   }
 }
 

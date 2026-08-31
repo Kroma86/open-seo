@@ -2,6 +2,11 @@ import {
   createOpenRouter,
   type LanguageModelV3,
 } from "@openrouter/ai-sdk-provider";
+import { wrapLanguageModel } from "ai";
+import {
+  createOpenRouterPromptCacheMiddleware,
+  parseOpenRouterPromptCacheFlag,
+} from "@/server/lib/openrouterPromptCache";
 import {
   getOptionalEnvValue,
   getRequiredEnvValue,
@@ -15,7 +20,12 @@ export type ChatAgentModelOptions = {
   // When true (default), restrict routing to Zero-Data-Retention endpoints.
   // Self-host may set OPENROUTER_ZDR=false to reach first-party Anthropic/etc.
   zdr?: boolean;
+  // When true (default), attach Anthropic prompt-cache breakpoints for
+  // anthropic/* models. Self-host may set OPENROUTER_PROMPT_CACHE=false.
+  promptCache?: boolean;
 };
+
+export { parseOpenRouterPromptCacheFlag };
 
 /**
  * Parse OPENROUTER_ZDR. Default true (hosted privacy posture). Explicit
@@ -59,7 +69,10 @@ export async function getChatAgentModel(): Promise<LanguageModelV3> {
   const zdr = parseOpenRouterZdrFlag(
     await getOptionalEnvValue("OPENROUTER_ZDR"),
   );
-  return buildChatAgentModel(apiKey, modelId, { zdr });
+  const promptCache = parseOpenRouterPromptCacheFlag(
+    await getOptionalEnvValue("OPENROUTER_PROMPT_CACHE"),
+  );
+  return buildChatAgentModel(apiKey, modelId, { zdr, promptCache });
 }
 
 /**
@@ -73,6 +86,8 @@ export function buildChatAgentModel(
   options?: ChatAgentModelOptions,
 ): LanguageModelV3 {
   const zdr = options?.zdr ?? true;
+  const promptCache = options?.promptCache ?? true;
+  const resolvedModelId = modelId ?? DEFAULT_CHAT_AGENT_MODEL;
   // ZDR path keeps the MiniMax-oriented provider preference. Non-ZDR path
   // drops that pin so frontier models (Anthropic Opus, etc.) can hit
   // first-party endpoints.
@@ -86,9 +101,20 @@ export function buildChatAgentModel(
         allow_fallbacks: true,
       };
 
-  return createOpenRouter({ apiKey })(modelId ?? DEFAULT_CHAT_AGENT_MODEL, {
+  const model = createOpenRouter({ apiKey })(resolvedModelId, {
     usage: { include: true },
     reasoning: { effort: "medium" },
     provider,
+  });
+
+  // R2/R6: only wrap anthropic/* when the env off-switch is on. Non-anthropic
+  // and disabled paths stay byte-identical to the unwrapped model.
+  if (!promptCache || !resolvedModelId.startsWith("anthropic/")) {
+    return model;
+  }
+
+  return wrapLanguageModel({
+    model,
+    middleware: createOpenRouterPromptCacheMiddleware(),
   });
 }

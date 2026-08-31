@@ -289,6 +289,9 @@ const dataEnv = {
   // "false" / "0" / "off" disables request-level ZDR (needed for first-party
   // Anthropic Opus when no ZDR endpoints exist for that model).
   OPENROUTER_ZDR: optionalVar("OPENROUTER_ZDR"),
+  // "false" / "0" / "off" disables Anthropic prompt-cache breakpoints on
+  // anthropic/* chat-agent models (default on).
+  OPENROUTER_PROMPT_CACHE: optionalVar("OPENROUTER_PROMPT_CACHE"),
   AUTUMN_SECRET_KEY: optionalSecret("AUTUMN_SECRET_KEY"),
   AUTUMN_WEBHOOK_SECRET: optionalSecret("AUTUMN_WEBHOOK_SECRET"),
   GDPR_ERASURE_SECRET: optionalSecret("GDPR_ERASURE_SECRET"),
