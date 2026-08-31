@@ -17,17 +17,21 @@ describe("buildSamSkillSource", () => {
       "competitor-analysis",
       "homegrown-otto",
       "keyword-clustering",
+      "keyword-gap",
       "keyword-research",
       "link-prospecting",
       "local-seo",
+      "location-pages",
       "niceseo-pillars",
       "not-in-openseo",
       "page-growth",
       "rank-slippage",
+      "sales-proposal",
       "seo-audit",
       "seo-coach",
       "seo-project-setup",
       "site-health",
+      "striking-distance",
     ]);
 
     const loaded = await source.load("seo-project-setup");

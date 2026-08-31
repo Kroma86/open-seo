@@ -60,6 +60,10 @@ Good starting points:
 - `authority-plan`: 30/90-day link plan, no buying links (Search Atlas: backlink / growth plans).
 - `site-health`: read-only crawl issues (Search Atlas: weekly site health). Does not auto-fix.
 - `rank-slippage`: OpenSEO rank tracker diffs; null is not #0 (Search Atlas: rank-slippage / drop warning).
+- `keyword-gap`: project vs 2–3 competitors → prioritized target keywords for topical maps (Search Atlas: Analyze Organic Competitors gap drill-down). Paid calls labeled.
+- `striking-distance`: positions 11–20, top 5 by potential, title/meta rewrite proposals only (Search Atlas: striking-distance refresh).
+- `location-pages`: city × service brief + outline for a human via HighLevel; never publish or invent facts.
+- `sales-proposal`: prospect-domain research → plain-English proposal skeleton; no project creation (Search Atlas: Generate a sales proposal).
 - `homegrown-otto`: queue title/meta/H1 fixes as pending (Search Atlas: On-Page Fix Critical Issues). Never apply from chat.
 - `niceseo-pillars`: how NiceSEO bars are allowed to speak.
 - `not-in-openseo`: Ads, Cloud Stacks, paid PR, auto-publish — say we cannot run them.

@@ -17,7 +17,7 @@ describe("sam-loops shared helpers", () => {
     vi.restoreAllMocks();
   });
 
-  it("exposes the six default skill templates and a 24-step cap", () => {
+  it("exposes the seven default skill templates and a 24-step cap", () => {
     expect(SAM_LOOP_STEP_CAP).toBe(24);
     expect(DEFAULT_SAM_LOOP_TEMPLATES.map((t) => t.skillName)).toEqual([
       "site-health",
@@ -26,6 +26,7 @@ describe("sam-loops shared helpers", () => {
       "page-growth",
       "authority-plan",
       "ai-visibility",
+      "striking-distance",
     ]);
   });
 

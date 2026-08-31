@@ -36,6 +36,11 @@ export const DEFAULT_SAM_LOOP_TEMPLATES = [
     skillName: "ai-visibility",
     cadence: "weekly" as const,
   },
+  {
+    name: "Striking distance",
+    skillName: "striking-distance",
+    cadence: "monthly" as const,
+  },
 ] as const;
 
 export const SAM_LOOP_STEP_CAP = 24;

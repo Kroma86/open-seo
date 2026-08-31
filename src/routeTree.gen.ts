@@ -258,17 +258,17 @@ const ProjectPProjectIdPromptExplorerRoute =
     path: '/prompt-explorer',
     getParentRoute: () => ProjectPProjectIdRouteRoute,
   } as any)
+const ProjectPProjectIdLoopsRoute = ProjectPProjectIdLoopsRouteImport.update({
+  id: '/loops',
+  path: '/loops',
+  getParentRoute: () => ProjectPProjectIdRouteRoute,
+} as any)
 const ProjectPProjectIdKeywordsRoute =
   ProjectPProjectIdKeywordsRouteImport.update({
     id: '/keywords',
     path: '/keywords',
     getParentRoute: () => ProjectPProjectIdRouteRoute,
   } as any)
-const ProjectPProjectIdLoopsRoute = ProjectPProjectIdLoopsRouteImport.update({
-  id: '/loops',
-  path: '/loops',
-  getParentRoute: () => ProjectPProjectIdRouteRoute,
-} as any)
 const ProjectPProjectIdDomainRoute = ProjectPProjectIdDomainRouteImport.update({
   id: '/domain',
   path: '/domain',
@@ -919,18 +919,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectPProjectIdPromptExplorerRouteImport
       parentRoute: typeof ProjectPProjectIdRouteRoute
     }
-    '/_project/p/$projectId/keywords': {
-      id: '/_project/p/$projectId/keywords'
-      path: '/keywords'
-      fullPath: '/p/$projectId/keywords'
-      preLoaderRoute: typeof ProjectPProjectIdKeywordsRouteImport
-      parentRoute: typeof ProjectPProjectIdRouteRoute
-    }
     '/_project/p/$projectId/loops': {
       id: '/_project/p/$projectId/loops'
       path: '/loops'
       fullPath: '/p/$projectId/loops'
       preLoaderRoute: typeof ProjectPProjectIdLoopsRouteImport
+      parentRoute: typeof ProjectPProjectIdRouteRoute
+    }
+    '/_project/p/$projectId/keywords': {
+      id: '/_project/p/$projectId/keywords'
+      path: '/keywords'
+      fullPath: '/p/$projectId/keywords'
+      preLoaderRoute: typeof ProjectPProjectIdKeywordsRouteImport
       parentRoute: typeof ProjectPProjectIdRouteRoute
     }
     '/_project/p/$projectId/domain': {
