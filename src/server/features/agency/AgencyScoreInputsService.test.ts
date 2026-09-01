@@ -79,6 +79,12 @@ vi.mock("@/server/features/audit/repositories/AuditRepository", () => ({
     getLatestAuditForProject: vi.fn(async () => null),
   },
 }));
+vi.mock(
+  "@/server/features/ai-visibility/services/aiVisibilityResults",
+  () => ({
+    getAgencyExportBlock: vi.fn(async () => null),
+  }),
+);
 
 const PROJECT = {
   id: "p1",
@@ -180,6 +186,12 @@ describe("getAgencyScoreInputs connections", () => {
     const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
     expect(data.connections.gsc.connected).toBe(true);
     expect(data.gsc).toBeNull();
+  });
+
+  it("returns aiVisibility null when never run", async () => {
+    mocks.projectRows = [PROJECT];
+    const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
+    expect(data.aiVisibility).toBeNull();
   });
 
   it("keeps a real measured zero as zero", async () => {
