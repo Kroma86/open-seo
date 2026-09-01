@@ -11,7 +11,6 @@ import {
   computeNextSamLoopRunAt,
   expectedSamLoopDraftsPerMonth,
   isSamContentLoop,
-  isSamLoopDomainAllowed,
   isSamLoopProjectAllowed,
   startOfUtcDay,
 } from "@/shared/sam-loops";
@@ -285,6 +284,11 @@ export type DomainLoopTriggerRow = {
 export type DomainLoopTriggerResult =
   | { ok: false; reason: "project_not_found" | "domain_not_allowed" | "daily_cap" }
   | {
+      ok: false;
+      reason: "ambiguous_project_domain";
+      count: number;
+    }
+  | {
       ok: true;
       projectId: string;
       projectName: string;
@@ -313,14 +317,22 @@ export async function triggerSamLoopsForDomain(input: {
   names?: string[];
 }): Promise<DomainLoopTriggerResult> {
   const domain = normalizeTriggerDomain(input.domain);
-  const row = await ProjectRepository.getProjectByDomain(domain);
-  if (!isSamLoopDomainAllowed(domain) && row == null) {
+  const candidates = await ProjectRepository.getProjectsByDomain(domain);
+  if (candidates.length === 0) {
     return { ok: false, reason: "domain_not_allowed" };
   }
-  if (row == null) {
-    return { ok: false, reason: "project_not_found" };
+
+  const allowedFlags = candidates.map((row) => isSamLoopProjectAllowed(row));
+  const anyAllowed = allowedFlags.some(Boolean);
+  const anyDenied = allowedFlags.some((allowed) => !allowed);
+  if (anyAllowed && anyDenied) {
+    return {
+      ok: false,
+      reason: "ambiguous_project_domain",
+      count: candidates.length,
+    };
   }
-  if (!isSamLoopProjectAllowed(row)) {
+  if (!anyAllowed) {
     return { ok: false, reason: "domain_not_allowed" };
   }
 
@@ -329,8 +341,13 @@ export async function triggerSamLoopsForDomain(input: {
     return { ok: false, reason: "project_not_found" };
   }
   const project = await ProjectRepository.getProjectById(score.projectId);
-  if (!project) {
-    return { ok: false, reason: "project_not_found" };
+  const candidateIds = new Set(candidates.map((row) => row.id));
+  if (
+    project == null ||
+    !candidateIds.has(project.id) ||
+    !isSamLoopProjectAllowed(project)
+  ) {
+    return { ok: false, reason: "domain_not_allowed" };
   }
 
   const runsToday = await SamLoopRepository.countRunsCreatedSince(

@@ -140,6 +140,24 @@ describe("trigger-sam-loops handlePost", () => {
     });
   });
 
+  it("returns 409 when matching projects disagree on the loops flag", async () => {
+    triggerSamLoopsForDomain.mockResolvedValue({
+      ok: false,
+      reason: "ambiguous_project_domain",
+      count: 2,
+    });
+    const res = await handlePost(
+      post({ domain: "example.com" }, { authorization: `Bearer ${TOKEN}` }),
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body).toEqual({
+      error: "ambiguous_project_domain",
+      count: 2,
+    });
+    expect(body).not.toHaveProperty("projectIds");
+  });
+
   it("returns 429 on daily_cap", async () => {
     triggerSamLoopsForDomain.mockResolvedValue({
       ok: false,

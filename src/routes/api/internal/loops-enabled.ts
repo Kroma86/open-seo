@@ -102,7 +102,7 @@ export async function handleGet(request: Request): Promise<Response> {
   }
 
   const owned = await findOwnedProject(organizationId, projectId);
-  if (!owned) {
+  if (!owned || owned.archivedAt) {
     return Response.json(
       { error: "project_not_found" },
       { status: 404, headers: NO_STORE },
@@ -135,7 +135,7 @@ export async function handlePost(request: Request): Promise<Response> {
   }
 
   const owned = await findOwnedProject(organizationId, parsed.data.projectId);
-  if (!owned) {
+  if (!owned || owned.archivedAt) {
     return Response.json(
       { error: "project_not_found" },
       { status: 404, headers: NO_STORE },

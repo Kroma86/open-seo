@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { projects } from "@/db/schema";
 import { AppError } from "@/server/lib/errors";
@@ -57,7 +57,7 @@ async function getProjectById(projectId: string) {
   return project ?? null;
 }
 
-function normalizeProjectDomain(
+export function normalizeProjectDomain(
   raw: string | null | undefined,
 ): string | null {
   if (raw == null) return null;
@@ -67,21 +67,38 @@ function normalizeProjectDomain(
   }
   if (host.startsWith("www.")) host = host.slice(4);
   host = host.split("/")[0] ?? host;
+  const colon = host.indexOf(":");
+  if (colon !== -1) host = host.slice(0, colon);
   return host || null;
 }
 
+function domainMatchSql(needle: string) {
+  return or(
+    sql`lower(${projects.domain}) = ${needle}`,
+    sql`lower(${projects.domain}) = ${`www.${needle}`}`,
+    sql`lower(${projects.domain}) = ${`https://${needle}/`}`,
+    sql`lower(${projects.domain}) = ${`https://www.${needle}/`}`,
+    sql`lower(${projects.domain}) = ${`http://${needle}/`}`,
+    sql`lower(${projects.domain}) = ${`http://www.${needle}/`}`,
+  );
+}
+
 // Unscoped domain match for trusted server paths (Hermes soak trigger).
-// First unarchived row whose normalized domain matches; no name fallback.
-async function getProjectByDomain(domain: string) {
+// Every unarchived row whose lower(domain) equals the normalised host,
+// www.<host>, or those hosts stored with an http(s) scheme and trailing
+// slash. Input is normalised in JS; stored values are compared in SQL.
+async function getProjectsByDomain(domain: string) {
   const needle = normalizeProjectDomain(domain);
-  if (!needle) return null;
-  const rows = await db
+  if (!needle) return [];
+  return db
     .select()
     .from(projects)
-    .where(isNull(projects.archivedAt));
-  return (
-    rows.find((row) => normalizeProjectDomain(row.domain) === needle) ?? null
-  );
+    .where(and(isNull(projects.archivedAt), domainMatchSql(needle)));
+}
+
+async function getProjectByDomain(domain: string) {
+  const [row] = await getProjectsByDomain(domain);
+  return row ?? null;
 }
 
 async function createProject(
@@ -235,6 +252,7 @@ async function setLoopsEnabled(
       and(
         eq(projects.id, projectId),
         eq(projects.organizationId, organizationId),
+        isNull(projects.archivedAt),
       ),
     )
     .returning();
@@ -244,7 +262,7 @@ async function setLoopsEnabled(
 async function archiveProject(projectId: string, organizationId: string) {
   const [row] = await db
     .update(projects)
-    .set({ archivedAt: sql`(current_timestamp)` })
+    .set({ archivedAt: sql`(current_timestamp)`, loopsEnabled: false })
     .where(
       and(
         eq(projects.id, projectId),
@@ -266,6 +284,7 @@ export const ProjectRepository = {
   getProjectForOrganization,
   getProjectById,
   getProjectByDomain,
+  getProjectsByDomain,
   createProject,
   updateProject,
   updateProjectDomain,

@@ -49,7 +49,7 @@ describe("ProjectService.setLoopsEnabled", () => {
     );
   });
 
-  it("throws NOT_FOUND when the repository updates zero rows", async () => {
+  it("throws NOT_FOUND when the repository updates zero rows (archived or missing)", async () => {
     mocks.setLoopsEnabled.mockResolvedValue(null);
     await expect(setLoopsEnabled("org_1", "project_1", true)).rejects.toEqual(
       new AppError("NOT_FOUND"),

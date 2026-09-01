@@ -44,6 +44,7 @@ const PROJECT = {
   locationCode: 2840,
   languageCode: "en",
   createdAt: "2026-01-01 00:00:00",
+  archivedAt: null as string | null,
   loopsEnabled: false,
 };
 
@@ -229,7 +230,10 @@ describe("internal loops-enabled handlePost", () => {
   });
 
   it("returns 404 when enabling loops on an archived project", async () => {
-    getProjectRow.mockResolvedValue(null);
+    getProjectRow.mockResolvedValue({
+      ...PROJECT,
+      archivedAt: "2026-08-01 00:00:00",
+    });
     const res = await handlePost(
       post({ projectId: PROJECT_ID, enabled: true }, auth),
     );
@@ -239,7 +243,10 @@ describe("internal loops-enabled handlePost", () => {
   });
 
   it("returns 404 when disabling loops on an archived project", async () => {
-    getProjectRow.mockResolvedValue(null);
+    getProjectRow.mockResolvedValue({
+      ...PROJECT,
+      archivedAt: "2026-08-01 00:00:00",
+    });
     const res = await handlePost(
       post({ projectId: PROJECT_ID, enabled: false }, auth),
     );
