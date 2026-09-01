@@ -30,6 +30,7 @@ import { Route as AppBillingRouteImport } from './routes/_app/billing'
 import { Route as AppAiRouteImport } from './routes/_app/ai'
 import { Route as Char91DotwellKnownChar93OpenaiAppsChallengeRouteImport } from './routes/[.well-known]/openai-apps-challenge'
 import { Route as AuthenticatedOnboardingIndexRouteImport } from './routes/_authenticated.onboarding.index'
+import { Route as ApiInternalTriggerSamLoopsRouteImport } from './routes/api/internal/trigger-sam-loops'
 import { Route as ApiInternalAgencyScoreInputsRouteImport } from './routes/api/internal/agency-score-inputs'
 import { Route as ApiInternalAgencyOttoProposalsRouteImport } from './routes/api/internal/agency-otto-proposals'
 import { Route as ApiInternalAgencyOttoPageInputsRouteImport } from './routes/api/internal/agency-otto-page-inputs'
@@ -168,6 +169,12 @@ const AuthenticatedOnboardingIndexRoute =
     id: '/onboarding/',
     path: '/onboarding/',
     getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const ApiInternalTriggerSamLoopsRoute =
+  ApiInternalTriggerSamLoopsRouteImport.update({
+    id: '/api/internal/trigger-sam-loops',
+    path: '/api/internal/trigger-sam-loops',
+    getParentRoute: () => rootRouteImport,
   } as any)
 const ApiInternalAgencyScoreInputsRoute =
   ApiInternalAgencyScoreInputsRouteImport.update({
@@ -389,6 +396,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
   '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
+  '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/onboarding/': typeof AuthenticatedOnboardingIndexRoute
   '/p/$projectId/ai-visibility': typeof ProjectPProjectIdAiVisibilityRoute
   '/p/$projectId/audit': typeof ProjectPProjectIdAuditRouteWithChildren
@@ -441,6 +449,7 @@ export interface FileRoutesByTo {
   '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
   '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
+  '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/onboarding': typeof AuthenticatedOnboardingIndexRoute
   '/p/$projectId/ai-visibility': typeof ProjectPProjectIdAiVisibilityRoute
   '/p/$projectId/backlinks': typeof ProjectPProjectIdBacklinksRoute
@@ -496,6 +505,7 @@ export interface FileRoutesById {
   '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
   '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
+  '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/_authenticated/onboarding/': typeof AuthenticatedOnboardingIndexRoute
   '/_project/p/$projectId/ai-visibility': typeof ProjectPProjectIdAiVisibilityRoute
   '/_project/p/$projectId/audit': typeof ProjectPProjectIdAuditRouteWithChildren
@@ -551,6 +561,7 @@ export interface FileRouteTypes {
     | '/api/internal/agency-otto-page-inputs'
     | '/api/internal/agency-otto-proposals'
     | '/api/internal/agency-score-inputs'
+    | '/api/internal/trigger-sam-loops'
     | '/onboarding/'
     | '/p/$projectId/ai-visibility'
     | '/p/$projectId/audit'
@@ -603,6 +614,7 @@ export interface FileRouteTypes {
     | '/api/internal/agency-otto-page-inputs'
     | '/api/internal/agency-otto-proposals'
     | '/api/internal/agency-score-inputs'
+    | '/api/internal/trigger-sam-loops'
     | '/onboarding'
     | '/p/$projectId/ai-visibility'
     | '/p/$projectId/backlinks'
@@ -657,6 +669,7 @@ export interface FileRouteTypes {
     | '/api/internal/agency-otto-page-inputs'
     | '/api/internal/agency-otto-proposals'
     | '/api/internal/agency-score-inputs'
+    | '/api/internal/trigger-sam-loops'
     | '/_authenticated/onboarding/'
     | '/_project/p/$projectId/ai-visibility'
     | '/_project/p/$projectId/audit'
@@ -700,6 +713,7 @@ export interface RootRouteChildren {
   ApiInternalAgencyOttoPageInputsRoute: typeof ApiInternalAgencyOttoPageInputsRoute
   ApiInternalAgencyOttoProposalsRoute: typeof ApiInternalAgencyOttoProposalsRoute
   ApiInternalAgencyScoreInputsRoute: typeof ApiInternalAgencyScoreInputsRoute
+  ApiInternalTriggerSamLoopsRoute: typeof ApiInternalTriggerSamLoopsRoute
   ApiGa4OauthCallbackRoute: typeof ApiGa4OauthCallbackRoute
   ApiGscOauthCallbackRoute: typeof ApiGscOauthCallbackRoute
 }
@@ -852,6 +866,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/onboarding/'
       preLoaderRoute: typeof AuthenticatedOnboardingIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/api/internal/trigger-sam-loops': {
+      id: '/api/internal/trigger-sam-loops'
+      path: '/api/internal/trigger-sam-loops'
+      fullPath: '/api/internal/trigger-sam-loops'
+      preLoaderRoute: typeof ApiInternalTriggerSamLoopsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/internal/agency-score-inputs': {
       id: '/api/internal/agency-score-inputs'
@@ -1279,6 +1300,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalAgencyOttoPageInputsRoute: ApiInternalAgencyOttoPageInputsRoute,
   ApiInternalAgencyOttoProposalsRoute: ApiInternalAgencyOttoProposalsRoute,
   ApiInternalAgencyScoreInputsRoute: ApiInternalAgencyScoreInputsRoute,
+  ApiInternalTriggerSamLoopsRoute: ApiInternalTriggerSamLoopsRoute,
   ApiGa4OauthCallbackRoute: ApiGa4OauthCallbackRoute,
   ApiGscOauthCallbackRoute: ApiGscOauthCallbackRoute,
 }

@@ -12,6 +12,7 @@ import { ProjectRepository } from "@/server/features/projects/repositories/Proje
 import { pgStep } from "@/server/workflows/pgStep";
 import type { ToolAuthContext } from "@/server/mcp/context";
 import { MCP_SCOPE } from "@/lib/oauth-resource";
+import { selfHostBaseUrl } from "@/server/workflows/selfHostBaseUrl";
 
 const SINGLE_ATTEMPT_STEP_CONFIG = {
   retries: { limit: 0, delay: "1 second" as const },
@@ -96,7 +97,7 @@ export class SamLoopWorkflow extends WorkflowEntrypoint<Env, SamLoopParams> {
             userEmail: "system@openseo.so",
             organizationId,
             clientId: null,
-            baseUrl: "https://app.openseo.so",
+            baseUrl: selfHostBaseUrl(this.env),
             scopes: [MCP_SCOPE],
           };
 
@@ -143,6 +144,9 @@ export class SamLoopWorkflow extends WorkflowEntrypoint<Env, SamLoopParams> {
         const message =
           error instanceof Error ? error.message : "Unknown error";
         await failSamLoopRunIfActive(runId, message);
+        await SamLoopRepository.updateLoop(loopId, projectId, {
+          lastRunAt: new Date().toISOString(),
+        });
       });
       throw error;
     }

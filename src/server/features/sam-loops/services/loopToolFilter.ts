@@ -44,6 +44,8 @@ export const LOOP_ALLOWED_TOOLS = new Set([
   // Loop introspection (read-only)
   "list_sam_loops",
   "get_sam_loop_runs",
+  // Stored AI-visibility trend (no new paid check)
+  "get_ai_visibility_trend",
   // Sole allowed write — queues proposals; never deploys
   "propose_homegrown_otto_fixes",
 ]);

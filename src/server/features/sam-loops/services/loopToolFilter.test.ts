@@ -12,6 +12,7 @@ describe("filterLoopTools", () => {
       get_audit_issues: stub,
       get_rank_tracker: stub,
       get_search_console_performance: stub,
+      get_ai_visibility_trend: stub,
       update_project_context: stub,
       save_keywords: stub,
       create_rank_tracker: stub,
@@ -25,6 +26,7 @@ describe("filterLoopTools", () => {
 
     const filtered = filterLoopTools(tools);
     expect(Object.keys(filtered).sort()).toEqual([
+      "get_ai_visibility_trend",
       "get_audit_issues",
       "get_rank_tracker",
       "get_search_console_performance",

@@ -93,7 +93,11 @@ export async function runHeadlessSamLoop(
     }),
   );
 
-  const model = await getChatAgentModel();
+  // Headless loops ship a unique skill dump + ~30 tool schemas. Anthropic
+  // prompt-cache breakpoints on that payload overflow the 4-block cap
+  // (live niceseo.ai AI-visibility run 2026-09-01: "Found 5"). Loops also
+  // almost never reuse the same prefix, so cache writes are pure cost.
+  const model = await getChatAgentModel({ promptCache: false });
   const result = await generateText({
     model,
     system,

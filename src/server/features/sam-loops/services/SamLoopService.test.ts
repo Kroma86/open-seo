@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getLoopById: vi.fn(),
+  getLoopsForProject: vi.fn(),
   claimDueLoop: vi.fn(),
   updateLoop: vi.fn(),
   beginSamLoopRun: vi.fn(),
   ensureDefaultLoops: vi.fn(),
+  getProjectById: vi.fn(),
+  getAgencyScoreInputsGlobal: vi.fn(),
 }));
 
 vi.mock("cloudflare:workers", () => ({
@@ -16,6 +19,7 @@ vi.mock(
   () => ({
     SamLoopRepository: {
       getLoopById: mocks.getLoopById,
+      getLoopsForProject: mocks.getLoopsForProject,
       claimDueLoop: mocks.claimDueLoop,
       updateLoop: mocks.updateLoop,
       ensureDefaultLoops: mocks.ensureDefaultLoops,
@@ -25,10 +29,19 @@ vi.mock(
 vi.mock("@/server/features/sam-loops/services/samLoopRunGuards", () => ({
   beginSamLoopRun: mocks.beginSamLoopRun,
 }));
+vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
+  ProjectRepository: {
+    getProjectById: mocks.getProjectById,
+  },
+}));
+vi.mock("@/server/features/agency/AgencyScoreInputsService", () => ({
+  getAgencyScoreInputsGlobal: mocks.getAgencyScoreInputsGlobal,
+}));
 
 import {
   seedDefaultSamLoopsForProject,
   triggerSamLoop,
+  triggerSamLoopsForDomain,
 } from "./SamLoopService";
 
 describe("triggerSamLoop", () => {
@@ -245,5 +258,113 @@ describe("seedDefaultSamLoopsForProject", () => {
       [],
     );
     expect(mocks.ensureDefaultLoops).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("triggerSamLoopsForDomain", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-01T15:00:00.000Z"));
+    mocks.beginSamLoopRun.mockResolvedValue({ ok: true, runId: "run_1" });
+    mocks.ensureDefaultLoops.mockResolvedValue([]);
+    mocks.getAgencyScoreInputsGlobal.mockResolvedValue({
+      projectId: "project_niceseo",
+    });
+    mocks.getProjectById.mockResolvedValue({
+      id: "project_niceseo",
+      name: "Default",
+      domain: "niceseo.ai",
+      organizationId: "org_1",
+    });
+    const loopRows = [
+      {
+        id: "loop_health",
+        name: "Site health",
+        skillName: "site-health",
+        isEnabled: true,
+        cadence: "weekly",
+        nextRunAt: "2026-09-08T00:00:00.000Z",
+        projectId: "project_niceseo",
+      },
+      {
+        id: "loop_rank",
+        name: "Rank slippage",
+        skillName: "rank-slippage",
+        isEnabled: true,
+        cadence: "daily",
+        nextRunAt: "2026-09-02T00:00:00.000Z",
+        projectId: "project_niceseo",
+      },
+      {
+        id: "loop_off",
+        name: "Paused",
+        skillName: "page-growth",
+        isEnabled: false,
+        cadence: "monthly",
+        nextRunAt: null,
+        projectId: "project_niceseo",
+      },
+    ];
+    mocks.getLoopsForProject.mockResolvedValue(loopRows);
+    mocks.getLoopById.mockImplementation(async (id: string) => {
+      return loopRows.find((loop) => loop.id === id) ?? null;
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns domain_not_allowed for anything other than niceseo.ai", async () => {
+    await expect(
+      triggerSamLoopsForDomain({ domain: "twa.studio" }),
+    ).resolves.toEqual({ ok: false, reason: "domain_not_allowed" });
+    expect(mocks.getAgencyScoreInputsGlobal).not.toHaveBeenCalled();
+    expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
+  });
+
+  it("returns project_not_found when the domain has no project", async () => {
+    mocks.getAgencyScoreInputsGlobal.mockResolvedValue({ projectId: null });
+    await expect(
+      triggerSamLoopsForDomain({ domain: "niceseo.ai" }),
+    ).resolves.toEqual({ ok: false, reason: "project_not_found" });
+    expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
+  });
+
+  it("starts every enabled loop and skips disabled", async () => {
+    const result = await triggerSamLoopsForDomain({ domain: "niceseo.ai" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.projectId).toBe("project_niceseo");
+    expect(result.capped).toBe(false);
+    expect(result.results.map((row) => row.loopName)).toEqual([
+      "Site health",
+      "Rank slippage",
+    ]);
+    expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(2);
+  });
+
+  it("filters by skill or loop name", async () => {
+    const result = await triggerSamLoopsForDomain({
+      domain: "niceseo.ai",
+      names: ["rank-slippage"],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]?.loopName).toBe("Rank slippage");
+    expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not substring-match loop names", async () => {
+    const result = await triggerSamLoopsForDomain({
+      domain: "niceseo.ai",
+      names: ["health"],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.results).toEqual([]);
+    expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
   });
 });

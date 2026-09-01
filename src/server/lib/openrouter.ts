@@ -63,7 +63,9 @@ export function parseOpenRouterZdrFlag(
  * stated explicitly only because the SDK type requires one once the channel
  * is configured.
  */
-export async function getChatAgentModel(): Promise<LanguageModelV3> {
+export async function getChatAgentModel(
+  options?: ChatAgentModelOptions,
+): Promise<LanguageModelV3> {
   const apiKey = await getRequiredEnvValue("OPENROUTER_API_KEY");
   const modelId = await getOptionalEnvValue("OPENROUTER_MODEL");
   const zdr = parseOpenRouterZdrFlag(
@@ -72,7 +74,10 @@ export async function getChatAgentModel(): Promise<LanguageModelV3> {
   const promptCache = parseOpenRouterPromptCacheFlag(
     await getOptionalEnvValue("OPENROUTER_PROMPT_CACHE"),
   );
-  return buildChatAgentModel(apiKey, modelId, { zdr, promptCache });
+  return buildChatAgentModel(apiKey, modelId, {
+    zdr: options?.zdr ?? zdr,
+    promptCache: options?.promptCache ?? promptCache,
+  });
 }
 
 /**
