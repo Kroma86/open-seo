@@ -56,9 +56,14 @@ export async function getContentVelocity(
 
   const contentLoops = loops.filter(isSamContentLoop);
   const monthSet = new Set(months);
+  const knownCadences = new Set(["monthly", "weekly", "daily"]);
 
   const byLoopId = new Map(
-    contentLoops.map((loop) => [
+    contentLoops.map((loop) => {
+      if (!knownCadences.has(loop.cadence)) {
+        throw new Error("unknown cadence: " + loop.cadence);
+      }
+      return [
       loop.id,
       {
         loopId: loop.id,
@@ -69,7 +74,8 @@ export async function getContentVelocity(
         drafted: emptyMonthCounts(months),
         completedWithoutDraft: emptyMonthCounts(months),
       },
-    ]),
+    ];
+    }),
   );
 
   for (const run of runs) {

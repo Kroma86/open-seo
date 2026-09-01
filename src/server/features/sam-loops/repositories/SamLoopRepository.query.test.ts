@@ -258,6 +258,24 @@ describe("getContentVelocityForProject", () => {
     expect(rows[0]?.hasReport).toBe(true);
   });
 
+  it("treats empty-string report as completed without draft", async () => {
+    await insertRun({
+      id: "run_empty_report",
+      loopId: "loop_content",
+      status: "completed",
+      finishedAt: "2026-08-10T00:00:00.000Z",
+      report: "",
+    });
+
+    const rows = await SamLoopRepository.getContentVelocityForProject(
+      "project_1",
+      sinceIso,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.hasReport).toBe(false);
+  });
+
   it("excludes failed and running runs", async () => {
     await insertRun({
       id: "run_failed",

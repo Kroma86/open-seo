@@ -235,7 +235,7 @@ async function getContentVelocityForProject(
     cadence: row.cadence,
     isEnabled: row.isEnabled,
     finishedAt: row.finishedAt!,
-    hasReport: row.report !== null,
+    hasReport: row.report !== null && row.report !== "",
   }));
 }
 
