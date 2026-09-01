@@ -7,6 +7,7 @@ describe("opsArtifactKinds", () => {
     expect(labels.get("index-watchdog")).toBe("Indexability checks");
     expect(labels.get("schema-proposals")).toBe("Schema proposals");
     expect(labels.get("citations")).toBe("Citation checks");
+    expect(labels.get("heatmap")).toBe("Heatmaps");
   });
 
   it("keeps the existing kind labels unchanged", () => {
@@ -24,6 +25,14 @@ describe("opsArtifactKinds", () => {
       expect(pill.label).toBeTruthy();
       expect(pill.tone).toMatch(/^badge-/);
     }
+  });
+
+  it("exposes heatmap in filters and pills", () => {
+    expect(KIND_FILTERS.some((f) => f.id === "heatmap")).toBe(true);
+    expect(kindPillMeta("heatmap")).toEqual({
+      label: "heatmap",
+      tone: "badge-ghost",
+    });
   });
 
   it("falls back to the raw kind for unknown values", () => {

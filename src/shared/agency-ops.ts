@@ -10,6 +10,7 @@ export const KINDS = [
   "index-watchdog",
   "schema-proposals",
   "citations",
+  "heatmap",
 ] as const;
 
 export type Kind = (typeof KINDS)[number];

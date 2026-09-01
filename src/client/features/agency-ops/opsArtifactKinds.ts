@@ -13,6 +13,7 @@ const FILTER_LABELS: Record<Kind, string> = {
   "index-watchdog": "Indexability checks",
   "schema-proposals": "Schema proposals",
   citations: "Citation checks",
+  heatmap: "Heatmaps",
 };
 
 export const KIND_FILTERS: { id: OpsKindFilter; label: string }[] = [
@@ -27,6 +28,7 @@ const KIND_PILLS: Record<Kind, { label: string; tone: string }> = {
   "index-watchdog": { label: "indexability", tone: "badge-ghost" },
   "schema-proposals": { label: "schema", tone: "badge-ghost" },
   citations: { label: "citations", tone: "badge-ghost" },
+  heatmap: { label: "heatmap", tone: "badge-ghost" },
 };
 
 export function kindPillMeta(kind: string): { label: string; tone: string } {
