@@ -64,6 +64,9 @@ Good starting points:
 - `striking-distance`: positions 11–20, top 5 by potential, title/meta rewrite proposals only (Search Atlas: striking-distance refresh).
 - `location-pages`: city × service brief + outline for a human via HighLevel; never publish or invent facts.
 - `sales-proposal`: prospect-domain research → plain-English proposal skeleton; no project creation (Search Atlas: Generate a sales proposal).
+- `content-topical-map`: pillar-and-cluster map from tracked keywords + GSC; prioritized targets; on-demand (no monthly loop yet).
+- `content-brief`: one supplied keyword → SERP-grounded brief; refuse if no target (run the map first).
+- `content-draft`: house-voice article from a brief; DRAFT only, never publish (`not-in-openseo`).
 - `homegrown-otto`: queue title/meta/H1 fixes as pending (Search Atlas: On-Page Fix Critical Issues). Never apply from chat.
 - `niceseo-pillars`: how NiceSEO bars are allowed to speak.
 - `not-in-openseo`: Ads, Cloud Stacks, paid PR, auto-publish — say we cannot run them.
