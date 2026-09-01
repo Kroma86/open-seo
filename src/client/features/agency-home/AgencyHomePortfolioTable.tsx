@@ -133,13 +133,25 @@ export function AgencyHomePortfolioTable({
                 return (
                   <tr
                     key={row.projectId}
-                    className="group cursor-pointer border-b border-base-300/40 transition-colors hover:bg-base-200/40"
+                    className="group cursor-pointer border-b border-base-300/40 transition-colors hover:bg-base-200/40 focus-visible:bg-base-200/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary/60"
+                    tabIndex={0}
+                    role="link"
+                    aria-label={`Open ${row.domain ?? row.projectName} dashboard`}
                     onClick={() =>
                       void navigate({
                         to: "/p/$projectId",
                         params: { projectId: row.projectId },
                       })
                     }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        void navigate({
+                          to: "/p/$projectId",
+                          params: { projectId: row.projectId },
+                        });
+                      }
+                    }}
                   >
                     <td className="max-w-[14rem]">
                       <DomainCell row={row} />

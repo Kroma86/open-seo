@@ -60,6 +60,18 @@ export function AgencyHomePage() {
     setPromptKey((k) => k + 1);
   };
 
+  // Hooks must run on every render — keep this above the early returns.
+  const missions = missionsQuery.data;
+  const runningProjectIds = useMemo(
+    () =>
+      new Set(
+        (missions ?? [])
+          .filter((mission) => mission.status === "running")
+          .map((mission) => mission.projectId),
+      ),
+    [missions],
+  );
+
   if (projectsQuery.isError) {
     const errorCode = getErrorCode(projectsQuery.error);
 
@@ -123,16 +135,6 @@ export function AgencyHomePage() {
   }
 
   const projects = projectsQuery.data;
-  const missions = missionsQuery.data ?? [];
-  const runningProjectIds = useMemo(
-    () =>
-      new Set(
-        missions
-          .filter((mission) => mission.status === "running")
-          .map((mission) => mission.projectId),
-      ),
-    [missions],
-  );
 
   return (
     <div className="h-full overflow-auto bg-base-100">
@@ -160,7 +162,7 @@ export function AgencyHomePage() {
         <AgencyHomeWorkflowChips onSelect={applyChip} />
 
         <AgencyHomeMissionsRail
-          missions={missions}
+          missions={missions ?? []}
           isLoading={missionsQuery.isLoading}
         />
 

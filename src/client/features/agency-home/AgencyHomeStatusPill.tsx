@@ -12,7 +12,7 @@ const TONE_CLASS: Record<AgencyHomePillTone, string> = {
   warning: "bg-warning text-warning-content",
   error: "bg-error text-error-content",
   muted: "bg-base-200 text-base-content/70",
-  info: "bg-primary/10 text-primary",
+  info: "bg-primary text-primary-content",
 };
 
 export function AgencyHomeStatusPill({

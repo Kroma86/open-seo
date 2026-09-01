@@ -89,7 +89,9 @@ export function AgencyHomePromptBar({
                   submit();
                 }
               }}
-              placeholder=""
+              placeholder={
+                showRotatingPlaceholder ? "" : "Ask Sam to do anything…"
+              }
               autoComplete="off"
               aria-label={
                 showRotatingPlaceholder
