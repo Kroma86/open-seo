@@ -31,7 +31,9 @@ import { Route as AppAiRouteImport } from './routes/_app/ai'
 import { Route as Char91DotwellKnownChar93OpenaiAppsChallengeRouteImport } from './routes/[.well-known]/openai-apps-challenge'
 import { Route as AuthenticatedOnboardingIndexRouteImport } from './routes/_authenticated.onboarding.index'
 import { Route as ApiInternalTriggerSamLoopsRouteImport } from './routes/api/internal/trigger-sam-loops'
+import { Route as ApiInternalTrackerRouteImport } from './routes/api/internal/tracker'
 import { Route as ApiInternalProjectsRouteImport } from './routes/api/internal/projects'
+import { Route as ApiInternalAuditsRouteImport } from './routes/api/internal/audits'
 import { Route as ApiInternalAgencyScoreInputsRouteImport } from './routes/api/internal/agency-score-inputs'
 import { Route as ApiInternalAgencyOttoProposalsRouteImport } from './routes/api/internal/agency-otto-proposals'
 import { Route as ApiInternalAgencyOttoPageInputsRouteImport } from './routes/api/internal/agency-otto-page-inputs'
@@ -177,9 +179,19 @@ const ApiInternalTriggerSamLoopsRoute =
     path: '/api/internal/trigger-sam-loops',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiInternalTrackerRoute = ApiInternalTrackerRouteImport.update({
+  id: '/api/internal/tracker',
+  path: '/api/internal/tracker',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiInternalProjectsRoute = ApiInternalProjectsRouteImport.update({
   id: '/api/internal/projects',
   path: '/api/internal/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalAuditsRoute = ApiInternalAuditsRouteImport.update({
+  id: '/api/internal/audits',
+  path: '/api/internal/audits',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiInternalAgencyScoreInputsRoute =
@@ -402,7 +414,9 @@ export interface FileRoutesByFullPath {
   '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
   '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
+  '/api/internal/audits': typeof ApiInternalAuditsRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
+  '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/onboarding/': typeof AuthenticatedOnboardingIndexRoute
   '/p/$projectId/ai-visibility': typeof ProjectPProjectIdAiVisibilityRoute
@@ -456,7 +470,9 @@ export interface FileRoutesByTo {
   '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
   '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
+  '/api/internal/audits': typeof ApiInternalAuditsRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
+  '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/onboarding': typeof AuthenticatedOnboardingIndexRoute
   '/p/$projectId/ai-visibility': typeof ProjectPProjectIdAiVisibilityRoute
@@ -513,7 +529,9 @@ export interface FileRoutesById {
   '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
   '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
+  '/api/internal/audits': typeof ApiInternalAuditsRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
+  '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/_authenticated/onboarding/': typeof AuthenticatedOnboardingIndexRoute
   '/_project/p/$projectId/ai-visibility': typeof ProjectPProjectIdAiVisibilityRoute
@@ -570,7 +588,9 @@ export interface FileRouteTypes {
     | '/api/internal/agency-otto-page-inputs'
     | '/api/internal/agency-otto-proposals'
     | '/api/internal/agency-score-inputs'
+    | '/api/internal/audits'
     | '/api/internal/projects'
+    | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
     | '/onboarding/'
     | '/p/$projectId/ai-visibility'
@@ -624,7 +644,9 @@ export interface FileRouteTypes {
     | '/api/internal/agency-otto-page-inputs'
     | '/api/internal/agency-otto-proposals'
     | '/api/internal/agency-score-inputs'
+    | '/api/internal/audits'
     | '/api/internal/projects'
+    | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
     | '/onboarding'
     | '/p/$projectId/ai-visibility'
@@ -680,7 +702,9 @@ export interface FileRouteTypes {
     | '/api/internal/agency-otto-page-inputs'
     | '/api/internal/agency-otto-proposals'
     | '/api/internal/agency-score-inputs'
+    | '/api/internal/audits'
     | '/api/internal/projects'
+    | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
     | '/_authenticated/onboarding/'
     | '/_project/p/$projectId/ai-visibility'
@@ -725,7 +749,9 @@ export interface RootRouteChildren {
   ApiInternalAgencyOttoPageInputsRoute: typeof ApiInternalAgencyOttoPageInputsRoute
   ApiInternalAgencyOttoProposalsRoute: typeof ApiInternalAgencyOttoProposalsRoute
   ApiInternalAgencyScoreInputsRoute: typeof ApiInternalAgencyScoreInputsRoute
+  ApiInternalAuditsRoute: typeof ApiInternalAuditsRoute
   ApiInternalProjectsRoute: typeof ApiInternalProjectsRoute
+  ApiInternalTrackerRoute: typeof ApiInternalTrackerRoute
   ApiInternalTriggerSamLoopsRoute: typeof ApiInternalTriggerSamLoopsRoute
   ApiGa4OauthCallbackRoute: typeof ApiGa4OauthCallbackRoute
   ApiGscOauthCallbackRoute: typeof ApiGscOauthCallbackRoute
@@ -887,11 +913,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalTriggerSamLoopsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/tracker': {
+      id: '/api/internal/tracker'
+      path: '/api/internal/tracker'
+      fullPath: '/api/internal/tracker'
+      preLoaderRoute: typeof ApiInternalTrackerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/projects': {
       id: '/api/internal/projects'
       path: '/api/internal/projects'
       fullPath: '/api/internal/projects'
       preLoaderRoute: typeof ApiInternalProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/audits': {
+      id: '/api/internal/audits'
+      path: '/api/internal/audits'
+      fullPath: '/api/internal/audits'
+      preLoaderRoute: typeof ApiInternalAuditsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/internal/agency-score-inputs': {
@@ -1320,7 +1360,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalAgencyOttoPageInputsRoute: ApiInternalAgencyOttoPageInputsRoute,
   ApiInternalAgencyOttoProposalsRoute: ApiInternalAgencyOttoProposalsRoute,
   ApiInternalAgencyScoreInputsRoute: ApiInternalAgencyScoreInputsRoute,
+  ApiInternalAuditsRoute: ApiInternalAuditsRoute,
   ApiInternalProjectsRoute: ApiInternalProjectsRoute,
+  ApiInternalTrackerRoute: ApiInternalTrackerRoute,
   ApiInternalTriggerSamLoopsRoute: ApiInternalTriggerSamLoopsRoute,
   ApiGa4OauthCallbackRoute: ApiGa4OauthCallbackRoute,
   ApiGscOauthCallbackRoute: ApiGscOauthCallbackRoute,
