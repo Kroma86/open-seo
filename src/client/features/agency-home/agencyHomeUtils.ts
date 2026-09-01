@@ -1,3 +1,43 @@
+import type { AgencyHomePortfolioRow } from "@/server/features/agency/AgencyHomeService";
+import type { AgencyHomePillTone } from "@/client/features/agency-home/AgencyHomeStatusPill";
+
+/** Stable hue for letter-tile avatars when favicon is unavailable. */
+export function hashDomainLabel(label: string): number {
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) {
+    hash = (hash * 31 + label.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+export function domainLetterTile(
+  domain: string | null | undefined,
+  projectName: string,
+): { letter: string; hue: number } {
+  const source = (domain?.trim() || projectName.trim() || "?");
+  const letter = source.charAt(0).toUpperCase();
+  return { letter, hue: hashDomainLabel(source.toLowerCase()) % 360 };
+}
+
+export type PortfolioRowStatus = { label: string; tone: AgencyHomePillTone };
+
+/** Status pill derived only from portfolio row fields + optional running-mission flag. */
+export function portfolioRowStatus(
+  row: AgencyHomePortfolioRow,
+  hasRunningMission: boolean,
+): PortfolioRowStatus {
+  if (hasRunningMission) {
+    return { label: "Running", tone: "warning" };
+  }
+  if (!row.gscConnected) {
+    return { label: "Connect GSC", tone: "muted" };
+  }
+  if (row.gscClicks28d != null) {
+    return { label: "Live", tone: "success" };
+  }
+  return { label: "Connected", tone: "info" };
+}
+
 /** Relative time for mission rail timestamps (real ISO strings only). */
 export function formatRelativeFinishedAt(iso: string | null | undefined): string {
   if (!iso) return "in progress";

@@ -66,6 +66,7 @@ import { AgencyHomePage } from "./AgencyHomePage";
 import { AgencyHomeWorkflowChips } from "./AgencyHomeWorkflowChips";
 import { AGENCY_WORKFLOW_CHIPS } from "./workflowChips";
 import {
+  domainLetterTile,
   formatRelativeFinishedAt,
   projectFaviconUrl,
   storeSamAskDraft,
@@ -76,6 +77,7 @@ describe("agency home smoke", () => {
     const markup = renderToStaticMarkup(createElement(AgencyHomePage));
     expect(markup).toContain("Put Sam to work");
     expect(markup).toContain("Ask Sam to do anything");
+    expect(markup).toContain(AGENCY_WORKFLOW_CHIPS[0].prompt.slice(0, 24));
     expect(markup).toContain("Workflows");
     expect(markup).toContain("Missions");
     expect(markup).toContain("Alerts");
@@ -101,6 +103,10 @@ describe("agency home smoke", () => {
     expect(projectFaviconUrl("https://www.niceseo.ai/path")).toContain(
       "niceseo.ai",
     );
+    const tile = domainLetterTile("niceseo.ai", "NiceSEO");
+    expect(tile.letter).toBe("N");
+    expect(tile.hue).toBeGreaterThanOrEqual(0);
+    expect(tile.hue).toBeLessThan(360);
   });
 
   it("stores Ask-Sam drafts under the shared sessionStorage key", () => {

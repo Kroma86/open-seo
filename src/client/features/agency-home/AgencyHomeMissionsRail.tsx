@@ -4,15 +4,16 @@ import {
   formatRelativeFinishedAt,
   storeSamLoopRunSelection,
 } from "@/client/features/agency-home/agencyHomeUtils";
+import { AgencyHomeHorizontalScroll } from "@/client/features/agency-home/AgencyHomeHorizontalScroll";
+import {
+  AgencyHomeStatusPill,
+  type AgencyHomePillTone,
+} from "@/client/features/agency-home/AgencyHomeStatusPill";
 
-function statusPill(status: AgencyHomeMission["status"]) {
-  const tone =
-    status === "completed"
-      ? "badge-success"
-      : status === "failed"
-        ? "badge-error"
-        : "badge-warning";
-  return <span className={`badge badge-sm ${tone}`}>{status}</span>;
+function missionStatusTone(status: AgencyHomeMission["status"]): AgencyHomePillTone {
+  if (status === "completed") return "success";
+  if (status === "failed") return "error";
+  return "warning";
 }
 
 export function AgencyHomeMissionsRail({
@@ -30,7 +31,7 @@ export function AgencyHomeMissionsRail({
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-8">
+        <div className="flex justify-center rounded-xl border border-base-300/70 bg-base-100 py-8">
           <span className="loading loading-spinner loading-md" />
         </div>
       ) : missions.length === 0 ? (
@@ -38,7 +39,7 @@ export function AgencyHomeMissionsRail({
           No missions yet. Enable a loop or ask Sam — runs land here.
         </p>
       ) : (
-        <div className="flex gap-3 overflow-x-auto pb-1">
+        <AgencyHomeHorizontalScroll fadeFromClass="from-base-100">
           {missions.map((mission) => (
             <Link
               key={mission.id}
@@ -47,13 +48,16 @@ export function AgencyHomeMissionsRail({
               onClick={() =>
                 storeSamLoopRunSelection(mission.projectId, mission.id)
               }
-              className="min-w-[220px] max-w-[280px] shrink-0 rounded-xl border border-base-300/60 bg-base-100 px-4 py-3 text-left transition hover:border-primary/30 hover:bg-base-200/30"
+              className="min-w-[220px] max-w-[280px] shrink-0 rounded-xl border border-base-300/60 bg-base-100 px-4 py-3 text-left transition hover:border-primary/35 hover:bg-base-200/35 hover:shadow-sm"
             >
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <span className="truncate text-sm font-medium">
                   {mission.loopName}
                 </span>
-                {statusPill(mission.status)}
+                <AgencyHomeStatusPill
+                  label={mission.status}
+                  tone={missionStatusTone(mission.status)}
+                />
               </div>
               <p className="truncate text-xs text-base-content/50">
                 {mission.projectDomain ?? mission.projectName}
@@ -74,7 +78,7 @@ export function AgencyHomeMissionsRail({
               ) : null}
             </Link>
           ))}
-        </div>
+        </AgencyHomeHorizontalScroll>
       )}
     </section>
   );

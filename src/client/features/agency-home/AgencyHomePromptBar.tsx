@@ -1,8 +1,12 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Sparkles } from "lucide-react";
 import type { ProjectSummary } from "@/client/features/projects/types";
 import { storeSamAskDraft } from "@/client/features/agency-home/agencyHomeUtils";
+import { AGENCY_WORKFLOW_CHIPS } from "@/client/features/agency-home/workflowChips";
+
+const ROTATE_MS = 4500;
+const ROTATING_PROMPTS = AGENCY_WORKFLOW_CHIPS.slice(0, 5).map((chip) => chip.prompt);
 
 export function AgencyHomePromptBar({
   projects,
@@ -14,6 +18,21 @@ export function AgencyHomePromptBar({
   const navigate = useNavigate();
   const [draft, setDraft] = useState(initialPrompt);
   const [picking, setPicking] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [promptIndex, setPromptIndex] = useState(0);
+
+  const rotatingPrompts = useMemo(() => ROTATING_PROMPTS, []);
+  const showRotatingPlaceholder = !draft && !focused && rotatingPrompts.length > 0;
+  const activePlaceholder =
+    rotatingPrompts[promptIndex % rotatingPrompts.length] ?? "";
+
+  useEffect(() => {
+    if (!showRotatingPlaceholder) return;
+    const id = window.setInterval(() => {
+      setPromptIndex((i) => (i + 1) % rotatingPrompts.length);
+    }, ROTATE_MS);
+    return () => window.clearInterval(id);
+  }, [showRotatingPlaceholder, rotatingPrompts.length]);
 
   const goToSam = (projectId: string, text: string) => {
     storeSamAskDraft(projectId, text);
@@ -45,23 +64,40 @@ export function AgencyHomePromptBar({
           <div className="flex items-center pl-2 text-primary/80">
             <Sparkles className="size-5" aria-hidden />
           </div>
-          <input
-            id="agency-home-ask"
-            className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-base text-base-content outline-none placeholder:text-base-content/40"
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              if (picking) setPicking(false);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                submit();
+          <div className="relative min-w-0 flex-1">
+            {showRotatingPlaceholder ? (
+              <span
+                className="pointer-events-none absolute inset-x-2 inset-y-0 flex items-center truncate text-base text-base-content/40"
+                aria-hidden
+              >
+                {activePlaceholder}
+              </span>
+            ) : null}
+            <input
+              id="agency-home-ask"
+              className="w-full bg-transparent px-2 py-2.5 text-base text-base-content outline-none"
+              value={draft}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                if (picking) setPicking(false);
+              }}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              placeholder=""
+              autoComplete="off"
+              aria-label={
+                showRotatingPlaceholder
+                  ? activePlaceholder
+                  : "Ask Sam to do anything"
               }
-            }}
-            placeholder="Ask Sam to do anything…"
-            autoComplete="off"
-          />
+            />
+          </div>
           <button
             type="button"
             className="btn btn-primary btn-sm gap-1.5 self-center"
@@ -87,7 +123,7 @@ export function AgencyHomePromptBar({
                   className="btn btn-ghost btn-sm border border-base-300/60 bg-base-100"
                   onClick={() => goToSam(project.id, draft)}
                 >
-                  <span className="truncate max-w-[12rem]">
+                  <span className="max-w-[12rem] truncate">
                     {project.domain ?? project.name}
                   </span>
                 </button>

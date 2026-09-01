@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getErrorCode,
   getStandardErrorMessage,
@@ -123,6 +123,16 @@ export function AgencyHomePage() {
   }
 
   const projects = projectsQuery.data;
+  const missions = missionsQuery.data ?? [];
+  const runningProjectIds = useMemo(
+    () =>
+      new Set(
+        missions
+          .filter((mission) => mission.status === "running")
+          .map((mission) => mission.projectId),
+      ),
+    [missions],
+  );
 
   return (
     <div className="h-full overflow-auto bg-base-100">
@@ -150,7 +160,7 @@ export function AgencyHomePage() {
         <AgencyHomeWorkflowChips onSelect={applyChip} />
 
         <AgencyHomeMissionsRail
-          missions={missionsQuery.data ?? []}
+          missions={missions}
           isLoading={missionsQuery.isLoading}
         />
 
@@ -163,6 +173,7 @@ export function AgencyHomePage() {
         <AgencyHomePortfolioTable
           rows={portfolioQuery.data ?? []}
           isLoading={portfolioQuery.isLoading}
+          runningProjectIds={runningProjectIds}
         />
       </div>
     </div>

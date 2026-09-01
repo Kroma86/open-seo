@@ -1,17 +1,17 @@
 import type { LatestAlertCycleResult } from "@/server/features/agency/AgencyOpsArtifactsService";
 import { formatRelativeFinishedAt } from "@/client/features/agency-home/agencyHomeUtils";
+import {
+  AgencyHomeStatusPill,
+  type AgencyHomePillTone,
+} from "@/client/features/agency-home/AgencyHomeStatusPill";
 
 const DISPLAY_LIMIT = 6;
 
-function severityBadgeClass(severity: string): string {
+function severityTone(severity: string): AgencyHomePillTone {
   const normalized = severity.toLowerCase();
-  if (normalized === "high" || normalized === "critical") {
-    return "badge badge-error badge-sm";
-  }
-  if (normalized === "medium" || normalized === "warning") {
-    return "badge badge-warning badge-sm";
-  }
-  return "badge badge-ghost badge-sm";
+  if (normalized === "high" || normalized === "critical") return "error";
+  if (normalized === "medium" || normalized === "warning") return "warning";
+  return "muted";
 }
 
 function isParsedAlertCycle(
@@ -45,7 +45,7 @@ export function AgencyHomeAlertsCard({
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-8">
+        <div className="flex justify-center rounded-xl border border-base-300/70 bg-base-100 py-8">
           <span className="loading loading-spinner loading-md" />
         </div>
       ) : isError ? (
@@ -57,23 +57,25 @@ export function AgencyHomeAlertsCard({
           No alert cycles received yet.
         </p>
       ) : isParsedAlertCycle(data) ? (
-        <div className="space-y-4">
+        <div className="space-y-4 rounded-xl border border-base-300/70 bg-base-100 px-4 py-4">
           {Object.keys(data.countsBySeverity).length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {Object.entries(data.countsBySeverity).map(([severity, count]) => (
-                <span key={severity} className={severityBadgeClass(severity)}>
-                  {severity}: {count}
-                </span>
+                <AgencyHomeStatusPill
+                  key={severity}
+                  label={`${severity}: ${count}`}
+                  tone={severityTone(severity)}
+                />
               ))}
             </div>
           ) : null}
 
           {data.highAlerts.length > 0 ? (
-            <ul className="space-y-2">
+            <ul className="space-y-2.5">
               {data.highAlerts.slice(0, DISPLAY_LIMIT).map((alert, index) => (
                 <li
                   key={`${alert.domain ?? "site-wide"}-${index}`}
-                  className="text-sm text-base-content/85"
+                  className="text-sm leading-snug text-base-content/85"
                 >
                   {alert.domain ? (
                     <>
@@ -97,7 +99,7 @@ export function AgencyHomeAlertsCard({
           )}
         </div>
       ) : (
-        <p className="text-sm text-warning">
+        <p className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-warning">
           Latest alert cycle could not be parsed — check Operations for the raw
           artifact.
         </p>
