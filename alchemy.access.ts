@@ -106,6 +106,10 @@ export const emailAccessGate = (options: {
         // 1-month login sessions (Jon 2026-08-31) — set via API that day; kept
         // here so a redeploy doesn't silently reset the app to the 24h default.
         sessionDuration: "730h",
+        // Skip the "Sign in with:" chooser page (Jon 2026-08-31: "it should
+        // never ask") — with a single IdP, Access redirects straight through;
+        // when the Cloudflare session is alive the whole flow is silent.
+        autoRedirectToIdentity: true,
         // Keep workers.dev + custom domain behind the same email allow-list.
         destinations: hostnames.map((uri) => ({
           type: "public" as const,
