@@ -33,7 +33,10 @@ export async function beginAiVisibilityRun(input: {
   configId: string;
   projectId: string;
   promptSetVersion: number;
-}): Promise<AiVisibilityCheckTriggerResult> {
+}): Promise<
+  | { ok: true; runId: string }
+  | Extract<AiVisibilityCheckTriggerResult, { ok: false }>
+> {
   await reclaimStaleRunsForConfig(input.configId);
 
   const runId = crypto.randomUUID();

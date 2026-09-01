@@ -113,7 +113,12 @@ export async function runScheduledAiVisibilityChecks(_env: Env) {
       } catch (err) {
         runErrors++;
         // Retry in one hour instead of waiting a full weekly/monthly interval.
-        await AiVisibilityRepository.updateConfig(config.id, config.projectId, {
+        // CAS on the value we claimed to, like every other scheduler write, so
+        // a concurrent schedule change is never clobbered.
+        await AiVisibilityRepository.claimDueConfig({
+          configId: config.id,
+          projectId: config.projectId,
+          observedNextRunAt: nextRunAt,
           nextRunAt: scheduleRetryAfterFailure(),
         });
         console.error(
@@ -124,6 +129,17 @@ export async function runScheduledAiVisibilityChecks(_env: Env) {
       }
 
       if (result.ok) {
+        if (result.outcome === "reclaimed") {
+          // Results were discarded — retry soon instead of losing the interval.
+          runErrors++;
+          await AiVisibilityRepository.claimDueConfig({
+            configId: config.id,
+            projectId: config.projectId,
+            observedNextRunAt: nextRunAt,
+            nextRunAt: scheduleRetryAfterFailure(),
+          });
+          continue;
+        }
         started++;
         continue;
       }

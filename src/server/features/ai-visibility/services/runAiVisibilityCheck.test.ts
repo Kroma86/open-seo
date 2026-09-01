@@ -280,8 +280,10 @@ describe("runAiVisibilityCheck", () => {
     const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
       (call) => call[1]?.status === "completed",
     );
+    // No cache/paid signal exists on getBrandLookup, so the label never
+    // asserts either direction from latency.
     expect(completedUpdate?.[1]?.costNote).toBe(
-      "brand lookup cache hit; 1 prompt check(s): cache/paid uncertain",
+      "brand lookup cache/paid uncertain; 1 prompt check(s): cache/paid uncertain",
     );
   });
 

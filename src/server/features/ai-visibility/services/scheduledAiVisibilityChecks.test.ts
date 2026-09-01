@@ -119,10 +119,14 @@ describe("runScheduledAiVisibilityChecks", () => {
 
     await runTick();
 
-    expect(mocks.updateConfig).toHaveBeenCalledWith(
-      "config_1",
-      "project_1",
-      { nextRunAt: "2026-02-01T13:00:00.000Z" },
+    // Backoff is a CAS write on the claimed slot, never a blind updateConfig.
+    expect(mocks.updateConfig).not.toHaveBeenCalled();
+    expect(mocks.claimDueConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        configId: "config_1",
+        projectId: "project_1",
+        nextRunAt: "2026-02-01T13:00:00.000Z",
+      }),
     );
     vi.useRealTimers();
   });

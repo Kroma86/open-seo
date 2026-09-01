@@ -276,5 +276,5 @@ export const AiVisibilityManagementService = {
 export type AiVisibilityCheckTrigger = "manual" | "scheduled";
 
 export type AiVisibilityCheckTriggerResult =
-  | { ok: true; runId: string }
+  | { ok: true; runId: string; outcome: "completed" | "reclaimed" }
   | { ok: false; reason: "already_running"; blockingRunId: string | null };

@@ -75,6 +75,19 @@ export const runAiVisibilityCheckTool = {
       }),
     );
 
+    if (result.outcome === "reclaimed") {
+      return mcpResponse({
+        text: `AI visibility check ${result.runId} was reclaimed as stale before it could record results — nothing was stored. Run the check again.`,
+        meta: buildProjectMeta(context, args.projectId, path),
+        structuredContent: {
+          configId: args.configId,
+          started: true,
+          runId: result.runId,
+          outcome: "reclaimed",
+        },
+      });
+    }
+
     return mcpResponse({
       text: `AI visibility check ${result.runId} completed for config ${args.configId}. Read results with get_ai_visibility_trend.`,
       meta: buildProjectMeta(context, args.projectId, path),
@@ -82,6 +95,7 @@ export const runAiVisibilityCheckTool = {
         configId: args.configId,
         started: true,
         runId: result.runId,
+        outcome: "completed",
       },
     });
   }),

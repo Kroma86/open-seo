@@ -43,9 +43,6 @@ type RunDetail = {
   }>;
 };
 
-/** Brand lookup preserves cached fetchedAt; fresh calls set fetchedAt to now. */
-const BRAND_LOOKUP_FRESH_MS = 5_000;
-
 function targetSharePct(brandLookup: BrandLookupResult): number | null {
   const entry = brandLookup.shareOfVoice?.entries.find((row) => row.isTarget);
   return entry?.sharePct ?? null;
@@ -81,21 +78,10 @@ function countPromptsWithBrand(
   ).length;
 }
 
-function classifyBrandLookupCost(
-  fetchedAt: string,
-): "cache" | "cache/paid uncertain" {
-  const ageMs = Date.now() - new Date(fetchedAt).getTime();
-  return ageMs > BRAND_LOOKUP_FRESH_MS ? "cache" : "cache/paid uncertain";
-}
-
-function buildCostNote(input: {
-  brandLookup: "cache" | "cache/paid uncertain";
-  promptExplorerCalls: number;
-}): string {
-  const brandLabel =
-    input.brandLookup === "cache"
-      ? "brand lookup cache hit"
-      : "brand lookup cache/paid uncertain";
+// getBrandLookup exposes no cache/paid signal, and any freshness heuristic
+// mislabels in one direction or the other — say so honestly in both cases.
+function buildCostNote(input: { promptExplorerCalls: number }): string {
+  const brandLabel = "brand lookup cache/paid uncertain";
   if (input.promptExplorerCalls === 0) return brandLabel;
   return `${brandLabel}; ${input.promptExplorerCalls} prompt check(s): cache/paid uncertain`;
 }
@@ -126,11 +112,20 @@ async function executeRun(input: {
   const explorerModels = promptExplorerModelsForPlatforms(platforms);
   const lookupPlatforms = brandLookupPlatforms(platforms);
 
+  // CAS like the terminal updates: if the reconciler reclaimed this run
+  // while it sat pending, do not resurrect it — abort before any paid call.
   const startedAt = new Date().toISOString();
-  await AiVisibilityRepository.updateRun(input.runId, {
-    status: "running",
-    startedAt,
-  });
+  const claimed = await AiVisibilityRepository.updateRunIfInFlight(
+    input.runId,
+    { status: "running", startedAt },
+    { requireRunning: false },
+  );
+  if (!claimed) {
+    console.warn(
+      `AI visibility: run ${input.runId} was reclaimed before it started`,
+    );
+    return "reclaimed";
+  }
 
   let promptExplorerCalls = 0;
 
@@ -144,8 +139,6 @@ async function executeRun(input: {
     },
     input.billingCustomer,
   );
-  const brandLookupCost = classifyBrandLookupCost(brandLookup.fetchedAt);
-
   const promptResults: RunDetail["prompts"] = [];
   // Up to 10 prompts, each explorePrompt call isolated in try/catch so one failure
   // cannot abort the run. Worst case ~10 sequential calls still fits inside the
@@ -224,10 +217,7 @@ async function executeRun(input: {
       promptsWithBrand,
       promptsChecked,
       detail: JSON.stringify(detail),
-      costNote: buildCostNote({
-        brandLookup: brandLookupCost,
-        promptExplorerCalls,
-      }),
+      costNote: buildCostNote({ promptExplorerCalls }),
     },
     { requireRunning: true },
   );
@@ -267,13 +257,13 @@ export async function runAiVisibilityCheck(input: {
   if (!begin.ok) return begin;
 
   try {
-    await executeRun({
+    const outcome = await executeRun({
       runId: begin.runId,
       configId: input.configId,
       projectId: input.projectId,
       billingCustomer: input.billingCustomer,
     });
-    return begin;
+    return { ok: true, runId: begin.runId, outcome };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "AI visibility check failed";
