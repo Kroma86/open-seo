@@ -32,6 +32,9 @@ vi.mock(
     },
   }),
 );
+vi.mock("@/server/features/ai-visibility/services/aiVisibilityReconciler", () => ({
+  reconcileStaleAiVisibilityRuns: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("@/server/features/ai-visibility/services/runAiVisibilityCheck", () => ({
   runAiVisibilityCheck: mocks.runAiVisibilityCheck,
 }));

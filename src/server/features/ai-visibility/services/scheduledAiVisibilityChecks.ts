@@ -1,4 +1,5 @@
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
+import { reconcileStaleAiVisibilityRuns } from "@/server/features/ai-visibility/services/aiVisibilityReconciler";
 import { runAiVisibilityCheck } from "@/server/features/ai-visibility/services/runAiVisibilityCheck";
 import { customerHasPaidPlan } from "@/server/billing/subscription";
 import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
@@ -8,6 +9,8 @@ import {
 } from "@/shared/ai-visibility";
 
 export async function runScheduledAiVisibilityChecks(_env: Env) {
+  await reconcileStaleAiVisibilityRuns();
+
   const nowIso = new Date().toISOString();
   const dueConfigs =
     await AiVisibilityRepository.getDueConfigsWithOrganization(nowIso);

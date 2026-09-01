@@ -143,19 +143,16 @@ async function addPrompt(configId: string, projectId: string, prompt: string) {
     throw new AppError("VALIDATION_ERROR", "Prompt is required");
   }
 
-  const activeCount =
-    await AiVisibilityRepository.countActivePromptsForConfig(configId);
-  if (activeCount >= MAX_ACTIVE_PROMPTS_PER_CONFIG) {
-    throw new AppError("VALIDATION_ERROR", MAX_ACTIVE_PROMPTS_ERROR);
-  }
-
   const promptId = crypto.randomUUID();
-  const inserted = await AiVisibilityRepository.addPrompt({
+  const inserted = await AiVisibilityRepository.addPromptRespectingCap({
     id: promptId,
     configId,
     prompt: normalized,
   });
-  if (!inserted) {
+  if (!inserted.ok) {
+    if (inserted.reason === "cap") {
+      throw new AppError("VALIDATION_ERROR", MAX_ACTIVE_PROMPTS_ERROR);
+    }
     throw new AppError(
       "VALIDATION_ERROR",
       "This prompt is already tracked for this config",
@@ -163,7 +160,7 @@ async function addPrompt(configId: string, projectId: string, prompt: string) {
   }
 
   await AiVisibilityRepository.bumpPromptSetVersion(configId, projectId);
-  return { promptId: inserted };
+  return { promptId: inserted.promptId };
 }
 
 async function removePrompt(
@@ -202,21 +199,27 @@ async function togglePrompt(
   }
 
   if (isActive) {
-    const activeCount =
-      await AiVisibilityRepository.countActivePromptsForConfig(configId);
-    if (activeCount >= MAX_ACTIVE_PROMPTS_PER_CONFIG) {
-      throw new AppError("VALIDATION_ERROR", MAX_ACTIVE_PROMPTS_ERROR);
+    const activated = await AiVisibilityRepository.activatePromptRespectingCap(
+      promptId,
+      configId,
+    );
+    if (!activated.ok) {
+      if (activated.reason === "cap") {
+        throw new AppError("VALIDATION_ERROR", MAX_ACTIVE_PROMPTS_ERROR);
+      }
+      throw new AppError("NOT_FOUND", "Prompt not found");
+    }
+  } else {
+    const toggled = await AiVisibilityRepository.togglePrompt(
+      promptId,
+      configId,
+      false,
+    );
+    if (!toggled) {
+      throw new AppError("NOT_FOUND", "Prompt not found");
     }
   }
 
-  const toggled = await AiVisibilityRepository.togglePrompt(
-    promptId,
-    configId,
-    isActive,
-  );
-  if (!toggled) {
-    throw new AppError("NOT_FOUND", "Prompt not found");
-  }
   await AiVisibilityRepository.bumpPromptSetVersion(configId, projectId);
   return { toggled: true };
 }

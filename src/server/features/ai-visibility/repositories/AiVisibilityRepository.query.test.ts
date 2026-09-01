@@ -23,6 +23,13 @@ beforeAll(async () => {
   client = createClient({ url: "file::memory:" });
   testDb = drizzle(client);
   vi.doMock("@/db", () => ({ db: testDb }));
+  vi.doMock("@/db/runBatch", () => ({
+    runBatch: async (
+      build: (tx: typeof testDb) => readonly Promise<unknown>[],
+    ) => {
+      for (const statement of build(testDb)) await statement;
+    },
+  }));
 
   await client.executeMultiple(`
     CREATE TABLE projects (
@@ -158,5 +165,107 @@ describe("AiVisibilityRepository queries", () => {
 
     expect(claimed).toBe(true);
     expect(lostRace).toBe(false);
+  });
+
+  it("enforces the active prompt cap after insert under contention", async () => {
+    for (let i = 0; i < 9; i++) {
+      const result = await AiVisibilityRepository.addPromptRespectingCap({
+        id: `prompt_${i}`,
+        configId: "config_1",
+        prompt: `prompt ${i}`,
+      });
+      expect(result.ok).toBe(true);
+    }
+
+    const tenth = await AiVisibilityRepository.addPromptRespectingCap({
+      id: "prompt_a",
+      configId: "config_1",
+      prompt: "prompt a",
+    });
+    expect(tenth.ok).toBe(true);
+
+    const eleventh = await AiVisibilityRepository.addPromptRespectingCap({
+      id: "prompt_b",
+      configId: "config_1",
+      prompt: "prompt b",
+    });
+    expect(eleventh).toEqual({ ok: false, reason: "cap" });
+
+    const [raceFirst, raceSecond] = await Promise.all([
+      AiVisibilityRepository.addPromptRespectingCap({
+        id: "prompt_race_a",
+        configId: "config_1",
+        prompt: "prompt race a",
+      }),
+      AiVisibilityRepository.addPromptRespectingCap({
+        id: "prompt_race_b",
+        configId: "config_1",
+        prompt: "prompt race b",
+      }),
+    ]);
+    const raceSuccesses = [raceFirst, raceSecond].filter((row) => row.ok);
+    expect(raceSuccesses.length).toBeLessThanOrEqual(1);
+
+    expect(
+      await AiVisibilityRepository.countActivePromptsForConfig("config_1"),
+    ).toBe(10);
+  });
+
+  it("allows a new run after reclaiming a stale in-flight row", async () => {
+    const staleStarted = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    await client.execute({
+      sql: `
+        INSERT INTO ai_visibility_runs (
+          id, config_id, project_id, prompt_set_version, status,
+          started_at, created_at
+        ) VALUES (
+          'run_stale', 'config_1', 'project_1', 1, 'running',
+          ?, ?
+        )
+      `,
+      args: [staleStarted, staleStarted],
+    });
+
+    const { reclaimStaleRunsForConfig } = await import(
+      "../services/aiVisibilityReconciler"
+    );
+    await reclaimStaleRunsForConfig("config_1");
+
+    const created = await AiVisibilityRepository.tryCreateRun({
+      id: "run_new",
+      configId: "config_1",
+      projectId: "project_1",
+      promptSetVersion: 1,
+    });
+    expect(created).toBe(true);
+  });
+
+  it("still blocks a new run when a recent in-flight row exists", async () => {
+    const recentStarted = new Date(Date.now() - 60_000).toISOString();
+    await client.execute({
+      sql: `
+        INSERT INTO ai_visibility_runs (
+          id, config_id, project_id, prompt_set_version, status,
+          started_at, created_at
+        ) VALUES (
+          'run_live', 'config_1', 'project_1', 1, 'running',
+          ?, ?
+        )
+      `,
+      args: [recentStarted, recentStarted],
+    });
+
+    const { reclaimStaleRunsForConfig } = await import(
+      "../services/aiVisibilityReconciler"
+    );
+    await reclaimStaleRunsForConfig("config_1");
+
+    const created = await AiVisibilityRepository.tryCreateRun({
+      id: "run_new",
+      configId: "config_1",
+      projectId: "project_1",
+      promptSetVersion: 1,
+    });
+    expect(created).toBe(false);
   });
 });

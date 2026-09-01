@@ -3,6 +3,7 @@ import {
   getLatestResults,
   getTrend,
 } from "@/server/features/ai-visibility/services/aiVisibilityResults";
+import { formatMentionsDisplay } from "@/shared/ai-visibility-mentions";
 import { buildProjectMeta } from "@/server/mcp/context";
 import { mcpResponse } from "@/server/mcp/formatters";
 import {
@@ -68,7 +69,10 @@ export const getAiVisibilityTrendTool = {
       ? [
           `Tracked AI visibility for ${latest.config?.brand ?? "project"}`,
           `Fetched at: ${latest.fetchedAt}`,
-          `Total mentions: ${formatNullable(latest.latestRun?.totalMentions)}`,
+          `Total mentions: ${formatMentionsDisplay(
+            latest.latestRun?.totalMentions ?? null,
+            latest.latestRun?.partialMentions ?? false,
+          )}`,
           `Share of voice: ${formatNullable(latest.latestRun?.shareOfVoicePct)}${latest.latestRun?.shareOfVoicePct == null ? "" : "%"}`,
           `Prompts with brand: ${formatNullable(latest.latestRun?.promptsWithBrand)} / ${formatNullable(latest.latestRun?.promptsChecked)}`,
           `Trend runs: ${trend.runs.length}`,

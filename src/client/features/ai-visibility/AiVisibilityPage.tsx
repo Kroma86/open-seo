@@ -13,6 +13,7 @@ import {
   getAiVisibilityTrackingTrend,
   triggerAiVisibilityCheck,
 } from "@/serverFunctions/ai-visibility";
+import { formatMentionsDisplay } from "@/shared/ai-visibility-mentions";
 
 type Props = {
   projectId: string;
@@ -166,8 +167,12 @@ function AiVisibilityPageInner({
               <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
                 <Metric
                   label="Total mentions"
-                  value={latest.latestRun.totalMentions}
+                  value={formatMentionsDisplay(
+                    latest.latestRun.totalMentions,
+                    latest.latestRun.partialMentions,
+                  )}
                   fetchedAt={latest.fetchedAt}
+                  source={latest.source}
                 />
                 <Metric
                   label="Share of voice"
@@ -177,16 +182,19 @@ function AiVisibilityPageInner({
                       : `${latest.latestRun.shareOfVoicePct}%`
                   }
                   fetchedAt={latest.fetchedAt}
+                  source={latest.source}
                 />
                 <Metric
                   label="Prompts with brand"
                   value={latest.latestRun.promptsWithBrand}
                   fetchedAt={latest.fetchedAt}
+                  source={latest.source}
                 />
                 <Metric
                   label="Prompts checked"
                   value={latest.latestRun.promptsChecked}
                   fetchedAt={latest.fetchedAt}
+                  source={latest.source}
                 />
               </dl>
             ) : (
@@ -259,15 +267,22 @@ function AiVisibilityPageInner({
                     </div>
                     <p>
                       Mentions:{" "}
-                      {run.totalMentions == null
-                        ? "not measured"
-                        : run.totalMentions}
+                      {formatMentionsDisplay(
+                        run.totalMentions,
+                        run.partialMentions,
+                      )}
                       {run.delta?.totalMentions != null
                         ? ` (${run.delta.totalMentions >= 0 ? "+" : ""}${run.delta.totalMentions})`
-                        : run.delta === null && trendQuery.data.runs.indexOf(run) > 0
+                        : run.delta === null &&
+                            trendQuery.data.runs.indexOf(run) > 0
                           ? " · new baseline"
                           : ""}
                     </p>
+                    {run.fetchedAt ? (
+                      <p className="text-xs text-base-content/50">
+                        {run.fetchedAt} · {run.source}
+                      </p>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -283,10 +298,12 @@ function Metric({
   label,
   value,
   fetchedAt,
+  source,
 }: {
   label: string;
   value: string | number | null;
   fetchedAt: string | null;
+  source?: string;
 }) {
   return (
     <div>
@@ -296,7 +313,7 @@ function Metric({
       </dd>
       {fetchedAt ? (
         <dd className="text-xs text-base-content/50">
-          {fetchedAt} · dataforseo_llm_mentions
+          {fetchedAt} · {source ?? "dataforseo_llm_mentions"}
         </dd>
       ) : null}
     </div>

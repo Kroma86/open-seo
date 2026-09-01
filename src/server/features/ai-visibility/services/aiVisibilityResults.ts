@@ -11,6 +11,19 @@ import type {
 
 const SOURCE = "dataforseo_llm_mentions" as const;
 
+function parsePartialMentionsFromDetail(detail: string | null): boolean {
+  if (!detail) return false;
+  try {
+    const parsed: unknown = JSON.parse(detail);
+    if (!parsed || typeof parsed !== "object") return false;
+    const brandLookup = (parsed as { brandLookup?: { partialMentions?: boolean } })
+      .brandLookup;
+    return Boolean(brandLookup?.partialMentions);
+  } catch {
+    return false;
+  }
+}
+
 function notMeasuredLatest(): AiVisibilityLatestResults {
   return {
     measured: false,
@@ -86,6 +99,8 @@ export async function getLatestResults(
     };
   }
 
+  const partialMentions = parsePartialMentionsFromDetail(latestRun.detail);
+
   return {
     measured: true,
     source: SOURCE,
@@ -108,6 +123,7 @@ export async function getLatestResults(
       status: latestRun.status,
       finishedAt: latestRun.finishedAt,
       totalMentions: latestRun.totalMentions,
+      partialMentions,
       shareOfVoicePct: latestRun.shareOfVoicePct,
       promptsWithBrand: latestRun.promptsWithBrand,
       promptsChecked: latestRun.promptsChecked,
@@ -153,8 +169,11 @@ export async function getTrend(
     return {
       id: run.id,
       finishedAt: run.finishedAt,
+      fetchedAt: run.finishedAt,
+      source: SOURCE,
       promptSetVersion: run.promptSetVersion,
       totalMentions: run.totalMentions,
+      partialMentions: parsePartialMentionsFromDetail(run.detail),
       shareOfVoicePct: run.shareOfVoicePct,
       promptsWithBrand: run.promptsWithBrand,
       promptsChecked: run.promptsChecked,
@@ -179,6 +198,7 @@ export async function getAgencyExportBlock(projectId: string) {
     capturedAt: latest.fetchedAt,
     source: SOURCE,
     totalMentions: latest.latestRun.totalMentions,
+    partialMentions: latest.latestRun.partialMentions,
     shareOfVoicePct: latest.latestRun.shareOfVoicePct,
     promptsWithBrand: latest.latestRun.promptsWithBrand,
     promptsChecked: latest.latestRun.promptsChecked,

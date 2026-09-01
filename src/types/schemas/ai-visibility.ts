@@ -100,6 +100,7 @@ export type AiVisibilityLatestResults = {
     status: AiVisibilityRunStatus;
     finishedAt: string | null;
     totalMentions: number | null;
+    partialMentions: boolean;
     shareOfVoicePct: number | null;
     promptsWithBrand: number | null;
     promptsChecked: number | null;
@@ -112,8 +113,11 @@ export type AiVisibilityLatestResults = {
 export type AiVisibilityTrendPoint = {
   id: string;
   finishedAt: string | null;
+  fetchedAt: string | null;
+  source: "dataforseo_llm_mentions";
   promptSetVersion: number;
   totalMentions: number | null;
+  partialMentions: boolean;
   shareOfVoicePct: number | null;
   promptsWithBrand: number | null;
   promptsChecked: number | null;

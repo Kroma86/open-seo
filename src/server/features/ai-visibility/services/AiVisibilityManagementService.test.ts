@@ -7,7 +7,8 @@ const mocks = vi.hoisted(() => ({
   createConfig: vi.fn(),
   updateConfig: vi.fn(),
   bumpPromptSetVersion: vi.fn(),
-  addPrompt: vi.fn(),
+  addPromptRespectingCap: vi.fn(),
+  activatePromptRespectingCap: vi.fn(),
   removePrompt: vi.fn(),
   togglePrompt: vi.fn(),
   getPromptById: vi.fn(),
@@ -50,8 +51,10 @@ describe("AiVisibilityManagementService", () => {
   });
 
   it("bumps promptSetVersion when adding a prompt", async () => {
-    mocks.countActivePromptsForConfig.mockResolvedValue(2);
-    mocks.addPrompt.mockResolvedValue("prompt_1");
+    mocks.addPromptRespectingCap.mockResolvedValue({
+      ok: true,
+      promptId: "prompt_1",
+    });
 
     await AiVisibilityManagementService.addPrompt(
       "config_1",
@@ -66,7 +69,10 @@ describe("AiVisibilityManagementService", () => {
   });
 
   it("rejects an 11th active prompt", async () => {
-    mocks.countActivePromptsForConfig.mockResolvedValue(10);
+    mocks.addPromptRespectingCap.mockResolvedValue({
+      ok: false,
+      reason: "cap",
+    });
 
     await expect(
       AiVisibilityManagementService.addPrompt(
@@ -75,7 +81,7 @@ describe("AiVisibilityManagementService", () => {
         "eleventh prompt",
       ),
     ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
-    expect(mocks.addPrompt).not.toHaveBeenCalled();
+    expect(mocks.bumpPromptSetVersion).not.toHaveBeenCalled();
   });
 
   it("rejects activating a prompt when the cap is reached", async () => {
@@ -83,8 +89,10 @@ describe("AiVisibilityManagementService", () => {
       id: "prompt_1",
       isActive: false,
     });
-    mocks.countActivePromptsForConfig.mockResolvedValue(10);
-    mocks.togglePrompt.mockResolvedValue("prompt_1");
+    mocks.activatePromptRespectingCap.mockResolvedValue({
+      ok: false,
+      reason: "cap",
+    });
 
     await expect(
       AiVisibilityManagementService.togglePrompt(

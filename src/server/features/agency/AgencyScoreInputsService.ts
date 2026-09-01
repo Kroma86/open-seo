@@ -93,6 +93,7 @@ export type AgencyScoreInputs = {
   aiVisibility: {
     capturedAt: string | null;
     totalMentions: number | null;
+    partialMentions: boolean;
     shareOfVoicePct: number | null;
     promptsWithBrand: number | null;
     promptsChecked: number | null;

@@ -10,6 +10,7 @@ import { runScheduledRankChecks } from "@/server/features/rank-tracking/services
 import { runScheduledAiVisibilityChecks } from "@/server/features/ai-visibility/services/scheduledAiVisibilityChecks";
 import { runScheduledSamLoops } from "@/server/features/sam-loops/services/scheduledSamLoops";
 import { reconcileStaleAudits } from "@/server/features/audit/services/auditReconciler";
+import { reconcileStaleAiVisibilityRuns } from "@/server/features/ai-visibility/services/aiVisibilityReconciler";
 import { getOrCreateOrganizationCustomer } from "@/server/billing/subscription";
 import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
 import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
@@ -224,6 +225,7 @@ export default {
     let watchdogError: unknown;
     try {
       await withPgClient(() => reconcileStaleAudits());
+      await withPgClient(() => reconcileStaleAiVisibilityRuns());
     } catch (err) {
       watchdogError = err;
       console.error("[cron] Stale-audit reconcile failed:", err);

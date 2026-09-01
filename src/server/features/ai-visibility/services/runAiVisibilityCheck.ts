@@ -19,6 +19,7 @@ import {
   parsePlatformsJson,
   promptExplorerModelsForPlatforms,
 } from "@/shared/ai-visibility";
+import { sumMentionsForPlatforms } from "@/shared/ai-visibility-mentions";
 import type { BrandLookupResult } from "@/types/schemas/ai-search";
 import type { PromptExplorerResult } from "@/types/schemas/ai-search";
 
@@ -27,6 +28,7 @@ type RunDetail = {
   brandLookup: {
     fetchedAt: string;
     totalMentions: number | null;
+    partialMentions: boolean;
     shareOfVoicePct: number | null;
     perPlatform: BrandLookupResult["perPlatform"];
     topCitedSources: BrandLookupResult["topPages"];
@@ -34,22 +36,13 @@ type RunDetail = {
   prompts: Array<{
     promptId: string;
     prompt: string;
-    fetchedAt: string;
+    fetchedAt: string | null;
     results: PromptExplorerResult["results"];
   }>;
 };
 
-function sumMentionsForPlatforms(
-  brandLookup: BrandLookupResult,
-  platforms: ReturnType<typeof brandLookupPlatforms>,
-): number | null {
-  const rows = brandLookup.perPlatform.filter((row) =>
-    platforms.includes(row.platform),
-  );
-  if (rows.length === 0) return null;
-  if (rows.every((row) => row.mentions == null)) return null;
-  return rows.reduce((sum, row) => sum + (row.mentions ?? 0), 0);
-}
+/** Brand lookup preserves cached fetchedAt; fresh paid calls set fetchedAt to now. */
+const BRAND_LOOKUP_FRESH_MS = 5_000;
 
 function targetSharePct(brandLookup: BrandLookupResult): number | null {
   const entry = brandLookup.shareOfVoice?.entries.find((row) => row.isTarget);
@@ -66,19 +59,41 @@ function promptRowMentionsBrand(
   return flags.some(Boolean);
 }
 
+function countSuccessfulPromptChecks(
+  promptResults: RunDetail["prompts"],
+): number {
+  return promptResults.filter((row) =>
+    row.results.some((result) => result.status === "success"),
+  ).length;
+}
+
+function countPromptsWithBrand(
+  promptResults: RunDetail["prompts"],
+): number | null {
+  const withAnswer = promptResults.filter(
+    (row) => promptRowMentionsBrand(row.results) !== null,
+  );
+  if (withAnswer.length === 0) return null;
+  return withAnswer.filter(
+    (row) => promptRowMentionsBrand(row.results) === true,
+  ).length;
+}
+
+function classifyBrandLookupCost(fetchedAt: string): "cache" | "paid" {
+  const ageMs = Date.now() - new Date(fetchedAt).getTime();
+  return ageMs > BRAND_LOOKUP_FRESH_MS ? "cache" : "paid";
+}
+
 function buildCostNote(input: {
-  brandPaid: boolean;
-  promptPaidCount: number;
-  promptCacheHitCount: number;
+  brandLookup: "cache" | "paid";
+  promptExplorerCalls: number;
 }): string {
-  const parts: string[] = [];
-  parts.push(input.brandPaid ? "brand lookup paid" : "brand lookup cache hit");
-  if (input.promptPaidCount + input.promptCacheHitCount > 0) {
-    parts.push(
-      `${input.promptCacheHitCount} prompt cache hit(s), ${input.promptPaidCount} prompt paid`,
-    );
-  }
-  return parts.join("; ");
+  const brandLabel =
+    input.brandLookup === "cache"
+      ? "brand lookup cache hit"
+      : "brand lookup paid";
+  if (input.promptExplorerCalls === 0) return brandLabel;
+  return `${brandLabel}; ${input.promptExplorerCalls} prompt check(s): cache/paid uncertain`;
 }
 
 async function executeRun(input: {
@@ -113,9 +128,7 @@ async function executeRun(input: {
     startedAt,
   });
 
-  let brandPaid = false;
-  let promptPaidCount = 0;
-  let promptCacheHitCount = 0;
+  let promptExplorerCalls = 0;
 
   const brandLookup = await getBrandLookup(
     {
@@ -127,9 +140,7 @@ async function executeRun(input: {
     },
     input.billingCustomer,
   );
-  // Heuristic: a fresh paid call sets fetchedAt to now; cached entries are older.
-  brandPaid =
-    Date.now() - new Date(brandLookup.fetchedAt).getTime() < 5_000;
+  const brandLookupCost = classifyBrandLookupCost(brandLookup.fetchedAt);
 
   const promptResults: RunDetail["prompts"] = [];
   for (const trackedPrompt of activePrompts) {
@@ -137,13 +148,13 @@ async function executeRun(input: {
       promptResults.push({
         promptId: trackedPrompt.id,
         prompt: trackedPrompt.prompt,
-        fetchedAt: new Date().toISOString(),
+        fetchedAt: null,
         results: [],
       });
       continue;
     }
 
-    const beforeMs = Date.now();
+    promptExplorerCalls += 1;
     const explorer = await explorePrompt(
       {
         projectId: input.projectId,
@@ -154,12 +165,6 @@ async function executeRun(input: {
       },
       input.billingCustomer,
     );
-    const fresh = Date.now() - new Date(explorer.fetchedAt).getTime() < 5_000;
-    if (fresh && Date.now() - beforeMs > 100) {
-      promptPaidCount += 1;
-    } else {
-      promptCacheHitCount += 1;
-    }
     promptResults.push({
       promptId: trackedPrompt.id,
       prompt: trackedPrompt.prompt,
@@ -171,15 +176,16 @@ async function executeRun(input: {
   const filteredPlatformRows = brandLookup.perPlatform.filter((row) =>
     lookupPlatforms.includes(row.platform),
   );
-  const promptsWithBrand = promptResults.filter(
-    (row) => promptRowMentionsBrand(row.results) === true,
-  ).length;
+  const mentionsSum = sumMentionsForPlatforms(brandLookup, lookupPlatforms);
+  const promptsChecked = countSuccessfulPromptChecks(promptResults);
+  const promptsWithBrand = countPromptsWithBrand(promptResults);
 
   const detail: RunDetail = {
     source: "dataforseo_llm_mentions",
     brandLookup: {
       fetchedAt: brandLookup.fetchedAt,
-      totalMentions: sumMentionsForPlatforms(brandLookup, lookupPlatforms),
+      totalMentions: mentionsSum.total,
+      partialMentions: mentionsSum.partialMentions,
       shareOfVoicePct: targetSharePct(brandLookup),
       perPlatform: filteredPlatformRows,
       topCitedSources: brandLookup.topPages.slice(0, 10),
@@ -193,13 +199,12 @@ async function executeRun(input: {
     finishedAt,
     totalMentions: detail.brandLookup.totalMentions,
     shareOfVoicePct: detail.brandLookup.shareOfVoicePct,
-    promptsWithBrand: activePrompts.length > 0 ? promptsWithBrand : null,
-    promptsChecked: activePrompts.length > 0 ? activePrompts.length : null,
+    promptsWithBrand,
+    promptsChecked,
     detail: JSON.stringify(detail),
     costNote: buildCostNote({
-      brandPaid,
-      promptPaidCount,
-      promptCacheHitCount,
+      brandLookup: brandLookupCost,
+      promptExplorerCalls,
     }),
   });
   await AiVisibilityRepository.updateConfig(input.configId, input.projectId, {

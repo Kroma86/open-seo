@@ -100,3 +100,25 @@ Built tracked AI visibility end-to-end, mirroring rank-tracking patterns against
 3. **Synchronous runs vs rank workflows** — AI visibility runs inline (no Cloudflare Workflow); duplicate protection remains the DB partial unique index.
 4. **`costNote`** — Built from per-call cache heuristic (fresh `fetchedAt` ≈ paid; otherwise cache hit), matching underlying R2 cache behavior without modifying ai-search services.
 5. **Agency export shape** — Additive `aiVisibility` sibling to existing blocks; `null` when no completed run (never zero-filled).
+
+## Repair round
+
+Addressed reviewer findings without schema/migration, env, or dependency changes.
+
+| Finding | Fix |
+|---------|-----|
+| **HIGH — crashed runs stick forever** | Added `aiVisibilityStaleRun.ts` + `aiVisibilityReconciler.ts` mirroring audit watchdog shape: `reclaimStaleRunsForConfig` runs before `beginAiVisibilityRun`; `reconcileStaleAiVisibilityRuns` runs in cron (`server.ts`) and at scheduled-check entry. In-flight rows older than 15 minutes (by `startedAt`, or `createdAt` when pending) are marked `failed` with `"stale run reclaimed"`. Repository integration tests: stale row no longer blocks; recent row still blocks. |
+| **HIGH — fabricated zeros** | `runAiVisibilityCheck` counts `promptsChecked` from successful explorer results only; `promptsWithBrand` is `null` when no prompt produced a boolean answer. Google-only configs skip `explorePrompt` entirely. UI/MCP use `not measured` for nulls. Tests for google-only and all-errors paths. |
+| **MEDIUM — costNote heuristics** | Brand lookup uses reliable cache signal (preserved `fetchedAt` on cache hit vs fresh on paid). Prompt explorer has no reliable signal — labeled `cache/paid uncertain`. Same honest rule: direct signal when available, otherwise uncertain (no latency guessing for prompts). |
+| **MEDIUM — partial mention totals** | `sumMentionsForPlatforms` in `shared/ai-visibility-mentions.ts` returns `{ total, partialMentions }`; stored in run `detail.brandLookup.partialMentions`. UI/MCP render `≥ N (partial)` via `formatMentionsDisplay`; agency export includes `partialMentions`. |
+| **MEDIUM — 10-prompt cap race** | `addPromptRespectingCap` / `activatePromptRespectingCap` use `runBatch` (insert → count → rollback delete when over cap). Repository test: 10th add succeeds, 11th fails, parallel race never exceeds 10 active. |
+| **LOW — trend fetchedAt + source** | Trend points include `fetchedAt` (run `finishedAt`) and `source`; trend list UI shows the same `timestamp · dataforseo_llm_mentions` line as the Metric component. |
+
+### Acceptance (repair round)
+
+| Check | Result |
+|-------|--------|
+| `npx vitest run` | **1275 passed** (160 files) |
+| `node --max-old-space-size=12288 node_modules/typescript/bin/tsc --noEmit` | **Clean** |
+| Schema / migrations | **Not touched** |
+| Commit | **Not made** (per instructions) |

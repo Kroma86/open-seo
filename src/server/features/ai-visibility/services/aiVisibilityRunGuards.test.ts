@@ -6,16 +6,36 @@ const mocks = vi.hoisted(() => ({
   getActiveRunForConfig: vi.fn(),
   updateRun: vi.fn(),
   getRunById: vi.fn(),
+  reclaimStaleRunsForConfig: vi.fn(),
 }));
 
 vi.mock(
   "@/server/features/ai-visibility/repositories/AiVisibilityRepository",
   () => ({ AiVisibilityRepository: mocks }),
 );
+vi.mock(
+  "@/server/features/ai-visibility/services/aiVisibilityReconciler",
+  () => ({
+    reclaimStaleRunsForConfig: mocks.reclaimStaleRunsForConfig,
+  }),
+);
 
 describe("beginAiVisibilityRun", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.reclaimStaleRunsForConfig.mockResolvedValue(undefined);
+  });
+
+  it("reclaims stale runs before attempting to create a new run", async () => {
+    mocks.tryCreateRun.mockResolvedValue(true);
+
+    await beginAiVisibilityRun({
+      configId: "config_1",
+      projectId: "project_1",
+      promptSetVersion: 2,
+    });
+
+    expect(mocks.reclaimStaleRunsForConfig).toHaveBeenCalledWith("config_1");
   });
 
   it("creates a pending run when no active run exists", async () => {
