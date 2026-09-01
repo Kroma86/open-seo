@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   ensureDefaultLoops: vi.fn(),
   countRunsCreatedSince: vi.fn(),
   getProjectById: vi.fn(),
+  getProjectByDomain: vi.fn(),
   getAgencyScoreInputsGlobal: vi.fn(),
 }));
 
@@ -34,6 +35,7 @@ vi.mock("@/server/features/sam-loops/services/samLoopRunGuards", () => ({
 vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
   ProjectRepository: {
     getProjectById: mocks.getProjectById,
+    getProjectByDomain: mocks.getProjectByDomain,
   },
 }));
 vi.mock("@/server/features/agency/AgencyScoreInputsService", () => ({
@@ -283,6 +285,14 @@ describe("triggerSamLoopsForDomain", () => {
       name: "Default",
       domain: "niceseo.ai",
       organizationId: "org_1",
+      loopsEnabled: false,
+    });
+    mocks.getProjectByDomain.mockResolvedValue({
+      id: "project_niceseo",
+      name: "Default",
+      domain: "niceseo.ai",
+      organizationId: "org_1",
+      loopsEnabled: false,
     });
     const loopRows = [
       {
@@ -324,15 +334,73 @@ describe("triggerSamLoopsForDomain", () => {
   });
 
   it("returns domain_not_allowed for a domain outside the house allowlist", async () => {
+    mocks.getProjectByDomain.mockResolvedValue({
+      id: "project_client",
+      name: "Client",
+      domain: "example.com",
+      organizationId: "org_1",
+      loopsEnabled: false,
+    });
     await expect(
       triggerSamLoopsForDomain({ domain: "example.com" }),
     ).resolves.toEqual({ ok: false, reason: "domain_not_allowed" });
+    expect(mocks.getProjectByDomain).toHaveBeenCalledWith("example.com");
     expect(mocks.getAgencyScoreInputsGlobal).not.toHaveBeenCalled();
+    expect(mocks.getProjectById).not.toHaveBeenCalled();
+    expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
+  });
+
+  it("returns domain_not_allowed for an unknown domain without further lookups", async () => {
+    mocks.getProjectByDomain.mockResolvedValue(null);
+    await expect(
+      triggerSamLoopsForDomain({ domain: "unknown.example" }),
+    ).resolves.toEqual({ ok: false, reason: "domain_not_allowed" });
+    expect(mocks.getProjectByDomain).toHaveBeenCalledWith("unknown.example");
+    expect(mocks.getAgencyScoreInputsGlobal).not.toHaveBeenCalled();
+    expect(mocks.getProjectById).not.toHaveBeenCalled();
+    expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
+    expect(mocks.ensureDefaultLoops).not.toHaveBeenCalled();
+    expect(mocks.countRunsCreatedSince).not.toHaveBeenCalled();
+  });
+
+  it("allows a client domain when loopsEnabled is true", async () => {
+    mocks.getAgencyScoreInputsGlobal.mockResolvedValue({
+      projectId: "project_client",
+    });
+    mocks.getProjectByDomain.mockResolvedValue({
+      id: "project_client",
+      name: "Client",
+      domain: "example.com",
+      organizationId: "org_1",
+      loopsEnabled: true,
+    });
+    mocks.getProjectById.mockResolvedValue({
+      id: "project_client",
+      name: "Client",
+      domain: "example.com",
+      organizationId: "org_1",
+      loopsEnabled: true,
+    });
+    mocks.getLoopsForProject.mockResolvedValue([]);
+    const result = await triggerSamLoopsForDomain({ domain: "example.com" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.projectId).toBe("project_client");
+    expect(mocks.getAgencyScoreInputsGlobal).toHaveBeenCalledWith(
+      "example.com",
+    );
     expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
   });
 
   it("allows twa.studio and niceapp.ai through the house-domain gate", async () => {
     for (const domain of ["twa.studio", "niceapp.ai"] as const) {
+      mocks.getProjectByDomain.mockResolvedValue({
+        id: "project_niceseo",
+        name: "Default",
+        domain,
+        organizationId: "org_1",
+        loopsEnabled: false,
+      });
       mocks.getAgencyScoreInputsGlobal.mockResolvedValue({
         projectId: "project_niceseo",
       });
@@ -340,6 +408,7 @@ describe("triggerSamLoopsForDomain", () => {
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(result.projectId).toBe("project_niceseo");
+      expect(mocks.getAgencyScoreInputsGlobal).toHaveBeenCalledWith(domain);
     }
   });
 
@@ -363,10 +432,11 @@ describe("triggerSamLoopsForDomain", () => {
   });
 
   it("returns project_not_found when the domain has no project", async () => {
-    mocks.getAgencyScoreInputsGlobal.mockResolvedValue({ projectId: null });
+    mocks.getProjectByDomain.mockResolvedValue(null);
     await expect(
       triggerSamLoopsForDomain({ domain: "niceseo.ai" }),
     ).resolves.toEqual({ ok: false, reason: "project_not_found" });
+    expect(mocks.getAgencyScoreInputsGlobal).not.toHaveBeenCalled();
     expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
   });
 

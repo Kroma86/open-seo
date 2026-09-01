@@ -12,6 +12,7 @@ import {
   expectedSamLoopDraftsPerMonth,
   isSamContentLoop,
   isSamLoopDomainAllowed,
+  isSamLoopProjectAllowed,
   startOfUtcDay,
 } from "@/shared/sam-loops";
 import type { ContentVelocity } from "@/types/schemas/sam-loops";
@@ -312,9 +313,17 @@ export async function triggerSamLoopsForDomain(input: {
   names?: string[];
 }): Promise<DomainLoopTriggerResult> {
   const domain = normalizeTriggerDomain(input.domain);
-  if (!isSamLoopDomainAllowed(domain)) {
+  const row = await ProjectRepository.getProjectByDomain(domain);
+  if (!isSamLoopDomainAllowed(domain) && row == null) {
     return { ok: false, reason: "domain_not_allowed" };
   }
+  if (row == null) {
+    return { ok: false, reason: "project_not_found" };
+  }
+  if (!isSamLoopProjectAllowed(row)) {
+    return { ok: false, reason: "domain_not_allowed" };
+  }
+
   const score = await getAgencyScoreInputsGlobal(domain);
   if (!score.projectId) {
     return { ok: false, reason: "project_not_found" };

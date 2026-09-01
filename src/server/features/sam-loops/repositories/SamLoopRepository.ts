@@ -81,6 +81,7 @@ async function getDueLoopsWithOrganization(nowIso: string) {
       nextRunAt: samLoops.nextRunAt,
       organizationId: projects.organizationId,
       domain: projects.domain,
+      loopsEnabled: projects.loopsEnabled,
     })
     .from(samLoops)
     .innerJoin(projects, eq(samLoops.projectId, projects.id))

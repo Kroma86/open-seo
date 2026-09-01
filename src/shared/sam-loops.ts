@@ -101,6 +101,14 @@ export function isSamLoopDomainAllowed(
   return (SAM_LOOP_ALLOWED_DOMAINS as readonly string[]).includes(host);
 }
 
+export function isSamLoopProjectAllowed(project: {
+  domain: string | null | undefined;
+  loopsEnabled?: boolean | null;
+}): boolean {
+  if (project.domain == null || project.domain.trim() === "") return false;
+  return isSamLoopDomainAllowed(project.domain) || project.loopsEnabled === true;
+}
+
 /** UTC calendar date `YYYY-MM-DD` (a date prefix, not a full ISO timestamp). */
 export function startOfUtcDay(now = new Date()): string {
   return now.toISOString().slice(0, 10);

@@ -134,7 +134,10 @@ describe("trigger-sam-loops handlePost", () => {
       post({ domain: "example.com" }, { authorization: `Bearer ${TOKEN}` }),
     );
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "domain_not_allowed" });
+    expect(await res.json()).toEqual({
+      error: "domain_not_allowed",
+      hint: "enable loops for this project via POST /api/internal/loops-enabled",
+    });
   });
 
   it("returns 429 on daily_cap", async () => {

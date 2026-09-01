@@ -3,7 +3,7 @@ import { beginSamLoopRun } from "@/server/features/sam-loops/services/samLoopRun
 import {
   SAM_LOOP_DAILY_RUN_CAP,
   computeNextSamLoopRunAt,
-  isSamLoopDomainAllowed,
+  isSamLoopProjectAllowed,
   startOfUtcDay,
 } from "@/shared/sam-loops";
 
@@ -55,7 +55,12 @@ export async function runScheduledSamLoops(env: Env) {
         observedNextRunAt,
       );
 
-      if (!isSamLoopDomainAllowed(loop.domain)) {
+      if (
+        !isSamLoopProjectAllowed({
+          domain: loop.domain,
+          loopsEnabled: loop.loopsEnabled,
+        })
+      ) {
         await SamLoopRepository.claimDueLoop({
           loopId: loop.id,
           projectId: loop.projectId,

@@ -11,6 +11,7 @@ type DueLoopRow = {
   nextRunAt: string | null;
   organizationId: string;
   domain: string | null;
+  loopsEnabled: boolean;
 };
 
 type ClaimInput = {
@@ -62,6 +63,7 @@ function dueLoop(overrides: Partial<DueLoopRow> = {}): DueLoopRow {
     nextRunAt: "2026-01-01T00:00:00.000Z",
     organizationId: "org_1",
     domain: "niceseo.ai",
+    loopsEnabled: false,
     ...overrides,
   };
 }
@@ -159,6 +161,24 @@ describe("runScheduledSamLoops", () => {
         event: "sam_loops_scheduler_summary",
         domainSkips: 1,
         started: 0,
+      }),
+    );
+  });
+
+  it("starts a due loop when the project is outside the allowlist but loopsEnabled is true", async () => {
+    mocks.getDueLoopsWithOrganization.mockResolvedValue([
+      dueLoop({ domain: "client-example.com", loopsEnabled: true }),
+    ]);
+    mocks.claimDueLoop.mockResolvedValue(true);
+    mocks.beginSamLoopRun.mockResolvedValue({ ok: true, runId: "run_1" });
+
+    await runTick();
+
+    expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(1);
+    expect(mocks.beginSamLoopRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        loopId: "loop_1",
+        trigger: "scheduled",
       }),
     );
   });

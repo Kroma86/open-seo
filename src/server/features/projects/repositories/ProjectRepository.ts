@@ -57,6 +57,33 @@ async function getProjectById(projectId: string) {
   return project ?? null;
 }
 
+function normalizeProjectDomain(
+  raw: string | null | undefined,
+): string | null {
+  if (raw == null) return null;
+  let host = raw.trim().toLowerCase();
+  for (const prefix of ["https://", "http://"]) {
+    if (host.startsWith(prefix)) host = host.slice(prefix.length);
+  }
+  if (host.startsWith("www.")) host = host.slice(4);
+  host = host.split("/")[0] ?? host;
+  return host || null;
+}
+
+// Unscoped domain match for trusted server paths (Hermes soak trigger).
+// First unarchived row whose normalized domain matches; no name fallback.
+async function getProjectByDomain(domain: string) {
+  const needle = normalizeProjectDomain(domain);
+  if (!needle) return null;
+  const rows = await db
+    .select()
+    .from(projects)
+    .where(isNull(projects.archivedAt));
+  return (
+    rows.find((row) => normalizeProjectDomain(row.domain) === needle) ?? null
+  );
+}
+
 async function createProject(
   organizationId: string,
   name: string,
@@ -196,6 +223,24 @@ async function restoreProject(projectId: string, organizationId: string) {
   }
 }
 
+async function setLoopsEnabled(
+  projectId: string,
+  organizationId: string,
+  enabled: boolean,
+) {
+  const [row] = await db
+    .update(projects)
+    .set({ loopsEnabled: enabled })
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.organizationId, organizationId),
+      ),
+    )
+    .returning();
+  return row ?? null;
+}
+
 async function archiveProject(projectId: string, organizationId: string) {
   const [row] = await db
     .update(projects)
@@ -220,11 +265,13 @@ export const ProjectRepository = {
   countProjects,
   getProjectForOrganization,
   getProjectById,
+  getProjectByDomain,
   createProject,
   updateProject,
   updateProjectDomain,
   updateProjectMarket,
   tryCreateDefaultProject,
+  setLoopsEnabled,
   archiveProject,
   restoreProject,
 } as const;

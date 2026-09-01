@@ -105,7 +105,14 @@ export async function handlePost(request: Request): Promise<Response> {
           ? 403
           : 404;
     return Response.json(
-      { error: result.reason },
+      {
+        error: result.reason,
+        ...(result.reason === "domain_not_allowed"
+          ? {
+              hint: "enable loops for this project via POST /api/internal/loops-enabled",
+            }
+          : {}),
+      },
       { status, headers: NO_STORE },
     );
   }
