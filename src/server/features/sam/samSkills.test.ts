@@ -13,6 +13,7 @@ describe("buildSamSkillSource", () => {
     expect(names).toEqual([
       "ai-visibility",
       "authority-plan",
+      "brand-facts",
       "competitive-landscape",
       "competitor-analysis",
       "content-brief",
@@ -28,6 +29,7 @@ describe("buildSamSkillSource", () => {
       "niceseo-pillars",
       "not-in-openseo",
       "page-growth",
+      "page-pruning",
       "rank-slippage",
       "sales-proposal",
       "seo-audit",

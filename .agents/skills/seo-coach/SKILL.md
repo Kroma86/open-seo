@@ -48,6 +48,7 @@ Good starting points:
 ## What each workflow does
 
 - `seo-project-setup`: verifies MCP, interviews the user about scope, goals, positioning, competitors, and key pages, and saves it all to the project's shared context. Also connects Google Search Console (or imports GSC exports).
+- `brand-facts`: one canonical brand record with provenance tags; DRAFT llms.txt and JSON-LD from confirmed facts only.
 - `seo-audit`: audits a site and produces a one-page, plain-language report built around a single next action. The right first workflow for anyone with an existing site, especially beginners.
 - `keyword-research`: finds search opportunities from seed topics and evaluates volume, difficulty, CPC, intent, and SERPs.
 - `keyword-clustering`: groups keywords by intent and maps clusters to existing or proposed pages.
@@ -56,6 +57,7 @@ Good starting points:
 - `local-seo`: audits a Google Business Profile against local competitors and maps Maps visibility around a location.
 - `link-prospecting`: finds likely link opportunities, discovers contact paths, and drafts outreach.
 - `page-growth`: names our own pages that can win more Google clicks (Search Atlas: Find Page Growth Opportunities).
+- `page-pruning`: prune / noindex / merge candidates on this project's site (thin, orphan, decayed, near-duplicate). Recommends only.
 - `ai-visibility`: question gaps for AI answers; mention rate only when measured (Search Atlas: Find Content Opportunities).
 - `authority-plan`: 30/90-day link plan, no buying links (Search Atlas: backlink / growth plans).
 - `site-health`: read-only crawl issues (Search Atlas: weekly site health). Does not auto-fix.
