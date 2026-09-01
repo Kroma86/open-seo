@@ -229,6 +229,18 @@ function flattenVisibleProperties(
   return visible;
 }
 
+function orderVisibleByAccountIds(
+  visible: VisibleProperty[],
+  accountIds: string[],
+): VisibleProperty[] {
+  const rank = new Map(accountIds.map((id, index) => [id, index]));
+  return visible.toSorted((left, right) => {
+    const leftRank = rank.get(left.accountId) ?? Number.POSITIVE_INFINITY;
+    const rightRank = rank.get(right.accountId) ?? Number.POSITIVE_INFINITY;
+    return leftRank - rightRank;
+  });
+}
+
 function toCandidates(properties: VisibleProperty[]): Ga4Candidate[] {
   return properties.slice(0, 20).map((property) => ({
     propertyId: property.propertyId,
@@ -391,7 +403,10 @@ export async function handlePost(request: Request): Promise<Response> {
     const listed = await Ga4Service.listPropertiesForUserWithGrantStatus(
       holder.userId,
     );
-    const visible = flattenVisibleProperties(listed);
+    const visible = orderVisibleByAccountIds(
+      flattenVisibleProperties(listed),
+      holder.accountIds,
+    );
     const holderCandidates = toCandidates(visible);
     for (const candidate of holderCandidates) {
       if (candidateUnion.length >= 20) break;
@@ -423,9 +438,14 @@ export async function handlePost(request: Request): Promise<Response> {
       break;
     }
 
-    const matches = visible.filter((property) =>
-      ga4DisplayNameMatches(property.displayName, domain),
-    );
+    const matches: VisibleProperty[] = [];
+    const seenPropertyIds = new Set<string>();
+    for (const property of visible) {
+      if (!ga4DisplayNameMatches(property.displayName, domain)) continue;
+      if (seenPropertyIds.has(property.propertyId)) continue;
+      seenPropertyIds.add(property.propertyId);
+      matches.push(property);
+    }
     if (matches.length === 0) continue;
     if (matches.length > 1) {
       return Response.json(

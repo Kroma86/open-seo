@@ -392,6 +392,26 @@ describe("internal gsc handlePost", () => {
     expectNoWrite();
   });
 
+  it("returns 200 idempotent when the requested URL differs only by a trailing slash", async () => {
+    getConnection.mockResolvedValue({
+      ...CONNECTION,
+      siteUrl: "https://example.com",
+    });
+
+    const res = await handlePost(
+      post({ projectId: PROJECT_ID, siteUrl: "https://example.com/" }, auth),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      projectId: PROJECT_ID,
+      siteUrl: "https://example.com",
+      connectedAt: CONNECTION.createdAt,
+      snapshot: SNAPSHOT,
+    });
+    expectNoWrite();
+    expect(listSitesForUserWithGrantStatus).not.toHaveBeenCalled();
+  });
+
   it("returns 409 already_connected for a different mapping and does not write", async () => {
     getConnection.mockResolvedValue(CONNECTION);
 

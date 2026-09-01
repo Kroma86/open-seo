@@ -570,6 +570,26 @@ describe("internal ga4 handlePost", () => {
     });
   });
 
+  it.each(["https://Example.com/path", "WWW.Example.com:443"])(
+    "normalises project domain %s and auto-picks the property named example.com",
+    async (rawDomain) => {
+      getProjectForOrganization.mockResolvedValueOnce({
+        ...PROJECT,
+        domain: rawDomain,
+      });
+
+      const res = await handlePost(post({ projectId: PROJECT_ID }, auth));
+      expect(res.status).toBe(200);
+      expect(setProperty).toHaveBeenCalledWith({
+        projectId: PROJECT_ID,
+        organizationId: ORG_ID,
+        propertyId: PROPERTY_ID,
+        accountId: "ga4_acct_early",
+        userId: "user_early",
+      });
+    },
+  );
+
   it.each([
     ["suffix shop", "example.comshop"],
     ["subdomain", "sub.example.com"],
@@ -746,6 +766,43 @@ describe("internal ga4 handlePost", () => {
       candidates: [{ propertyId: "properties/2", displayName: "other.com" }],
     });
     expectNoWrite();
+  });
+
+  it("auto-picks the earliest holder account when the same propertyId is visible twice", async () => {
+    listGrants.mockResolvedValue([
+      {
+        userId: "user_early",
+        accountId: "acc-new",
+        createdAt: new Date("2026-03-01T00:00:00.000Z"),
+      },
+      {
+        userId: "user_early",
+        accountId: "acc-old",
+        createdAt: new Date("2026-01-02T00:00:00.000Z"),
+      },
+    ]);
+    listPropertiesForUserWithGrantStatus.mockResolvedValue(
+      listedAccounts([
+        {
+          accountId: "acc-new",
+          properties: [{ propertyId: PROPERTY_ID, displayName: "example.com" }],
+        },
+        {
+          accountId: "acc-old",
+          properties: [{ propertyId: PROPERTY_ID, displayName: "example.com" }],
+        },
+      ]),
+    );
+
+    const res = await handlePost(post({ projectId: PROJECT_ID }, auth));
+    expect(res.status).toBe(200);
+    expect(setProperty).toHaveBeenCalledWith({
+      projectId: PROJECT_ID,
+      organizationId: ORG_ID,
+      propertyId: PROPERTY_ID,
+      accountId: "acc-old",
+      userId: "user_early",
+    });
   });
 
   it("skips accounts that require reconnect", async () => {

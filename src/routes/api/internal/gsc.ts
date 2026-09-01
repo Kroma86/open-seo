@@ -394,7 +394,10 @@ export async function handlePost(request: Request): Promise<Response> {
 
   const existing = await GscService.getConnection(projectId);
   if (existing) {
-    if (requestedSiteUrl == null || requestedSiteUrl === existing.siteUrl) {
+    if (
+      requestedSiteUrl == null ||
+      gscSiteUrlsEqual(requestedSiteUrl, existing.siteUrl)
+    ) {
       return Response.json(
         {
           projectId,
