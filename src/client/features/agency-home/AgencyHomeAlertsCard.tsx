@@ -23,9 +23,11 @@ function isParsedAlertCycle(
 export function AgencyHomeAlertsCard({
   data,
   isLoading,
+  isError = false,
 }: {
   data: LatestAlertCycleResult | null | undefined;
   isLoading: boolean;
+  isError?: boolean;
 }) {
   return (
     <section className="space-y-3">
@@ -46,6 +48,10 @@ export function AgencyHomeAlertsCard({
         <div className="flex justify-center py-8">
           <span className="loading loading-spinner loading-md" />
         </div>
+      ) : isError ? (
+        <p className="rounded-xl border border-dashed border-error/50 bg-error/5 px-4 py-8 text-center text-sm text-error">
+          Could not load alerts — try reloading the page.
+        </p>
       ) : !data ? (
         <p className="rounded-xl border border-dashed border-base-300/80 bg-base-200/30 px-4 py-8 text-center text-sm text-base-content/55">
           No alert cycles received yet.

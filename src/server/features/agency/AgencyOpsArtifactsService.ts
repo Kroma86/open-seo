@@ -117,7 +117,10 @@ async function latestAlertCycle(): Promise<LatestAlertCycleResult | null> {
         countsRaw as Record<string, unknown>,
       )) {
         if (typeof value === "number" && Number.isFinite(value)) {
-          countsBySeverity[key.toLowerCase()] = value;
+          const normalized = key.toLowerCase();
+          // Sum, don't overwrite: "High": 1 + "high": 2 → high: 3.
+          countsBySeverity[normalized] =
+            (countsBySeverity[normalized] ?? 0) + value;
         }
       }
     }

@@ -64,9 +64,16 @@ export async function handlePost(request: Request): Promise<Response> {
     }
     return Response.json({ id: result.id }, { status: 201, headers: NO_STORE });
   } catch (error) {
+    // Only the contract's validation errors map to 400. Anything else (DB
+    // unavailable, repository race) is a retryable server failure — a 400
+    // here would make the box-side pusher drop the artifact permanently.
+    const message = error instanceof Error ? error.message : "";
+    if (/^[a-zA-Z]+_invalid$/.test(message)) {
+      return Response.json({ error: message }, { status: 400, headers: NO_STORE });
+    }
     return Response.json(
-      { error: error instanceof Error ? error.message : "ingest_failed" },
-      { status: 400, headers: NO_STORE },
+      { error: "ingest_failed" },
+      { status: 500, headers: NO_STORE },
     );
   }
 }

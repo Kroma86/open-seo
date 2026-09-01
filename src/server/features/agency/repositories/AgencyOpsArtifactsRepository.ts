@@ -35,7 +35,13 @@ async function insertIfNew(
     )
     .limit(1);
 
-  return { id: existing[0]!.id, deduped: true };
+  if (!existing[0]) {
+    // Insert conflicted but the conflicting row is not findable (deleted
+    // between statements, or a different constraint fired). Surface a
+    // retryable server error, never a validation-shaped one.
+    throw new Error("ingest_conflict_lookup_failed");
+  }
+  return { id: existing[0].id, deduped: true };
 }
 
 async function list(input: { kind?: InsertInput["kind"]; limit?: number }) {

@@ -131,6 +131,24 @@ describe("agency-ops-artifacts handlePost", () => {
     expect(await res.json()).toEqual({ error: "content_invalid" });
   });
 
+  it("returns 500 ingest_failed (no internal message) on non-validation errors", async () => {
+    ingest.mockRejectedValue(new Error("LibsqlError: connection refused"));
+    const res = await handlePost(
+      post(validBody, { authorization: `Bearer ${TOKEN}` }),
+    );
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "ingest_failed" });
+  });
+
+  it("returns 500 for the repository conflict-lookup error", async () => {
+    ingest.mockRejectedValue(new Error("ingest_conflict_lookup_failed"));
+    const res = await handlePost(
+      post(validBody, { authorization: `Bearer ${TOKEN}` }),
+    );
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "ingest_failed" });
+  });
+
   it("returns 201 on happy path", async () => {
     const res = await handlePost(
       post(validBody, { authorization: `Bearer ${TOKEN}` }),

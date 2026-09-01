@@ -187,6 +187,18 @@ describe("AgencyOpsArtifactsService", () => {
     expect(latest?.receivedAt).toBeTruthy();
   });
 
+  it("latestAlertCycle sums severity counts that collide after lowercasing", async () => {
+    await AgencyOpsArtifactsService.ingest({
+      ...baseInput,
+      content: JSON.stringify({
+        counts_by_severity: { High: 1, high: 2 },
+        alerts: [],
+      }),
+    });
+    const latest = await AgencyOpsArtifactsService.latestAlertCycle();
+    expect(latest).toMatchObject({ countsBySeverity: { high: 3 } });
+  });
+
   it("latestAlertCycle returns parseError when the root is a JSON array", async () => {
     await AgencyOpsArtifactsService.ingest({
       ...baseInput,

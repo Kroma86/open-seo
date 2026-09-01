@@ -157,6 +157,7 @@ export function AgencyHomePage() {
         <AgencyHomeAlertsCard
           data={alertsQuery.data}
           isLoading={alertsQuery.isLoading}
+          isError={alertsQuery.isError}
         />
 
         <AgencyHomePortfolioTable
