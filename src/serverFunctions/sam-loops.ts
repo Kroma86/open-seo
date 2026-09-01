@@ -86,3 +86,10 @@ export const seedDefaultSamLoops = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     return SamLoopService.seedDefaultSamLoopsForProject(context.projectId);
   });
+
+export const getContentVelocity = createServerFn({ method: "POST" })
+  .middleware(requireProjectContext)
+  .validator(listSamLoopsSchema)
+  .handler(async ({ context }) => {
+    return SamLoopService.getContentVelocity(context.projectId);
+  });
