@@ -135,7 +135,6 @@ export function AgencyHomePortfolioTable({
                     key={row.projectId}
                     className="group cursor-pointer border-b border-base-300/40 transition-colors hover:bg-base-200/40 focus-visible:bg-base-200/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary/60"
                     tabIndex={0}
-                    role="link"
                     aria-label={`Open ${row.domain ?? row.projectName} dashboard`}
                     onClick={() =>
                       void navigate({
@@ -144,6 +143,9 @@ export function AgencyHomePortfolioTable({
                       })
                     }
                     onKeyDown={(e) => {
+                      // Only when the row itself has focus — never intercept
+                      // keys meant for focusable children (e.g. connect link).
+                      if (e.target !== e.currentTarget) return;
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         void navigate({
