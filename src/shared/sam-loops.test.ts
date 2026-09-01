@@ -35,34 +35,34 @@ describe("sam-loops shared helpers", () => {
       "ai-visibility",
       "striking-distance",
     ]);
-    const byName = Object.fromEntries(
-      DEFAULT_SAM_LOOP_TEMPLATES.map((t) => [t.name, t]),
-    );
-    const monthlyContent = byName["Monthly content"];
-    expect(monthlyContent?.sourceType).toBe("custom");
-    expect(monthlyContent?.cadence).toBe("monthly");
-    expect(monthlyContent?.customPrompt).toContain("content-topical-map");
-    expect(monthlyContent?.customPrompt).toContain("content-brief");
-    expect(monthlyContent?.customPrompt).toContain("content-draft");
-    expect(monthlyContent?.customPrompt).toContain("DRAFT");
-    expect(monthlyContent?.customPrompt).toContain("human review");
+    const monthlyContent = DEFAULT_SAM_LOOP_TEMPLATES[7];
+    expect(monthlyContent.name).toBe("Monthly content");
+    expect(monthlyContent.sourceType).toBe("custom");
+    expect(monthlyContent.cadence).toBe("monthly");
+    expect(monthlyContent.customPrompt).toContain("content-topical-map");
+    expect(monthlyContent.customPrompt).toContain("content-brief");
+    expect(monthlyContent.customPrompt).toContain("content-draft");
+    expect(monthlyContent.customPrompt).toContain("DRAFT");
+    expect(monthlyContent.customPrompt).toContain("human review");
 
-    const onPage = byName["On-page priorities"];
-    expect(onPage?.sourceType).toBe("custom");
-    expect(onPage?.cadence).toBe("weekly");
-    expect(onPage?.customPrompt).toContain("niceseo.ai");
-    expect(onPage?.customPrompt).toContain("too soon — skip");
-    expect(onPage?.customPrompt).toContain("propose_homegrown_otto_fixes");
-    expect(onPage?.customPrompt).toContain("Pending only");
-    expect(onPage?.customPrompt).not.toContain("run_site_audit");
+    const onPage = DEFAULT_SAM_LOOP_TEMPLATES[8];
+    expect(onPage.name).toBe("On-page priorities");
+    expect(onPage.sourceType).toBe("custom");
+    expect(onPage.cadence).toBe("weekly");
+    expect(onPage.customPrompt).toContain("niceseo.ai");
+    expect(onPage.customPrompt).toContain("too soon — skip");
+    expect(onPage.customPrompt).toContain("propose_homegrown_otto_fixes");
+    expect(onPage.customPrompt).toContain("Pending only");
+    expect(onPage.customPrompt).not.toContain("run_site_audit");
 
-    const keywords = byName["Keyword portfolio"];
-    expect(keywords?.sourceType).toBe("custom");
-    expect(keywords?.cadence).toBe("monthly");
-    expect(keywords?.customPrompt).toContain("niceseo.ai");
-    expect(keywords?.customPrompt).toContain("Do not buy keyword research");
-    expect(keywords?.customPrompt).toContain("research_keywords");
-    expect(keywords?.customPrompt).toContain("save_keywords");
+    const keywords = DEFAULT_SAM_LOOP_TEMPLATES[9];
+    expect(keywords.name).toBe("Keyword portfolio");
+    expect(keywords.sourceType).toBe("custom");
+    expect(keywords.cadence).toBe("monthly");
+    expect(keywords.customPrompt).toContain("niceseo.ai");
+    expect(keywords.customPrompt).toContain("Do not buy keyword research");
+    expect(keywords.customPrompt).toContain("research_keywords");
+    expect(keywords.customPrompt).toContain("save_keywords");
   });
 
   it("advances daily/weekly from the previous anchor without drift", () => {
