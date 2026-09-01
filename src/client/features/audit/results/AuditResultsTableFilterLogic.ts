@@ -1,6 +1,21 @@
 import type { AuditResultsData } from "@/client/features/audit/results/types";
+import {
+  duplicateGroupsByContentHash,
+  isDuplicatePage,
+  isH1NotOne,
+  isMissingMetaDescription,
+  isMissingTitle,
+  isNonIndexable,
+  isNotInSitemap,
+  isThinContent,
+  issueCountsByPageUrl,
+  matchesStatusClass,
+  pageHasIssues,
+  type StatusClass,
+} from "@/client/features/audit/results/PageExplorerLogic";
 
 export type PageRow = AuditResultsData["pages"][number];
+export type IssueRow = AuditResultsData["issues"][number];
 type PerformanceResultRow = AuditResultsData["lighthouse"][number];
 export type PerformanceRowData = PerformanceResultRow & {
   pageUrl: string | null;
@@ -23,6 +38,15 @@ export type PagesFilters = {
   minResponseMs: string;
   maxResponseMs: string;
   missingAlt: "all" | "yes" | "no";
+  statusClass: StatusClass;
+  nonIndexableOnly: boolean;
+  missingTitle: boolean;
+  missingMetaDescription: boolean;
+  h1NotOne: boolean;
+  thinContent: boolean;
+  hasIssues: boolean;
+  duplicatesOnly: boolean;
+  notInSitemap: boolean;
 };
 
 export type PerformanceFilters = {
@@ -44,6 +68,15 @@ export const EMPTY_PAGES_FILTERS: PagesFilters = {
   minResponseMs: "",
   maxResponseMs: "",
   missingAlt: "all",
+  statusClass: "all",
+  nonIndexableOnly: false,
+  missingTitle: false,
+  missingMetaDescription: false,
+  h1NotOne: false,
+  thinContent: false,
+  hasIssues: false,
+  duplicatesOnly: false,
+  notInSitemap: false,
 };
 
 export const EMPTY_PERFORMANCE_FILTERS: PerformanceFilters = {
@@ -70,8 +103,16 @@ export function isLighthouseFailure(row: LighthouseFailureFields) {
   return !!row.errorMessage || hasMissingLighthouseScores(row);
 }
 
-export function filterPages(rows: PageRow[], filters: PagesFilters) {
+export function filterPages(
+  rows: PageRow[],
+  filters: PagesFilters,
+  issues: ReadonlyArray<Pick<IssueRow, "pageUrl" | "severity">> = [],
+) {
   const query = filters.query.trim().toLowerCase();
+  const issueCounts = filters.hasIssues ? issueCountsByPageUrl(issues) : null;
+  const duplicateGroups = filters.duplicatesOnly
+    ? duplicateGroupsByContentHash(rows)
+    : null;
   return rows.filter((row) => {
     if (query) {
       const haystack = [row.url, row.title, row.metaDescription]
@@ -81,6 +122,7 @@ export function filterPages(rows: PageRow[], filters: PagesFilters) {
       if (!haystack.includes(query)) return false;
     }
     if (!matchesStatus(row.statusCode, filters.status)) return false;
+    if (!matchesStatusClass(row, filters.statusClass)) return false;
     if (!matchesRange(row.wordCount, filters.minWords, filters.maxWords)) {
       return false;
     }
@@ -99,6 +141,28 @@ export function filterPages(rows: PageRow[], filters: PagesFilters) {
     if (filters.missingAlt === "no" && row.imagesMissingAlt > 0) {
       return false;
     }
+    if (filters.nonIndexableOnly && !isNonIndexable(row)) return false;
+    if (filters.missingTitle && !isMissingTitle(row)) return false;
+    if (filters.missingMetaDescription && !isMissingMetaDescription(row)) {
+      return false;
+    }
+    if (filters.h1NotOne && !isH1NotOne(row)) return false;
+    if (filters.thinContent && !isThinContent(row)) return false;
+    if (
+      filters.hasIssues &&
+      issueCounts &&
+      !pageHasIssues(row.url, issueCounts)
+    ) {
+      return false;
+    }
+    if (
+      filters.duplicatesOnly &&
+      duplicateGroups &&
+      !isDuplicatePage(row, duplicateGroups)
+    ) {
+      return false;
+    }
+    if (filters.notInSitemap && !isNotInSitemap(row)) return false;
     return true;
   });
 }
