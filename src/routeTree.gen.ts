@@ -33,6 +33,8 @@ import { Route as AuthenticatedOnboardingIndexRouteImport } from './routes/_auth
 import { Route as ApiInternalTriggerSamLoopsRouteImport } from './routes/api/internal/trigger-sam-loops'
 import { Route as ApiInternalTrackerRouteImport } from './routes/api/internal/tracker'
 import { Route as ApiInternalProjectsRouteImport } from './routes/api/internal/projects'
+import { Route as ApiInternalGscRouteImport } from './routes/api/internal/gsc'
+import { Route as ApiInternalGa4RouteImport } from './routes/api/internal/ga4'
 import { Route as ApiInternalAuditsRouteImport } from './routes/api/internal/audits'
 import { Route as ApiInternalAgencyScoreInputsRouteImport } from './routes/api/internal/agency-score-inputs'
 import { Route as ApiInternalAgencyOttoProposalsRouteImport } from './routes/api/internal/agency-otto-proposals'
@@ -187,6 +189,16 @@ const ApiInternalTrackerRoute = ApiInternalTrackerRouteImport.update({
 const ApiInternalProjectsRoute = ApiInternalProjectsRouteImport.update({
   id: '/api/internal/projects',
   path: '/api/internal/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalGscRoute = ApiInternalGscRouteImport.update({
+  id: '/api/internal/gsc',
+  path: '/api/internal/gsc',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalGa4Route = ApiInternalGa4RouteImport.update({
+  id: '/api/internal/ga4',
+  path: '/api/internal/ga4',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiInternalAuditsRoute = ApiInternalAuditsRouteImport.update({
@@ -415,6 +427,8 @@ export interface FileRoutesByFullPath {
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
   '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
   '/api/internal/audits': typeof ApiInternalAuditsRoute
+  '/api/internal/ga4': typeof ApiInternalGa4Route
+  '/api/internal/gsc': typeof ApiInternalGscRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
   '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
@@ -471,6 +485,8 @@ export interface FileRoutesByTo {
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
   '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
   '/api/internal/audits': typeof ApiInternalAuditsRoute
+  '/api/internal/ga4': typeof ApiInternalGa4Route
+  '/api/internal/gsc': typeof ApiInternalGscRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
   '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
@@ -530,6 +546,8 @@ export interface FileRoutesById {
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
   '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
   '/api/internal/audits': typeof ApiInternalAuditsRoute
+  '/api/internal/ga4': typeof ApiInternalGa4Route
+  '/api/internal/gsc': typeof ApiInternalGscRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
   '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
@@ -589,6 +607,8 @@ export interface FileRouteTypes {
     | '/api/internal/agency-otto-proposals'
     | '/api/internal/agency-score-inputs'
     | '/api/internal/audits'
+    | '/api/internal/ga4'
+    | '/api/internal/gsc'
     | '/api/internal/projects'
     | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
@@ -645,6 +665,8 @@ export interface FileRouteTypes {
     | '/api/internal/agency-otto-proposals'
     | '/api/internal/agency-score-inputs'
     | '/api/internal/audits'
+    | '/api/internal/ga4'
+    | '/api/internal/gsc'
     | '/api/internal/projects'
     | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
@@ -703,6 +725,8 @@ export interface FileRouteTypes {
     | '/api/internal/agency-otto-proposals'
     | '/api/internal/agency-score-inputs'
     | '/api/internal/audits'
+    | '/api/internal/ga4'
+    | '/api/internal/gsc'
     | '/api/internal/projects'
     | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
@@ -750,6 +774,8 @@ export interface RootRouteChildren {
   ApiInternalAgencyOttoProposalsRoute: typeof ApiInternalAgencyOttoProposalsRoute
   ApiInternalAgencyScoreInputsRoute: typeof ApiInternalAgencyScoreInputsRoute
   ApiInternalAuditsRoute: typeof ApiInternalAuditsRoute
+  ApiInternalGa4Route: typeof ApiInternalGa4Route
+  ApiInternalGscRoute: typeof ApiInternalGscRoute
   ApiInternalProjectsRoute: typeof ApiInternalProjectsRoute
   ApiInternalTrackerRoute: typeof ApiInternalTrackerRoute
   ApiInternalTriggerSamLoopsRoute: typeof ApiInternalTriggerSamLoopsRoute
@@ -925,6 +951,20 @@ declare module '@tanstack/react-router' {
       path: '/api/internal/projects'
       fullPath: '/api/internal/projects'
       preLoaderRoute: typeof ApiInternalProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/gsc': {
+      id: '/api/internal/gsc'
+      path: '/api/internal/gsc'
+      fullPath: '/api/internal/gsc'
+      preLoaderRoute: typeof ApiInternalGscRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/ga4': {
+      id: '/api/internal/ga4'
+      path: '/api/internal/ga4'
+      fullPath: '/api/internal/ga4'
+      preLoaderRoute: typeof ApiInternalGa4RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/internal/audits': {
@@ -1361,6 +1401,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalAgencyOttoProposalsRoute: ApiInternalAgencyOttoProposalsRoute,
   ApiInternalAgencyScoreInputsRoute: ApiInternalAgencyScoreInputsRoute,
   ApiInternalAuditsRoute: ApiInternalAuditsRoute,
+  ApiInternalGa4Route: ApiInternalGa4Route,
+  ApiInternalGscRoute: ApiInternalGscRoute,
   ApiInternalProjectsRoute: ApiInternalProjectsRoute,
   ApiInternalTrackerRoute: ApiInternalTrackerRoute,
   ApiInternalTriggerSamLoopsRoute: ApiInternalTriggerSamLoopsRoute,

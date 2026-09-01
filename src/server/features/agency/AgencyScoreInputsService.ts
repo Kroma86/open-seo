@@ -137,7 +137,7 @@ function emptyInputs(domain: string): AgencyScoreInputs {
   };
 }
 
-async function loadGscTotals(
+export async function loadGscTotals(
   projectId: string,
   connected: boolean,
 ): Promise<AgencyScoreInputs["gsc"]> {
