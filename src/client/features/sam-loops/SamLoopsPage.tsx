@@ -52,10 +52,24 @@ function formatWhen(iso: string | null | undefined) {
   }
 }
 
+/** Read + clear agency-home mission handoff (sessionStorage). */
+function takeSelectedRunHandoff(projectId: string): string | null {
+  try {
+    const key = `sam-loops-select-run:${projectId}`;
+    const runId = sessionStorage.getItem(key)?.trim() || null;
+    sessionStorage.removeItem(key);
+    return runId;
+  } catch {
+    return null;
+  }
+}
+
 export function SamLoopsPage({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
   const [askDraft, setAskDraft] = useState<string>(ROTATING_ASKS[0]);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(() =>
+    takeSelectedRunHandoff(projectId),
+  );
   const reportRef = useRef<HTMLElement>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [createMode, setCreateMode] = useState<"skill" | "custom">("skill");
