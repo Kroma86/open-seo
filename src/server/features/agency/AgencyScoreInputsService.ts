@@ -15,6 +15,7 @@ import { GscConnectionRepository } from "@/server/features/gsc/repositories/GscC
 import { GscService } from "@/server/features/gsc/services/GscService";
 import { RankTrackingRepository } from "@/server/features/rank-tracking/repositories/RankTrackingRepository";
 import { getLatestResults } from "@/server/features/rank-tracking/services/rankTrackingResults";
+import { getAgencyExportBlock } from "@/server/features/ai-visibility/services/aiVisibilityResults";
 
 export type GscConnectionStatus = {
   connected: boolean;
@@ -89,6 +90,16 @@ export type AgencyScoreInputs = {
     lighthouseSeoAvg: number | null;
     source: "openseo_audit";
   } | null;
+  aiVisibility: {
+    capturedAt: string | null;
+    totalMentions: number | null;
+    partialMentions: boolean;
+    shareOfVoicePct: number | null;
+    promptsWithBrand: number | null;
+    promptsChecked: number | null;
+    promptSetVersion: number | null;
+    source: "dataforseo_llm_mentions";
+  } | null;
 };
 
 const DISCONNECTED_GSC: GscConnectionStatus = {
@@ -122,6 +133,7 @@ function emptyInputs(domain: string): AgencyScoreInputs {
     ranks: null,
     backlinks: null,
     audit: null,
+    aiVisibility: null,
   };
 }
 
@@ -375,10 +387,11 @@ export async function getAgencyScoreInputs(input: {
     return emptyInputs(domain);
   }
 
-  const [ranks, backlinks, audit, connections] = await Promise.all([
+  const [ranks, backlinks, audit, aiVisibility, connections] = await Promise.all([
     loadRanks(project.id),
     loadBacklinks(project.id),
     loadAudit(project.id),
+    getAgencyExportBlock(project.id),
     loadConnections(project.id),
   ]);
 
@@ -396,6 +409,7 @@ export async function getAgencyScoreInputs(input: {
     ranks,
     backlinks,
     audit,
+    aiVisibility,
   };
 }
 

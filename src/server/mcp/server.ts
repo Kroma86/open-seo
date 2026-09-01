@@ -45,6 +45,9 @@ import {
   exploreAiPromptTool,
   getAiBrandVisibilityTool,
 } from "@/server/mcp/tools/ai-search-tools";
+import { getAiVisibilityTrendTool } from "@/server/mcp/tools/get-ai-visibility-trend";
+import { manageAiVisibilityTrackingTool } from "@/server/mcp/tools/manage-ai-visibility-tracking";
+import { runAiVisibilityCheckTool } from "@/server/mcp/tools/run-ai-visibility-check";
 import {
   findSerpCompetitorsTool,
   getGoogleBusinessQuestionsTool,
@@ -206,6 +209,9 @@ export function createOpenSeoMcpServer(authProps: McpProps) {
   register(getKeywordMetricsTool);
   register(getAiBrandVisibilityTool);
   register(exploreAiPromptTool);
+  register(getAiVisibilityTrendTool);
+  register(runAiVisibilityCheckTool);
+  register(manageAiVisibilityTrackingTool);
   register(getSearchConsolePerformanceTool);
   register(inspectUrlsTool);
   register(getGoogleAnalyticsOrganicLandingPagesTool);

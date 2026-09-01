@@ -40,6 +40,11 @@ const projectNavItems = [
     icon: TrendingUp,
   },
   {
+    to: "/p/$projectId/ai-visibility" as const,
+    label: "AI Visibility",
+    icon: Sparkles,
+  },
+  {
     to: "/p/$projectId/search-performance" as const,
     label: "GSC Insights",
     icon: GoogleGlyphMuted,
@@ -137,6 +142,7 @@ export function getProjectNavGroups(projectId: string) {
       items: [
         byPath("/p/$projectId/search-performance"),
         byPath("/p/$projectId/rank-tracking"),
+        byPath("/p/$projectId/ai-visibility"),
         byPath("/p/$projectId/saved"),
         byPath("/p/$projectId/audit"),
         byPath("/p/$projectId/loops"),

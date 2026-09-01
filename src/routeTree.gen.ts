@@ -56,6 +56,7 @@ import { Route as ProjectPProjectIdDomainRouteImport } from './routes/_project/p
 import { Route as ProjectPProjectIdBrandLookupRouteImport } from './routes/_project/p/$projectId/brand-lookup'
 import { Route as ProjectPProjectIdBacklinksRouteImport } from './routes/_project/p/$projectId/backlinks'
 import { Route as ProjectPProjectIdAuditRouteImport } from './routes/_project/p/$projectId/audit'
+import { Route as ProjectPProjectIdAiVisibilityRouteImport } from './routes/_project/p/$projectId/ai-visibility'
 import { Route as ProjectPProjectIdSettingsIndexRouteImport } from './routes/_project/p/$projectId/settings/index'
 import { Route as ProjectPProjectIdRankTrackingIndexRouteImport } from './routes/_project/p/$projectId/rank-tracking/index'
 import { Route as ProjectPProjectIdAuditIndexRouteImport } from './routes/_project/p/$projectId/audit/index'
@@ -311,6 +312,12 @@ const ProjectPProjectIdAuditRoute = ProjectPProjectIdAuditRouteImport.update({
   path: '/audit',
   getParentRoute: () => ProjectPProjectIdRouteRoute,
 } as any)
+const ProjectPProjectIdAiVisibilityRoute =
+  ProjectPProjectIdAiVisibilityRouteImport.update({
+    id: '/ai-visibility',
+    path: '/ai-visibility',
+    getParentRoute: () => ProjectPProjectIdRouteRoute,
+  } as any)
 const ProjectPProjectIdSettingsIndexRoute =
   ProjectPProjectIdSettingsIndexRouteImport.update({
     id: '/',
@@ -383,6 +390,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
   '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
   '/onboarding/': typeof AuthenticatedOnboardingIndexRoute
+  '/p/$projectId/ai-visibility': typeof ProjectPProjectIdAiVisibilityRoute
   '/p/$projectId/audit': typeof ProjectPProjectIdAuditRouteWithChildren
   '/p/$projectId/backlinks': typeof ProjectPProjectIdBacklinksRoute
   '/p/$projectId/brand-lookup': typeof ProjectPProjectIdBrandLookupRoute
@@ -434,6 +442,7 @@ export interface FileRoutesByTo {
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
   '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
   '/onboarding': typeof AuthenticatedOnboardingIndexRoute
+  '/p/$projectId/ai-visibility': typeof ProjectPProjectIdAiVisibilityRoute
   '/p/$projectId/backlinks': typeof ProjectPProjectIdBacklinksRoute
   '/p/$projectId/brand-lookup': typeof ProjectPProjectIdBrandLookupRoute
   '/p/$projectId/domain': typeof ProjectPProjectIdDomainRoute
@@ -488,6 +497,7 @@ export interface FileRoutesById {
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
   '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
   '/_authenticated/onboarding/': typeof AuthenticatedOnboardingIndexRoute
+  '/_project/p/$projectId/ai-visibility': typeof ProjectPProjectIdAiVisibilityRoute
   '/_project/p/$projectId/audit': typeof ProjectPProjectIdAuditRouteWithChildren
   '/_project/p/$projectId/backlinks': typeof ProjectPProjectIdBacklinksRoute
   '/_project/p/$projectId/brand-lookup': typeof ProjectPProjectIdBrandLookupRoute
@@ -542,6 +552,7 @@ export interface FileRouteTypes {
     | '/api/internal/agency-otto-proposals'
     | '/api/internal/agency-score-inputs'
     | '/onboarding/'
+    | '/p/$projectId/ai-visibility'
     | '/p/$projectId/audit'
     | '/p/$projectId/backlinks'
     | '/p/$projectId/brand-lookup'
@@ -593,6 +604,7 @@ export interface FileRouteTypes {
     | '/api/internal/agency-otto-proposals'
     | '/api/internal/agency-score-inputs'
     | '/onboarding'
+    | '/p/$projectId/ai-visibility'
     | '/p/$projectId/backlinks'
     | '/p/$projectId/brand-lookup'
     | '/p/$projectId/domain'
@@ -646,6 +658,7 @@ export interface FileRouteTypes {
     | '/api/internal/agency-otto-proposals'
     | '/api/internal/agency-score-inputs'
     | '/_authenticated/onboarding/'
+    | '/_project/p/$projectId/ai-visibility'
     | '/_project/p/$projectId/audit'
     | '/_project/p/$projectId/backlinks'
     | '/_project/p/$projectId/brand-lookup'
@@ -1022,6 +1035,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectPProjectIdAuditRouteImport
       parentRoute: typeof ProjectPProjectIdRouteRoute
     }
+    '/_project/p/$projectId/ai-visibility': {
+      id: '/_project/p/$projectId/ai-visibility'
+      path: '/ai-visibility'
+      fullPath: '/p/$projectId/ai-visibility'
+      preLoaderRoute: typeof ProjectPProjectIdAiVisibilityRouteImport
+      parentRoute: typeof ProjectPProjectIdRouteRoute
+    }
     '/_project/p/$projectId/settings/': {
       id: '/_project/p/$projectId/settings/'
       path: '/'
@@ -1158,6 +1178,7 @@ const ProjectPProjectIdSettingsRouteWithChildren =
   )
 
 interface ProjectPProjectIdRouteRouteChildren {
+  ProjectPProjectIdAiVisibilityRoute: typeof ProjectPProjectIdAiVisibilityRoute
   ProjectPProjectIdAuditRoute: typeof ProjectPProjectIdAuditRouteWithChildren
   ProjectPProjectIdBacklinksRoute: typeof ProjectPProjectIdBacklinksRoute
   ProjectPProjectIdBrandLookupRoute: typeof ProjectPProjectIdBrandLookupRoute
@@ -1175,6 +1196,7 @@ interface ProjectPProjectIdRouteRouteChildren {
 
 const ProjectPProjectIdRouteRouteChildren: ProjectPProjectIdRouteRouteChildren =
   {
+    ProjectPProjectIdAiVisibilityRoute: ProjectPProjectIdAiVisibilityRoute,
     ProjectPProjectIdAuditRoute: ProjectPProjectIdAuditRouteWithChildren,
     ProjectPProjectIdBacklinksRoute: ProjectPProjectIdBacklinksRoute,
     ProjectPProjectIdBrandLookupRoute: ProjectPProjectIdBrandLookupRoute,
