@@ -1,25 +1,26 @@
 // Plain-English labels and filter grouping for ops artifact kinds.
 // Kept in a .ts helper (not the .tsx page) so vitest can collect its tests.
-export type OpsKindFilter =
-  | "all"
-  | "alert-cycle"
-  | "monthly-report"
-  | "digest"
-  | "index-watchdog"
-  | "schema-proposals"
-  | "citations";
+// Filter/pill KEYS derive from the shared KINDS list so a kind cannot exist
+// in the API without appearing in the UI lists.
+import { KINDS, type Kind } from "@/shared/agency-ops";
+
+export type OpsKindFilter = "all" | Kind;
+
+const FILTER_LABELS: Record<Kind, string> = {
+  "alert-cycle": "Alerts",
+  "monthly-report": "Reports",
+  digest: "Digests",
+  "index-watchdog": "Indexability checks",
+  "schema-proposals": "Schema proposals",
+  citations: "Citation checks",
+};
 
 export const KIND_FILTERS: { id: OpsKindFilter; label: string }[] = [
   { id: "all", label: "All" },
-  { id: "alert-cycle", label: "Alerts" },
-  { id: "monthly-report", label: "Reports" },
-  { id: "digest", label: "Digests" },
-  { id: "index-watchdog", label: "Indexability checks" },
-  { id: "schema-proposals", label: "Schema proposals" },
-  { id: "citations", label: "Citation checks" },
+  ...KINDS.map((id) => ({ id, label: FILTER_LABELS[id] })),
 ];
 
-const KIND_PILLS: Record<string, { label: string; tone: string }> = {
+const KIND_PILLS: Record<Kind, { label: string; tone: string }> = {
   "alert-cycle": { label: "alert", tone: "badge-error" },
   "monthly-report": { label: "report", tone: "badge-primary" },
   digest: { label: "digest", tone: "badge-ghost" },
@@ -29,5 +30,5 @@ const KIND_PILLS: Record<string, { label: string; tone: string }> = {
 };
 
 export function kindPillMeta(kind: string): { label: string; tone: string } {
-  return KIND_PILLS[kind] ?? { label: kind, tone: "badge-ghost" };
+  return KIND_PILLS[kind as Kind] ?? { label: kind, tone: "badge-ghost" };
 }

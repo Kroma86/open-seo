@@ -173,6 +173,21 @@ describe("AgencyOpsArtifactsService", () => {
     expect(row?.contentType).toBe("markdown");
   });
 
+  it("stores canonical contentType markdown unchanged", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "monthly-report",
+      domain: null,
+      date: "2026-09-01",
+      contentType: "markdown",
+      content: "# Monthly report",
+      sourceKey: "monthly-report-2026-09.md",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.contentType).toBe("markdown");
+  });
+
   it("accepts a citations artifact (md, fleet-wide)", async () => {
     const result = await AgencyOpsArtifactsService.ingest({
       kind: "citations",

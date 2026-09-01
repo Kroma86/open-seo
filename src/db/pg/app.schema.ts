@@ -570,7 +570,16 @@ export const agencyOpsArtifacts = pgTable(
   {
     id: text("id").primaryKey(),
     kind: text("kind", {
-      enum: ["alert-cycle", "monthly-report", "digest"],
+      // Plain text column; the enum list is type-level only and mirrors the
+      // shared KINDS list in src/shared/agency-ops.ts (no migration needed).
+      enum: [
+        "alert-cycle",
+        "monthly-report",
+        "digest",
+        "index-watchdog",
+        "schema-proposals",
+        "citations",
+      ],
     }).notNull(),
     domain: text("domain"),
     date: text("date").notNull(),

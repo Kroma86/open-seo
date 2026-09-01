@@ -107,6 +107,15 @@ function JsonDetail({ content }: { content: string }) {
   );
 }
 
+// Plain escaped-text path for any content type other than json — no JSON.parse.
+function TextDetail({ content }: { content: string }) {
+  return (
+    <pre className="overflow-x-auto whitespace-pre-wrap text-sm text-base-content/85">
+      {content}
+    </pre>
+  );
+}
+
 function ArtifactDetail({
   artifact,
 }: {
@@ -135,10 +144,14 @@ function ArtifactDetail({
           title="report"
           className="h-[70vh] w-full rounded-xl ring-1 ring-base-300/60"
         />
-      ) : artifact.kind === "alert-cycle" ? (
-        <AlertCycleDetail content={artifact.content} />
+      ) : artifact.contentType === "json" ? (
+        artifact.kind === "alert-cycle" ? (
+          <AlertCycleDetail content={artifact.content} />
+        ) : (
+          <JsonDetail content={artifact.content} />
+        )
       ) : (
-        <JsonDetail content={artifact.content} />
+        <TextDetail content={artifact.content} />
       )}
     </article>
   );

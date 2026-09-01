@@ -1,23 +1,17 @@
 import { AgencyOpsArtifactsRepository } from "@/server/features/agency/repositories/AgencyOpsArtifactsRepository";
+import { KINDS, type Kind } from "@/shared/agency-ops";
 
-// Single source of truth for accepted kinds — the zod schema in
-// src/types/schemas/agency-ops.ts derives from this (the drizzle table stores
-// kind as plain text, so no migration is needed to add kinds here).
-export const KINDS = [
-  "alert-cycle",
-  "monthly-report",
-  "digest",
-  "index-watchdog",
-  "schema-proposals",
-  "citations",
-] as const;
+// KINDS lives in src/shared/agency-ops.ts (single source of truth); re-exported
+// here for existing consumers. The drizzle table stores kind as plain text, so
+// no migration is needed to add kinds.
+export { KINDS };
+export type { Kind };
 const CONTENT_TYPES = ["json", "html", "markdown"] as const;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_CONTENT_LENGTH = 262_144;
 const MAX_DOMAIN_LENGTH = 253;
 const MAX_SOURCE_KEY_LENGTH = 300;
 
-export type Kind = (typeof KINDS)[number];
 type ContentType = (typeof CONTENT_TYPES)[number];
 
 export type IngestBody = {

@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { KINDS } from "@/server/features/agency/AgencyOpsArtifactsService";
+import { KINDS } from "@/shared/agency-ops";
 
-// The drizzle table stores kind as plain text; KINDS in the service is the
-// single source of truth so new kinds need no schema/migration change.
+// The drizzle table stores kind as plain text; KINDS in the shared module is
+// the single source of truth so new kinds need no schema/migration change.
 const kindEnum = z.enum(KINDS);
 
 export const listOpsArtifactsSchema = z.object({

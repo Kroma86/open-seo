@@ -5,14 +5,12 @@ import { agencyOpsArtifacts } from "@/db/schema";
 
 type Row = InferInsertModel<typeof agencyOpsArtifacts>;
 
-// The drizzle column enum only mirrors the kinds that existed when the table
-// was created; the column stores plain text and the service's KINDS list is
-// the source of truth, so the repository accepts any kind/contentType string
-// and narrows only at the query-builder boundary.
-type InsertInput = Pick<Row, "domain" | "date" | "content" | "sourceKey"> & {
-  kind: string;
-  contentType: string;
-};
+// The drizzle column enum mirrors the shared KINDS list
+// (src/shared/agency-ops.ts), so kind/contentType flow through without casts.
+type InsertInput = Pick<
+  Row,
+  "domain" | "date" | "content" | "sourceKey" | "kind" | "contentType"
+>;
 
 async function insertIfNew(
   input: InsertInput,
@@ -20,7 +18,7 @@ async function insertIfNew(
   const id = crypto.randomUUID();
   const inserted = await db
     .insert(agencyOpsArtifacts)
-    .values({ id, ...input } as Row)
+    .values({ id, ...input })
     .onConflictDoNothing({
       target: [agencyOpsArtifacts.kind, agencyOpsArtifacts.sourceKey],
     })
@@ -35,7 +33,7 @@ async function insertIfNew(
     .from(agencyOpsArtifacts)
     .where(
       and(
-        eq(agencyOpsArtifacts.kind, input.kind as Row["kind"]),
+        eq(agencyOpsArtifacts.kind, input.kind),
         eq(agencyOpsArtifacts.sourceKey, input.sourceKey),
       ),
     )
@@ -50,7 +48,7 @@ async function insertIfNew(
   return { id: existing[0].id, deduped: true };
 }
 
-async function list(input: { kind?: string; limit?: number }) {
+async function list(input: { kind?: Row["kind"]; limit?: number }) {
   const limit = input.limit ?? 50;
   const base = db
     .select({
@@ -67,7 +65,7 @@ async function list(input: { kind?: string; limit?: number }) {
     .limit(limit);
 
   if (input.kind) {
-    return base.where(eq(agencyOpsArtifacts.kind, input.kind as Row["kind"]));
+    return base.where(eq(agencyOpsArtifacts.kind, input.kind));
   }
   return base;
 }
@@ -81,11 +79,11 @@ async function getById(id: string) {
   return rows[0] ?? null;
 }
 
-async function latestByKind(kind: string) {
+async function latestByKind(kind: Row["kind"]) {
   const rows = await db
     .select()
     .from(agencyOpsArtifacts)
-    .where(eq(agencyOpsArtifacts.kind, kind as Row["kind"]))
+    .where(eq(agencyOpsArtifacts.kind, kind))
     .orderBy(desc(agencyOpsArtifacts.receivedAt))
     .limit(1);
   return rows[0] ?? null;
