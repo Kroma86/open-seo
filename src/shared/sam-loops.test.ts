@@ -17,9 +17,14 @@ describe("sam-loops shared helpers", () => {
     vi.restoreAllMocks();
   });
 
-  it("exposes the seven default skill templates and a 24-step cap", () => {
+  it("exposes the eight default templates and a 24-step cap", () => {
     expect(SAM_LOOP_STEP_CAP).toBe(24);
-    expect(DEFAULT_SAM_LOOP_TEMPLATES.map((t) => t.skillName)).toEqual([
+    expect(DEFAULT_SAM_LOOP_TEMPLATES).toHaveLength(8);
+    expect(
+      DEFAULT_SAM_LOOP_TEMPLATES.filter(
+        (t) => t.sourceType === "skill",
+      ).map((t) => t.skillName),
+    ).toEqual([
       "site-health",
       "rank-slippage",
       "niceseo-pillars",
@@ -28,6 +33,15 @@ describe("sam-loops shared helpers", () => {
       "ai-visibility",
       "striking-distance",
     ]);
+    const monthlyContent = DEFAULT_SAM_LOOP_TEMPLATES[7];
+    expect(monthlyContent.name).toBe("Monthly content");
+    expect(monthlyContent.sourceType).toBe("custom");
+    expect(monthlyContent.cadence).toBe("monthly");
+    expect(monthlyContent.customPrompt).toContain("content-topical-map");
+    expect(monthlyContent.customPrompt).toContain("content-brief");
+    expect(monthlyContent.customPrompt).toContain("content-draft");
+    expect(monthlyContent.customPrompt).toContain("DRAFT");
+    expect(monthlyContent.customPrompt).toContain("human review");
   });
 
   it("advances daily/weekly from the previous anchor without drift", () => {

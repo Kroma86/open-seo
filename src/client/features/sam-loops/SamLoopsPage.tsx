@@ -156,11 +156,16 @@ export function SamLoopsPage({ projectId }: { projectId: string }) {
   }, [selectedRunId]);
 
   const chipSkills = useMemo(() => {
-    const fromDefaults = DEFAULT_SAM_LOOP_TEMPLATES.map((t) => ({
-      name: t.name,
-      skillName: t.skillName,
-      cadence: t.cadence,
-    }));
+    const fromDefaults = DEFAULT_SAM_LOOP_TEMPLATES.flatMap((t) => {
+      if (t.sourceType !== "skill") return [];
+      return [
+        {
+          name: t.name,
+          skillName: t.skillName,
+          cadence: t.cadence,
+        },
+      ];
+    });
     // Prefer seeded defaults; fill from skill catalog for chips beyond defaults.
     const seen = new Set<string>(fromDefaults.map((c) => c.skillName));
     const extras = skills
@@ -317,10 +322,11 @@ export function SamLoopsPage({ projectId }: { projectId: string }) {
               >
                 {(skills.length > 0
                   ? skills
-                  : DEFAULT_SAM_LOOP_TEMPLATES.map((t) => ({
-                      name: t.skillName,
-                      description: t.name,
-                    }))
+                  : DEFAULT_SAM_LOOP_TEMPLATES.flatMap((t) =>
+                      t.sourceType === "skill"
+                        ? [{ name: t.skillName, description: t.name }]
+                        : [],
+                    )
                 ).map((skill) => (
                   <option key={skill.name} value={skill.name}>
                     {skill.name}

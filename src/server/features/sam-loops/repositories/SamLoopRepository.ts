@@ -201,7 +201,7 @@ async function getRecentRunsForProject(input: {
 }
 
 /**
- * Insert missing default skill loops for a project. Idempotent via the
+ * Insert missing default loops for a project. Idempotent via the
  * (projectId, name) unique index — conflicts are skipped (safe under
  * concurrent createProject + listSamLoops seeding).
  */
@@ -218,9 +218,11 @@ async function ensureDefaultLoops(projectId: string) {
         id: crypto.randomUUID(),
         projectId,
         name: template.name,
-        sourceType: "skill",
-        skillName: template.skillName,
-        customPrompt: null,
+        sourceType: template.sourceType,
+        skillName:
+          template.sourceType === "skill" ? template.skillName : null,
+        customPrompt:
+          template.sourceType === "custom" ? template.customPrompt : null,
         cadence: template.cadence,
         isEnabled: true,
         nextRunAt: computeNextSamLoopRunAt(template.cadence),

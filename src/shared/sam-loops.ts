@@ -4,42 +4,57 @@ import { computeNextCheckAt } from "@/shared/rank-tracking";
 
 export type SamLoopCadence = InferSelectModel<typeof samLoops>["cadence"];
 
-/** Default skill-backed loops seeded for every project (dogfood + clients). */
+/** Default loops seeded for every project (dogfood + clients). */
 export const DEFAULT_SAM_LOOP_TEMPLATES = [
   {
     name: "Site health",
+    sourceType: "skill" as const,
     skillName: "site-health",
     cadence: "weekly" as const,
   },
   {
     name: "Rank slippage",
+    sourceType: "skill" as const,
     skillName: "rank-slippage",
     cadence: "daily" as const,
   },
   {
     name: "NiceSEO pillars",
+    sourceType: "skill" as const,
     skillName: "niceseo-pillars",
     cadence: "weekly" as const,
   },
   {
     name: "Page growth",
+    sourceType: "skill" as const,
     skillName: "page-growth",
     cadence: "monthly" as const,
   },
   {
     name: "Authority plan",
+    sourceType: "skill" as const,
     skillName: "authority-plan",
     cadence: "monthly" as const,
   },
   {
     name: "AI visibility",
+    sourceType: "skill" as const,
     skillName: "ai-visibility",
     cadence: "weekly" as const,
   },
   {
     name: "Striking distance",
+    sourceType: "skill" as const,
     skillName: "striking-distance",
     cadence: "monthly" as const,
+  },
+  {
+    name: "Monthly content",
+    sourceType: "custom" as const,
+    customPrompt:
+      "Each month, run the content-topical-map skill and refresh this project's topical map. Reuse the saved map when it is under 60 days old. From that map, pick the single highest-priority uncovered row. This loop's configuration names that row as the target, so content-brief can run. Run content-brief on it. Then run content-draft on the brief. Put the article in this loop report as a DRAFT for human review. Nothing is ever published by this loop. The draft always waits for a human. If the SERP fetch fails, report that and stop. Do not invent coverage gaps.",
+    cadence: "monthly" as const,
+    skillName: null as string | null,
   },
 ] as const;
 
