@@ -15,7 +15,7 @@ function QuietCell({ children }: { children: string }) {
 function SetupPill({ ok, label }: { ok: boolean; label: string }) {
   return (
     <AgencyHomeStatusPill
-      label={ok ? `${label} ✓` : label}
+      label={ok ? `${label} ✓` : `${label} —`}
       tone={ok ? "success" : "muted"}
     />
   );

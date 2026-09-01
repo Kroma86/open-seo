@@ -5,11 +5,13 @@ export type AgencyHomePillTone =
   | "muted"
   | "info";
 
+// Solid daisyUI color + matching -content text: theme-owned contrast in both
+// light and dark. Tinted text-on-transparent failed WCAG AA on light themes.
 const TONE_CLASS: Record<AgencyHomePillTone, string> = {
-  success: "bg-success/12 text-success",
-  warning: "bg-warning/12 text-warning",
-  error: "bg-error/12 text-error",
-  muted: "bg-base-200 text-base-content/45",
+  success: "bg-success text-success-content",
+  warning: "bg-warning text-warning-content",
+  error: "bg-error text-error-content",
+  muted: "bg-base-200 text-base-content/70",
   info: "bg-primary/10 text-primary",
 };
 

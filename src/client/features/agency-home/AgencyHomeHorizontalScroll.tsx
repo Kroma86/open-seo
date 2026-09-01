@@ -28,13 +28,18 @@ export function AgencyHomeHorizontalScroll({
     const el = scrollRef.current;
     if (!el) return;
     el.addEventListener("scroll", updateScrollState, { passive: true });
-    const observer = new ResizeObserver(updateScrollState);
-    observer.observe(el);
+    const resizeObserver = new ResizeObserver(updateScrollState);
+    resizeObserver.observe(el);
+    // Content changes alter scrollWidth without resizing the container, so
+    // watch the child list instead of re-binding on every parent render.
+    const mutationObserver = new MutationObserver(updateScrollState);
+    mutationObserver.observe(el, { childList: true, subtree: true });
     return () => {
       el.removeEventListener("scroll", updateScrollState);
-      observer.disconnect();
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
     };
-  }, [updateScrollState, children]);
+  }, [updateScrollState]);
 
   const scrollBy = (direction: "left" | "right") => {
     scrollRef.current?.scrollBy({
@@ -61,7 +66,7 @@ export function AgencyHomeHorizontalScroll({
       {canScrollLeft ? (
         <button
           type="button"
-          className="btn btn-circle btn-ghost btn-xs absolute left-0 top-1/2 z-20 -translate-y-1/2 opacity-0 shadow-sm ring-1 ring-base-300/60 transition group-hover/rail:opacity-100"
+          className="btn btn-circle btn-ghost btn-xs absolute left-0 top-1/2 z-20 -translate-y-1/2 pointer-events-none opacity-0 shadow-sm ring-1 ring-base-300/60 transition group-hover/rail:pointer-events-auto group-hover/rail:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
           aria-label="Scroll left"
           onClick={() => scrollBy("left")}
         >
@@ -71,7 +76,7 @@ export function AgencyHomeHorizontalScroll({
       {canScrollRight ? (
         <button
           type="button"
-          className="btn btn-circle btn-ghost btn-xs absolute right-0 top-1/2 z-20 -translate-y-1/2 opacity-0 shadow-sm ring-1 ring-base-300/60 transition group-hover/rail:opacity-100"
+          className="btn btn-circle btn-ghost btn-xs absolute right-0 top-1/2 z-20 -translate-y-1/2 pointer-events-none opacity-0 shadow-sm ring-1 ring-base-300/60 transition group-hover/rail:pointer-events-auto group-hover/rail:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
           aria-label="Scroll right"
           onClick={() => scrollBy("right")}
         >

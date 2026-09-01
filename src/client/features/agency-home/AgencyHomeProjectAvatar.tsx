@@ -34,7 +34,8 @@ export function AgencyHomeProjectAvatar({
   return (
     <span
       className={`${sizeClass} flex shrink-0 items-center justify-center rounded-md font-semibold text-white`}
-      style={{ backgroundColor: `hsl(${tile.hue} 42% 42%)` }}
+      /* L 32% keeps white text >= 4.5:1 across all hues (42% failed on yellow-green) */
+      style={{ backgroundColor: `hsl(${tile.hue} 45% 32%)` }}
       aria-hidden
     >
       {tile.letter}
