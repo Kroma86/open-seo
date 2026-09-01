@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_SAM_LOOP_TEMPLATES,
+  DOGFOOD_SAM_LOOP_TRIGGER_CAP,
   SAM_LOOP_STEP_CAP,
   computeNextSamLoopRunAt,
 } from "@/shared/sam-loops";
@@ -17,9 +18,10 @@ describe("sam-loops shared helpers", () => {
     vi.restoreAllMocks();
   });
 
-  it("exposes the eight default templates and a 24-step cap", () => {
+  it("exposes the ten default templates and a 24-step cap", () => {
     expect(SAM_LOOP_STEP_CAP).toBe(24);
-    expect(DEFAULT_SAM_LOOP_TEMPLATES).toHaveLength(8);
+    expect(DEFAULT_SAM_LOOP_TEMPLATES).toHaveLength(10);
+    expect(DOGFOOD_SAM_LOOP_TRIGGER_CAP).toBe(10);
     expect(
       DEFAULT_SAM_LOOP_TEMPLATES.filter(
         (t) => t.sourceType === "skill",
@@ -33,15 +35,34 @@ describe("sam-loops shared helpers", () => {
       "ai-visibility",
       "striking-distance",
     ]);
-    const monthlyContent = DEFAULT_SAM_LOOP_TEMPLATES[7];
-    expect(monthlyContent.name).toBe("Monthly content");
-    expect(monthlyContent.sourceType).toBe("custom");
-    expect(monthlyContent.cadence).toBe("monthly");
-    expect(monthlyContent.customPrompt).toContain("content-topical-map");
-    expect(monthlyContent.customPrompt).toContain("content-brief");
-    expect(monthlyContent.customPrompt).toContain("content-draft");
-    expect(monthlyContent.customPrompt).toContain("DRAFT");
-    expect(monthlyContent.customPrompt).toContain("human review");
+    const byName = Object.fromEntries(
+      DEFAULT_SAM_LOOP_TEMPLATES.map((t) => [t.name, t]),
+    );
+    const monthlyContent = byName["Monthly content"];
+    expect(monthlyContent?.sourceType).toBe("custom");
+    expect(monthlyContent?.cadence).toBe("monthly");
+    expect(monthlyContent?.customPrompt).toContain("content-topical-map");
+    expect(monthlyContent?.customPrompt).toContain("content-brief");
+    expect(monthlyContent?.customPrompt).toContain("content-draft");
+    expect(monthlyContent?.customPrompt).toContain("DRAFT");
+    expect(monthlyContent?.customPrompt).toContain("human review");
+
+    const onPage = byName["On-page priorities"];
+    expect(onPage?.sourceType).toBe("custom");
+    expect(onPage?.cadence).toBe("weekly");
+    expect(onPage?.customPrompt).toContain("niceseo.ai");
+    expect(onPage?.customPrompt).toContain("too soon — skip");
+    expect(onPage?.customPrompt).toContain("propose_homegrown_otto_fixes");
+    expect(onPage?.customPrompt).toContain("Pending only");
+    expect(onPage?.customPrompt).not.toContain("run_site_audit");
+
+    const keywords = byName["Keyword portfolio"];
+    expect(keywords?.sourceType).toBe("custom");
+    expect(keywords?.cadence).toBe("monthly");
+    expect(keywords?.customPrompt).toContain("niceseo.ai");
+    expect(keywords?.customPrompt).toContain("Do not buy keyword research");
+    expect(keywords?.customPrompt).toContain("research_keywords");
+    expect(keywords?.customPrompt).toContain("save_keywords");
   });
 
   it("advances daily/weekly from the previous anchor without drift", () => {

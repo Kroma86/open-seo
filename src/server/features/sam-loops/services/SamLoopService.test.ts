@@ -38,6 +38,7 @@ vi.mock("@/server/features/agency/AgencyScoreInputsService", () => ({
   getAgencyScoreInputsGlobal: mocks.getAgencyScoreInputsGlobal,
 }));
 
+import { DOGFOOD_SAM_LOOP_TRIGGER_CAP } from "@/shared/sam-loops";
 import {
   seedDefaultSamLoopsForProject,
   triggerSamLoop,
@@ -366,5 +367,33 @@ describe("triggerSamLoopsForDomain", () => {
     if (!result.ok) return;
     expect(result.results).toEqual([]);
     expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
+  });
+
+  it("caps a soak POST at the default template count", async () => {
+    const extra = Array.from(
+      { length: DOGFOOD_SAM_LOOP_TRIGGER_CAP + 1 },
+      (_, index) => ({
+        id: `loop_${index}`,
+        name: `Loop ${index}`,
+        skillName: `skill-${index}`,
+        isEnabled: true,
+        cadence: "weekly" as const,
+        nextRunAt: "2026-09-08T00:00:00.000Z",
+        projectId: "project_niceseo",
+      }),
+    );
+    mocks.getLoopsForProject.mockResolvedValue(extra);
+    mocks.getLoopById.mockImplementation(async (id: string) => {
+      return extra.find((loop) => loop.id === id) ?? null;
+    });
+
+    const result = await triggerSamLoopsForDomain({ domain: "niceseo.ai" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.capped).toBe(true);
+    expect(result.results).toHaveLength(DOGFOOD_SAM_LOOP_TRIGGER_CAP);
+    expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(
+      DOGFOOD_SAM_LOOP_TRIGGER_CAP,
+    );
   });
 });

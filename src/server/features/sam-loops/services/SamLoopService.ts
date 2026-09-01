@@ -6,6 +6,7 @@ import { ProjectRepository } from "@/server/features/projects/repositories/Proje
 import { getAgencyScoreInputsGlobal } from "@/server/features/agency/AgencyScoreInputsService";
 import { buildSamSkillSource } from "@/server/features/sam/samSkills";
 import {
+  DOGFOOD_SAM_LOOP_TRIGGER_CAP,
   computeNextSamLoopRunAt,
   expectedSamLoopDraftsPerMonth,
   isSamContentLoop,
@@ -291,7 +292,6 @@ export type DomainLoopTriggerResult =
 
 /** Internal soak trigger is dogfood-only. Skills already refuse other domains. */
 const DOGFOOD_TRIGGER_DOMAIN = "niceseo.ai";
-const DOGFOOD_TRIGGER_CAP = 8;
 
 function normalizeTriggerDomain(raw: string): string {
   let host = raw.trim().toLowerCase();
@@ -338,9 +338,9 @@ export async function triggerSamLoopsForDomain(input: {
     return want.some((needle) => needle === skill || needle === name);
   });
 
-  const capped = selected.length > DOGFOOD_TRIGGER_CAP;
+  const capped = selected.length > DOGFOOD_SAM_LOOP_TRIGGER_CAP;
   if (capped) {
-    selected.length = DOGFOOD_TRIGGER_CAP;
+    selected.length = DOGFOOD_SAM_LOOP_TRIGGER_CAP;
   }
 
   const results: DomainLoopTriggerRow[] = [];
