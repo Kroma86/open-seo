@@ -1,5 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import {
+  KIND_FILTERS,
+  kindPillMeta,
+  type OpsKindFilter,
+} from "@/client/features/agency-ops/opsArtifactKinds";
 import { Markdown } from "@/client/components/Markdown";
 import { formatRelativeFinishedAt } from "@/client/features/agency-home/agencyHomeUtils";
 import {
@@ -7,30 +12,8 @@ import {
   listOpsArtifacts,
 } from "@/serverFunctions/agency-ops";
 
-type KindFilter = "all" | "alert-cycle" | "monthly-report" | "digest";
-
-const KIND_FILTERS: { id: KindFilter; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "alert-cycle", label: "Alerts" },
-  { id: "monthly-report", label: "Reports" },
-  { id: "digest", label: "Digests" },
-];
-
 function kindPill(kind: string) {
-  const tone =
-    kind === "alert-cycle"
-      ? "badge-error"
-      : kind === "monthly-report"
-        ? "badge-primary"
-        : "badge-ghost";
-  const label =
-    kind === "alert-cycle"
-      ? "alert"
-      : kind === "monthly-report"
-        ? "report"
-        : kind === "digest"
-          ? "digest"
-          : kind;
+  const { label, tone } = kindPillMeta(kind);
   return <span className={`badge badge-sm ${tone}`}>{label}</span>;
 }
 
@@ -110,6 +93,29 @@ function AlertCycleDetail({ content }: { content: string }) {
   }
 }
 
+function JsonDetail({ content }: { content: string }) {
+  let pretty = content;
+  try {
+    pretty = JSON.stringify(JSON.parse(content), null, 2);
+  } catch {
+    // Not parseable JSON — show the raw content as-is.
+  }
+  return (
+    <pre className="overflow-x-auto whitespace-pre-wrap text-sm text-base-content/85">
+      {pretty}
+    </pre>
+  );
+}
+
+// Plain escaped-text path for any content type other than json — no JSON.parse.
+function TextDetail({ content }: { content: string }) {
+  return (
+    <pre className="overflow-x-auto whitespace-pre-wrap text-sm text-base-content/85">
+      {content}
+    </pre>
+  );
+}
+
 function ArtifactDetail({
   artifact,
 }: {
@@ -138,19 +144,21 @@ function ArtifactDetail({
           title="report"
           className="h-[70vh] w-full rounded-xl ring-1 ring-base-300/60"
         />
-      ) : artifact.kind === "alert-cycle" ? (
-        <AlertCycleDetail content={artifact.content} />
+      ) : artifact.contentType === "json" ? (
+        artifact.kind === "alert-cycle" ? (
+          <AlertCycleDetail content={artifact.content} />
+        ) : (
+          <JsonDetail content={artifact.content} />
+        )
       ) : (
-        <pre className="overflow-x-auto whitespace-pre-wrap text-sm text-base-content/85">
-          {artifact.content}
-        </pre>
+        <TextDetail content={artifact.content} />
       )}
     </article>
   );
 }
 
 export function AgencyOpsPage() {
-  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const [kindFilter, setKindFilter] = useState<OpsKindFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const listQuery = useQuery({
@@ -183,8 +191,8 @@ export function AgencyOpsPage() {
             Ops artifacts
           </h1>
           <p className="max-w-2xl text-sm text-base-content/55">
-            Alert cycles, monthly reports, and digests pushed from the Hermes ops
-            box.
+            Alert cycles, monthly reports, digests, indexability checks, schema
+            proposals, and citation checks pushed from the Hermes ops box.
           </p>
         </header>
 

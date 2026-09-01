@@ -139,6 +139,77 @@ describe("AgencyOpsArtifactsService", () => {
     expect(alerts[0]?.kind).toBe("alert-cycle");
   });
 
+  it("accepts an index-watchdog artifact (json, per-domain)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "index-watchdog",
+      domain: "example.com",
+      date: "2026-09-01",
+      contentType: "json",
+      content: JSON.stringify({ indexable: true, status: 200 }),
+      sourceKey: "index-watchdog-example.com-2026-09-01.json",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("index-watchdog");
+    expect(row?.domain).toBe("example.com");
+  });
+
+  it("accepts a schema-proposals artifact (md, fleet-wide)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "schema-proposals",
+      domain: null,
+      date: "2026-09-01",
+      contentType: "md",
+      content: "# Schema proposals\n\n- Add FAQPage to /faq",
+      sourceKey: "schema-proposals-2026-09.md",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("schema-proposals");
+    expect(row?.domain).toBeNull();
+    // "md" is the wire spelling; stored contentType is the canonical one.
+    expect(row?.contentType).toBe("markdown");
+  });
+
+  it("stores canonical contentType markdown unchanged", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "monthly-report",
+      domain: null,
+      date: "2026-09-01",
+      contentType: "markdown",
+      content: "# Monthly report",
+      sourceKey: "monthly-report-2026-09.md",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.contentType).toBe("markdown");
+  });
+
+  it("accepts a citations artifact (md, fleet-wide)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "citations",
+      domain: null,
+      date: "2026-09-01",
+      contentType: "md",
+      content: "# Citations\n\nAll consistent.",
+      sourceKey: "citations-2026-09-01.md",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("citations");
+    expect(row?.contentType).toBe("markdown");
+  });
+
+  it("still rejects unknown kinds with kind_invalid", async () => {
+    await expect(
+      AgencyOpsArtifactsService.ingest({ ...baseInput, kind: "rank-report" }),
+    ).rejects.toThrow("kind_invalid");
+  });
+
   it("latestAlertCycle parses the box's snake_case shape, case-insensitive severity, null domain", async () => {
     await AgencyOpsArtifactsService.ingest(baseInput);
     const latest = await AgencyOpsArtifactsService.latestAlertCycle();

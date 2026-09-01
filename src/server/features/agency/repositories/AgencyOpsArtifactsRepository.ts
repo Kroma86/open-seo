@@ -3,9 +3,13 @@ import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
 import { agencyOpsArtifacts } from "@/db/schema";
 
+type Row = InferInsertModel<typeof agencyOpsArtifacts>;
+
+// The drizzle column enum mirrors the shared KINDS list
+// (src/shared/agency-ops.ts), so kind/contentType flow through without casts.
 type InsertInput = Pick<
-  InferInsertModel<typeof agencyOpsArtifacts>,
-  "kind" | "domain" | "date" | "contentType" | "content" | "sourceKey"
+  Row,
+  "domain" | "date" | "content" | "sourceKey" | "kind" | "contentType"
 >;
 
 async function insertIfNew(
@@ -44,7 +48,7 @@ async function insertIfNew(
   return { id: existing[0].id, deduped: true };
 }
 
-async function list(input: { kind?: InsertInput["kind"]; limit?: number }) {
+async function list(input: { kind?: Row["kind"]; limit?: number }) {
   const limit = input.limit ?? 50;
   const base = db
     .select({
@@ -75,7 +79,7 @@ async function getById(id: string) {
   return rows[0] ?? null;
 }
 
-async function latestByKind(kind: InsertInput["kind"]) {
+async function latestByKind(kind: Row["kind"]) {
   const rows = await db
     .select()
     .from(agencyOpsArtifacts)

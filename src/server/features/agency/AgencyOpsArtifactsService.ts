@@ -1,13 +1,17 @@
 import { AgencyOpsArtifactsRepository } from "@/server/features/agency/repositories/AgencyOpsArtifactsRepository";
+import { KINDS, type Kind } from "@/shared/agency-ops";
 
-const KINDS = ["alert-cycle", "monthly-report", "digest"] as const;
+// KINDS lives in src/shared/agency-ops.ts (single source of truth); re-exported
+// here for existing consumers. The drizzle table stores kind as plain text, so
+// no migration is needed to add kinds.
+export { KINDS };
+export type { Kind };
 const CONTENT_TYPES = ["json", "html", "markdown"] as const;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_CONTENT_LENGTH = 262_144;
 const MAX_DOMAIN_LENGTH = 253;
 const MAX_SOURCE_KEY_LENGTH = 300;
 
-type Kind = (typeof KINDS)[number];
 type ContentType = (typeof CONTENT_TYPES)[number];
 
 export type IngestBody = {
@@ -62,8 +66,9 @@ function validateIngestBody(body: Record<string, unknown>): IngestBody {
     throw new Error("date_invalid");
   }
 
-  const contentType = body.contentType;
-  if (!CONTENT_TYPES.includes(contentType as ContentType)) {
+  // The box sends "md" for markdown artifacts; store the canonical spelling.
+  const contentTypeRaw = body.contentType === "md" ? "markdown" : body.contentType;
+  if (!CONTENT_TYPES.includes(contentTypeRaw as ContentType)) {
     throw new Error("contentType_invalid");
   }
 
@@ -88,7 +93,7 @@ function validateIngestBody(body: Record<string, unknown>): IngestBody {
     kind: kind as Kind,
     domain,
     date,
-    contentType: contentType as ContentType,
+    contentType: contentTypeRaw as ContentType,
     content,
     sourceKey,
   };
