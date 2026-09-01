@@ -72,6 +72,9 @@ export const projects = pgTable(
     // Soft delete: archived projects are hidden everywhere but their data
     // (keywords, rank tracking, audits) is preserved.
     archivedAt: timestampColumn("archived_at"),
+    // Mirrors the SQLite column: Sam loops allowed for this project beyond the
+    // compiled house allowlist. Default off; internal endpoint flips it.
+    loopsEnabled: boolean("loops_enabled").notNull().default(false),
   },
   (table) => [
     // Only the auto-created Default/null-domain project is a singleton. This

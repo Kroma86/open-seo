@@ -162,6 +162,13 @@
       "when": 1788265224223,
       "tag": "0022_numerous_silver_centurion",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788293409810,
+      "tag": "0023_eager_skreet",
+      "breakpoints": true
     }
   ]
 }
