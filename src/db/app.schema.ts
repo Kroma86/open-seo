@@ -608,3 +608,31 @@ export const aiVisibilityRuns = sqliteTable(
       .where(sql`${table.status} IN ('pending', 'running')`),
   ],
 );
+
+// Hermes ops box artifacts (alert cycles, monthly reports, digests) pushed
+// from the agency ops box via the internal ingest endpoint.
+export const agencyOpsArtifacts = sqliteTable(
+  "agency_ops_artifacts",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind", {
+      enum: ["alert-cycle", "monthly-report", "digest"],
+    }).notNull(),
+    domain: text("domain"),
+    date: text("date").notNull(),
+    contentType: text("content_type", {
+      enum: ["json", "html", "markdown"],
+    }).notNull(),
+    content: text("content").notNull(),
+    sourceKey: text("source_key").notNull(),
+    receivedAt: text("received_at")
+      .notNull()
+      .default(sql`(current_timestamp)`),
+  },
+  (table) => [
+    uniqueIndex("agency_ops_artifacts_kind_source_key_idx").on(
+      table.kind,
+      table.sourceKey,
+    ),
+  ],
+);

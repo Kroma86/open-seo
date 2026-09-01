@@ -82,6 +82,7 @@ export const {
   backlinkSnapshots,
   samLoops,
   samLoopRuns,
+  agencyOpsArtifacts,
   aiVisibilityConfigs,
   aiVisibilityPrompts,
   aiVisibilityRuns,

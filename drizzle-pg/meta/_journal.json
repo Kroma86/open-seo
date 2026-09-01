@@ -155,6 +155,13 @@
       "when": 1788209052746,
       "tag": "0021_tired_the_executioner",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788265224223,
+      "tag": "0022_numerous_silver_centurion",
+      "breakpoints": true
     }
   ]
 }

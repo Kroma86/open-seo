@@ -17,6 +17,7 @@ import {
   triggerSamLoop,
   updateSamLoop,
 } from "@/serverFunctions/sam-loops";
+import { Markdown } from "@/client/components/Markdown";
 import { DEFAULT_SAM_LOOP_TEMPLATES } from "@/shared/sam-loops";
 
 const ROTATING_ASKS = [
@@ -563,11 +564,11 @@ export function SamLoopsPage({ projectId }: { projectId: string }) {
                 </span>
               ) : null}
             </div>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-base-content/85">
+            <Markdown className="whitespace-pre-wrap text-sm leading-relaxed text-base-content/85">
               {selectedRun.report ??
                 selectedRun.error ??
                 "not measured — no report yet."}
-            </p>
+            </Markdown>
           </article>
         ) : null}
       </section>

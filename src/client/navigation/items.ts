@@ -1,4 +1,5 @@
 import {
+  Activity,
   Bookmark,
   Bot,
   ClipboardCheck,
@@ -80,6 +81,18 @@ const aiNavItem = linkOptions({
   label: "AI & MCP",
   icon: Bot,
 });
+
+const operationsNavItem = linkOptions({
+  to: "/operations" as const,
+  label: "Operations",
+  icon: Activity,
+});
+
+// Org-level sidebar items (not project-scoped).
+export const orgNavGroup = {
+  label: "Agency",
+  items: [operationsNavItem],
+};
 
 // Always-visible sidebar group (not project-scoped, unlike the groups below).
 export const connectNavGroup = {

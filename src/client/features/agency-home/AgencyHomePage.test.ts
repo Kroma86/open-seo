@@ -42,6 +42,9 @@ vi.mock("@tanstack/react-query", () => ({
     if (queryKey[0] === "agency-home-portfolio") {
       return { data: [], isLoading: false, isError: false, error: null };
     }
+    if (queryKey[0] === "agency-home-alerts") {
+      return { data: null, isLoading: false, isError: false, error: null };
+    }
     return { data: undefined, isLoading: false, isError: false, error: null };
   },
 }));
@@ -49,6 +52,10 @@ vi.mock("@tanstack/react-query", () => ({
 vi.mock("@/serverFunctions/agency-home", () => ({
   getAgencyHomeMissions: vi.fn(),
   getAgencyHomePortfolio: vi.fn(),
+}));
+
+vi.mock("@/serverFunctions/agency-ops", () => ({
+  getLatestAlertCycle: vi.fn(),
 }));
 
 vi.mock("@/serverFunctions/projects", () => ({
@@ -71,6 +78,7 @@ describe("agency home smoke", () => {
     expect(markup).toContain("Ask Sam to do anything");
     expect(markup).toContain("Workflows");
     expect(markup).toContain("Missions");
+    expect(markup).toContain("Alerts");
     expect(markup).toContain("Portfolio");
   });
 

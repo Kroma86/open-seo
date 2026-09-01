@@ -14,6 +14,7 @@ import {
 import {
   connectNavGroup,
   getProjectNavGroups,
+  orgNavGroup,
 } from "@/client/navigation/items";
 import { ProjectSwitcher } from "@/client/features/projects/ProjectSwitcher";
 import { SamSidebarPanel } from "@/client/features/sam/SamSidebarPanel";
@@ -78,6 +79,7 @@ function SidebarNavLink({
 
 export function Sidebar({ projectId, onNavigate, onClose }: SidebarProps) {
   const navGroups = [
+    orgNavGroup,
     ...(projectId ? getProjectNavGroups(projectId) : []),
     connectNavGroup,
   ];

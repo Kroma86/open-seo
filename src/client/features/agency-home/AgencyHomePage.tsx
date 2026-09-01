@@ -7,6 +7,7 @@ import {
 } from "@/client/lib/error-messages";
 import { AuthConfigErrorCard } from "@/client/components/AuthConfigErrorCard";
 import { UnauthenticatedErrorCard } from "@/client/components/UnauthenticatedErrorCard";
+import { AgencyHomeAlertsCard } from "@/client/features/agency-home/AgencyHomeAlertsCard";
 import { AgencyHomeMissionsRail } from "@/client/features/agency-home/AgencyHomeMissionsRail";
 import { AgencyHomePortfolioTable } from "@/client/features/agency-home/AgencyHomePortfolioTable";
 import { AgencyHomePromptBar } from "@/client/features/agency-home/AgencyHomePromptBar";
@@ -16,6 +17,7 @@ import {
   getAgencyHomeMissions,
   getAgencyHomePortfolio,
 } from "@/serverFunctions/agency-home";
+import { getLatestAlertCycle } from "@/serverFunctions/agency-ops";
 import { getProjects } from "@/serverFunctions/projects";
 import { SUBSCRIBE_ROUTE } from "@/shared/billing";
 
@@ -39,6 +41,12 @@ export function AgencyHomePage() {
   const portfolioQuery = useQuery({
     queryKey: ["agency-home-portfolio"],
     queryFn: () => getAgencyHomePortfolio(),
+    enabled: Boolean(projectsQuery.data?.length),
+  });
+
+  const alertsQuery = useQuery({
+    queryKey: ["agency-home-alerts"],
+    queryFn: () => getLatestAlertCycle(),
     enabled: Boolean(projectsQuery.data?.length),
   });
 
@@ -144,6 +152,11 @@ export function AgencyHomePage() {
         <AgencyHomeMissionsRail
           missions={missionsQuery.data ?? []}
           isLoading={missionsQuery.isLoading}
+        />
+
+        <AgencyHomeAlertsCard
+          data={alertsQuery.data}
+          isLoading={alertsQuery.isLoading}
         />
 
         <AgencyHomePortfolioTable

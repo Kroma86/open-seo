@@ -564,3 +564,27 @@ export const aiVisibilityRuns = pgTable(
       .where(sql`${table.status} IN ('pending', 'running')`),
   ],
 );
+
+export const agencyOpsArtifacts = pgTable(
+  "agency_ops_artifacts",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind", {
+      enum: ["alert-cycle", "monthly-report", "digest"],
+    }).notNull(),
+    domain: text("domain"),
+    date: text("date").notNull(),
+    contentType: text("content_type", {
+      enum: ["json", "html", "markdown"],
+    }).notNull(),
+    content: text("content").notNull(),
+    sourceKey: text("source_key").notNull(),
+    receivedAt: timestampColumn("received_at").notNull().default(isoNow),
+  },
+  (table) => [
+    uniqueIndex("agency_ops_artifacts_kind_source_key_idx").on(
+      table.kind,
+      table.sourceKey,
+    ),
+  ],
+);
