@@ -8,8 +8,9 @@ import { ProjectContextService } from "@/server/features/project-context/service
 import type { ToolAuthContext } from "@/server/mcp/context";
 import { filterLoopTools } from "@/server/features/sam-loops/services/loopToolFilter";
 import { countProposalsQueued } from "@/server/features/sam-loops/services/countProposalsQueued";
+import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import {
-  isSamLoopDomainAllowed,
+  isSamLoopProjectAllowed,
   SAM_LOOP_ALLOWED_DOMAINS,
   SAM_LOOP_STEP_CAP,
 } from "@/shared/sam-loops";
@@ -32,6 +33,7 @@ export type HeadlessSamLoopInput = {
     domain: string | null;
     locationCode: number;
     languageCode: string;
+    loopsEnabled?: boolean | null;
   };
   authContext: ToolAuthContext;
   sourceType: "skill" | "custom";
@@ -54,9 +56,17 @@ export type HeadlessSamLoopResult = {
 export async function runHeadlessSamLoop(
   input: HeadlessSamLoopInput,
 ): Promise<HeadlessSamLoopResult> {
-  if (!isSamLoopDomainAllowed(input.project.domain)) {
+  const row = await ProjectRepository.getProjectById(input.project.id);
+  const allowed =
+    row != null &&
+    row.archivedAt == null &&
+    isSamLoopProjectAllowed({
+      domain: row.domain,
+      loopsEnabled: row.loopsEnabled,
+    });
+  if (!allowed) {
     return {
-      report: `Loop not enabled for this domain (${input.project.domain ?? "no domain"}). Allowed: ${SAM_LOOP_ALLOWED_DOMAINS.join(", ")}. No tools were called.`,
+      report: `Loop not enabled for this domain (${row?.domain ?? "no domain"}). Allowed: the house domains or a project Jon enabled for loops (${SAM_LOOP_ALLOWED_DOMAINS.join(", ")}). No tools were called.`,
       stepsUsed: 0,
       proposalsQueued: 0,
       costNote: "no model call",

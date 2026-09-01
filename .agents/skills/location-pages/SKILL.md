@@ -18,7 +18,7 @@ not publish.
 
 ## NiceSEO gate
 
-Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**. Other
+Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**, or a project Jon has enabled for loops. Other
 domains: still on Search Atlas.
 
 Follow `niceseo-pillars` / `PILLAR-RULES.md` if scores come up. Content ring stays
@@ -39,7 +39,7 @@ hours, reviews, or service claims.
 
 ## Workflow
 
-1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai. If not, stop. Confirm the **city** and **service** (ask once if missing).
+1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai, or a project Jon has enabled for loops. If not, stop. Confirm the **city** and **service** (ask once if missing).
 2. Read project context for business facts already saved. If a fact is missing,
    write **unknown — confirm with human** — never invent it.
 3. Check existing URLs (`map_links` / `get_audit_pages`) so the brief does not

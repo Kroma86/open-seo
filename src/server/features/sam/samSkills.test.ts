@@ -59,6 +59,36 @@ describe("buildSamSkillSource", () => {
     expect(pillars?.body).toContain("lighthouse_seo_checklist");
   });
 
+  it("pins the house-domain preamble and loop-enable clause on the 11 gated skills", async () => {
+    const source = buildSamSkillSource();
+    const gated = [
+      "ai-visibility",
+      "authority-plan",
+      "content-brief",
+      "content-draft",
+      "content-topical-map",
+      "keyword-gap",
+      "location-pages",
+      "page-growth",
+      "rank-slippage",
+      "site-health",
+      "striking-distance",
+    ] as const;
+    expect(gated).toHaveLength(11);
+
+    for (const name of gated) {
+      const skill = await source.load(name);
+      expect(skill, name).toBeDefined();
+      expect(skill?.body).toContain(
+        "the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**",
+      );
+      expect(skill?.body).toContain("or a project Jon has enabled for loops");
+      expect(skill?.body).toContain(
+        "Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai, or a project Jon has enabled for loops. If not, stop.",
+      );
+    }
+  });
+
   it("puts pillar formulas in SAM's always-on prompt", () => {
     const prompt = buildSamSystemPrompt(
       {

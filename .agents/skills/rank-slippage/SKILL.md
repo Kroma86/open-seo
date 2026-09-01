@@ -15,7 +15,7 @@ Compare the latest rank-tracker snapshot to the previous one. Alert only when a 
 
 ## NiceSEO gate
 
-Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**. Other domains: still on Search Atlas.
+Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**, or a project Jon has enabled for loops. Other domains: still on Search Atlas.
 
 Follow `niceseo-pillars` for Visibility. Do not run a live rank check unless Jon approved `estimate_rank_tracker_cost` this turn.
 
@@ -28,7 +28,7 @@ Follow `niceseo-pillars` for Visibility. Do not run a live rank check unless Jon
 
 ## Workflow
 
-1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai. If not, stop.
+1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai, or a project Jon has enabled for loops. If not, stop.
 2. `get_rank_tracker`. If `lastCheckedAt` is null, say ranks have never been checked. Do not invent positions.
 3. For each keyword, desktop and mobile:
    - `position` is a number → report it

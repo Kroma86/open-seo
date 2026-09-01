@@ -33,6 +33,7 @@ import { Route as AuthenticatedOnboardingIndexRouteImport } from './routes/_auth
 import { Route as ApiInternalTriggerSamLoopsRouteImport } from './routes/api/internal/trigger-sam-loops'
 import { Route as ApiInternalTrackerRouteImport } from './routes/api/internal/tracker'
 import { Route as ApiInternalProjectsRouteImport } from './routes/api/internal/projects'
+import { Route as ApiInternalLoopsEnabledRouteImport } from './routes/api/internal/loops-enabled'
 import { Route as ApiInternalGscRouteImport } from './routes/api/internal/gsc'
 import { Route as ApiInternalGa4RouteImport } from './routes/api/internal/ga4'
 import { Route as ApiInternalAuditsRouteImport } from './routes/api/internal/audits'
@@ -189,6 +190,11 @@ const ApiInternalTrackerRoute = ApiInternalTrackerRouteImport.update({
 const ApiInternalProjectsRoute = ApiInternalProjectsRouteImport.update({
   id: '/api/internal/projects',
   path: '/api/internal/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalLoopsEnabledRoute = ApiInternalLoopsEnabledRouteImport.update({
+  id: '/api/internal/loops-enabled',
+  path: '/api/internal/loops-enabled',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiInternalGscRoute = ApiInternalGscRouteImport.update({
@@ -429,6 +435,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/audits': typeof ApiInternalAuditsRoute
   '/api/internal/ga4': typeof ApiInternalGa4Route
   '/api/internal/gsc': typeof ApiInternalGscRoute
+  '/api/internal/loops-enabled': typeof ApiInternalLoopsEnabledRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
   '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
@@ -487,6 +494,7 @@ export interface FileRoutesByTo {
   '/api/internal/audits': typeof ApiInternalAuditsRoute
   '/api/internal/ga4': typeof ApiInternalGa4Route
   '/api/internal/gsc': typeof ApiInternalGscRoute
+  '/api/internal/loops-enabled': typeof ApiInternalLoopsEnabledRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
   '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
@@ -548,6 +556,7 @@ export interface FileRoutesById {
   '/api/internal/audits': typeof ApiInternalAuditsRoute
   '/api/internal/ga4': typeof ApiInternalGa4Route
   '/api/internal/gsc': typeof ApiInternalGscRoute
+  '/api/internal/loops-enabled': typeof ApiInternalLoopsEnabledRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
   '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
@@ -609,6 +618,7 @@ export interface FileRouteTypes {
     | '/api/internal/audits'
     | '/api/internal/ga4'
     | '/api/internal/gsc'
+    | '/api/internal/loops-enabled'
     | '/api/internal/projects'
     | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
@@ -667,6 +677,7 @@ export interface FileRouteTypes {
     | '/api/internal/audits'
     | '/api/internal/ga4'
     | '/api/internal/gsc'
+    | '/api/internal/loops-enabled'
     | '/api/internal/projects'
     | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
@@ -727,6 +738,7 @@ export interface FileRouteTypes {
     | '/api/internal/audits'
     | '/api/internal/ga4'
     | '/api/internal/gsc'
+    | '/api/internal/loops-enabled'
     | '/api/internal/projects'
     | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
@@ -776,6 +788,7 @@ export interface RootRouteChildren {
   ApiInternalAuditsRoute: typeof ApiInternalAuditsRoute
   ApiInternalGa4Route: typeof ApiInternalGa4Route
   ApiInternalGscRoute: typeof ApiInternalGscRoute
+  ApiInternalLoopsEnabledRoute: typeof ApiInternalLoopsEnabledRoute
   ApiInternalProjectsRoute: typeof ApiInternalProjectsRoute
   ApiInternalTrackerRoute: typeof ApiInternalTrackerRoute
   ApiInternalTriggerSamLoopsRoute: typeof ApiInternalTriggerSamLoopsRoute
@@ -951,6 +964,13 @@ declare module '@tanstack/react-router' {
       path: '/api/internal/projects'
       fullPath: '/api/internal/projects'
       preLoaderRoute: typeof ApiInternalProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/loops-enabled': {
+      id: '/api/internal/loops-enabled'
+      path: '/api/internal/loops-enabled'
+      fullPath: '/api/internal/loops-enabled'
+      preLoaderRoute: typeof ApiInternalLoopsEnabledRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/internal/gsc': {
@@ -1403,6 +1423,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalAuditsRoute: ApiInternalAuditsRoute,
   ApiInternalGa4Route: ApiInternalGa4Route,
   ApiInternalGscRoute: ApiInternalGscRoute,
+  ApiInternalLoopsEnabledRoute: ApiInternalLoopsEnabledRoute,
   ApiInternalProjectsRoute: ApiInternalProjectsRoute,
   ApiInternalTrackerRoute: ApiInternalTrackerRoute,
   ApiInternalTriggerSamLoopsRoute: ApiInternalTriggerSamLoopsRoute,

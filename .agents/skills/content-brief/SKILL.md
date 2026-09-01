@@ -17,7 +17,7 @@ Sources labeled. **not measured** where absent.
 
 ## NiceSEO gate
 
-Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**. Other
+Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**, or a project Jon has enabled for loops. Other
 domains: still on Search Atlas.
 
 Follow `niceseo-pillars` / `PILLAR-RULES.md` if a ring comes up. A brief is
@@ -48,7 +48,7 @@ anywhere else. If no target was named, **refuse**: point at
 
 ## Workflow
 
-1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai. If not, stop. Confirm the target keyword. If missing, refuse (above).
+1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai, or a project Jon has enabled for loops. If not, stop. Confirm the target keyword. If missing, refuse (above).
 2. Free path: our position, GSC demand, existing URLs. Read writing
    preferences from project context.
 3. SERP: `get_serp_results` for this keyword only after spend yes. If spend

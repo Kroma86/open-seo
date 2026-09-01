@@ -60,6 +60,13 @@ export const projects = sqliteTable(
     // Soft delete: archived projects are hidden everywhere but their data
     // (keywords, rank tracking, audits) is preserved.
     archivedAt: text("archived_at"),
+    // Sam loops may run for this project even when its domain is outside the
+    // compiled house allowlist (SAM_LOOP_ALLOWED_DOMAINS). Default off; flipped
+    // only through the internal loops-enabled endpoint (the migration runner
+    // calls it when Jon names a client). The daily run cap still applies.
+    loopsEnabled: integer("loops_enabled", { mode: "boolean" })
+      .notNull()
+      .default(false),
   },
   (table) => [
     // Only the auto-created Default/null-domain project is a singleton. This

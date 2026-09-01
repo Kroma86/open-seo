@@ -7,6 +7,7 @@ import {
   SAM_LOOP_STEP_CAP,
   computeNextSamLoopRunAt,
   isSamLoopDomainAllowed,
+  isSamLoopProjectAllowed,
   startOfUtcDay,
 } from "@/shared/sam-loops";
 import * as rankTracking from "@/shared/rank-tracking";
@@ -117,5 +118,33 @@ describe("sam-loops shared helpers", () => {
     expect(isSamLoopDomainAllowed(null)).toBe(false);
     expect(startOfUtcDay(new Date("2026-09-01T23:59:59Z"))).toBe("2026-09-01");
     expect(SAM_LOOP_DAILY_RUN_CAP).toBe(40);
+  });
+
+  it("ORs the compiled house list with an explicit per-project loopsEnabled flag", () => {
+    expect(
+      isSamLoopProjectAllowed({ domain: "niceseo.ai", loopsEnabled: false }),
+    ).toBe(true);
+    expect(
+      isSamLoopProjectAllowed({ domain: "example.com", loopsEnabled: true }),
+    ).toBe(true);
+    expect(
+      isSamLoopProjectAllowed({ domain: "example.com", loopsEnabled: false }),
+    ).toBe(false);
+    expect(isSamLoopProjectAllowed({ domain: "example.com" })).toBe(false);
+    expect(
+      isSamLoopProjectAllowed({ domain: null, loopsEnabled: true }),
+    ).toBe(false);
+    expect(
+      isSamLoopProjectAllowed({ domain: null, loopsEnabled: false }),
+    ).toBe(false);
+    expect(
+      isSamLoopProjectAllowed({ domain: undefined, loopsEnabled: true }),
+    ).toBe(false);
+    expect(
+      isSamLoopProjectAllowed({ domain: "", loopsEnabled: true }),
+    ).toBe(false);
+    expect(
+      isSamLoopProjectAllowed({ domain: "   ", loopsEnabled: true }),
+    ).toBe(false);
   });
 });

@@ -19,7 +19,7 @@ one. Propose only. Do not apply.
 
 ## NiceSEO gate
 
-Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**. Other
+Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**, or a project Jon has enabled for loops. Other
 domains: still on Search Atlas. Do not invent positions or volumes.
 
 Follow `niceseo-pillars` / `PILLAR-RULES.md` for Visibility if you mention the
@@ -38,7 +38,7 @@ ring. Rank rows with `position: null` are not measured zeros. Sibling skill
 
 ## Workflow
 
-1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai. If not, stop.
+1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai, or a project Jon has enabled for loops. If not, stop.
 2. Collect candidates:
    - Rank tracker: numeric `position` in 11–20 (desktop/mobile as separate rows)
    - GSC: queries/pages with avg position in ~11–20 when connected
