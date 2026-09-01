@@ -131,9 +131,21 @@ describe("trigger-sam-loops handlePost", () => {
       reason: "domain_not_allowed",
     });
     const res = await handlePost(
-      post({ domain: "twa.studio" }, { authorization: `Bearer ${TOKEN}` }),
+      post({ domain: "example.com" }, { authorization: `Bearer ${TOKEN}` }),
     );
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "domain_not_allowed" });
+  });
+
+  it("returns 429 on daily_cap", async () => {
+    triggerSamLoopsForDomain.mockResolvedValue({
+      ok: false,
+      reason: "daily_cap",
+    });
+    const res = await handlePost(
+      post({ domain: "niceseo.ai" }, { authorization: `Bearer ${TOKEN}` }),
+    );
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ error: "daily_cap" });
   });
 });

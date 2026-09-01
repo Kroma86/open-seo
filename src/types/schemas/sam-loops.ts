@@ -9,7 +9,7 @@ export type SamLoopTriggerResult =
   | { ok: true; runId: string }
   | {
       ok: false;
-      reason: "already_running" | "disabled" | "not_found";
+      reason: "already_running" | "disabled" | "not_found" | "daily_cap";
       blockingRunId?: string | null;
     };
 

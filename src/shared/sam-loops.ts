@@ -60,7 +60,7 @@ export const DEFAULT_SAM_LOOP_TEMPLATES = [
     name: "On-page priorities",
     sourceType: "custom" as const,
     customPrompt:
-      "Run only for niceseo.ai. Other domains: stop and say this loop is dogfood-only.\n\nThe scheduler only has weekly, not every-two-weeks. Treat this as every two weeks: call get_sam_loop_runs for this project. If this loop already has a completed run with a report in the last 12 days, write \"too soon — skip\" and stop. Do not queue.\n\nQueue-only on-page pass (seo-audit intent + homegrown-otto). Never live-apply. Never start a new crawl. Never buy paid research.\n1. get_niceseo_ops_status.\n2. Read the latest audit with get_audit_status, get_audit_issues, get_audit_pages.\n3. Read get_agency_otto_page_inputs for current title, meta, and H1.\n4. Pick up to 5 priority pages: homepage, plus Search Console landing pages with impressions when get_search_console_performance is available, else pages with the most audit issues. If a source is missing, say not measured.\n5. For each page, if title/meta/H1 is missing, empty, or too long for the page's main query, write a concrete replacement (no placeholders). Call propose_homegrown_otto_fixes with before_* copied from the audit. Pending only.\n6. Call list_homegrown_otto_proposals and list the new ids.\n\nReport: pages checked, proposals queued, pages skipped and why. Never claim a fix is live.",
+      "Run only for niceseo.ai, twa.studio, or niceapp.ai. Other domains: stop and say this loop is house-domains-only.\n\nThe scheduler only has weekly, not every-two-weeks. Treat this as every two weeks: call get_sam_loop_runs for this project. If this loop already has a completed run with a report in the last 12 days, write \"too soon — skip\" and stop. Do not queue.\n\nQueue-only on-page pass (seo-audit intent + homegrown-otto). Never live-apply. Never start a new crawl. Never buy paid research.\n1. get_niceseo_ops_status.\n2. Read the latest audit with get_audit_status, get_audit_issues, get_audit_pages.\n3. Read get_agency_otto_page_inputs for current title, meta, and H1.\n4. Pick up to 5 priority pages: homepage, plus Search Console landing pages with impressions when get_search_console_performance is available, else pages with the most audit issues. If a source is missing, say not measured.\n5. For each page, if title/meta/H1 is missing, empty, or too long for the page's main query, write a concrete replacement (no placeholders). Call propose_homegrown_otto_fixes with before_* copied from the audit. Pending only.\n6. Call list_homegrown_otto_proposals and list the new ids.\n\nReport: pages checked, proposals queued, pages skipped and why. Never claim a fix is live.",
     cadence: "weekly" as const,
     skillName: null as string | null,
   },
@@ -68,7 +68,7 @@ export const DEFAULT_SAM_LOOP_TEMPLATES = [
     name: "Keyword portfolio",
     sourceType: "custom" as const,
     customPrompt:
-      "Run only for niceseo.ai. Other domains: stop and say this loop is dogfood-only.\n\nAnalyze keyword portfolio health from data we already have. Do not buy keyword research. Do not save keywords. Do not call research_keywords, get_keyword_metrics, or save_keywords.\n1. get_niceseo_ops_status.\n2. list_saved_keywords.\n3. get_rank_tracker (free read).\n4. get_search_console_performance when Search Console is connected (high rowLimit). Filter client-side. Do not invent numbers.\n\nSay, with proof or \"not measured\":\n- How many saved or tracked terms exist.\n- Wasted or declining terms (rank drop or Search Console clicks down).\n- Near-page-one terms (positions 5–20) worth a push.\n- Concentration risk if most clicks sit on one or two queries.\n\nEnd with one do-this-month action an agent can take: site, page, do, do-not, proof. Never claim live changes.",
+      "Run only for niceseo.ai, twa.studio, or niceapp.ai. Other domains: stop and say this loop is house-domains-only.\n\nAnalyze keyword portfolio health from data we already have. Do not buy keyword research. Do not save keywords. Do not call research_keywords, get_keyword_metrics, or save_keywords.\n1. get_niceseo_ops_status.\n2. list_saved_keywords.\n3. get_rank_tracker (free read).\n4. get_search_console_performance when Search Console is connected (high rowLimit). Filter client-side. Do not invent numbers.\n\nSay, with proof or \"not measured\":\n- How many saved or tracked terms exist.\n- Wasted or declining terms (rank drop or Search Console clicks down).\n- Near-page-one terms (positions 5–20) worth a push.\n- Concentration risk if most clicks sit on one or two queries.\n\nEnd with one do-this-month action an agent can take: site, page, do, do-not, proof. Never claim live changes.",
     cadence: "monthly" as const,
     skillName: null as string | null,
   },
@@ -76,6 +76,35 @@ export const DEFAULT_SAM_LOOP_TEMPLATES = [
 
 /** Soak trigger may fire at most this many loops per POST (matches default set). */
 export const DOGFOOD_SAM_LOOP_TRIGGER_CAP = DEFAULT_SAM_LOOP_TEMPLATES.length;
+
+/** The only domains Sam loops may run for until Jon names the next cutover. */
+export const SAM_LOOP_ALLOWED_DOMAINS = [
+  "niceseo.ai",
+  "twa.studio",
+  "niceapp.ai",
+] as const;
+
+/** Hard ceiling on Sam loop runs created per UTC day (scheduled + manual). */
+export const SAM_LOOP_DAILY_RUN_CAP = 40;
+
+export function isSamLoopDomainAllowed(
+  domain: string | null | undefined,
+): boolean {
+  if (domain == null) return false;
+  let host = domain.trim().toLowerCase();
+  if (host.startsWith("https://")) host = host.slice("https://".length);
+  else if (host.startsWith("http://")) host = host.slice("http://".length);
+  const slash = host.indexOf("/");
+  if (slash !== -1) host = host.slice(0, slash);
+  if (host.startsWith("www.")) host = host.slice(4);
+  if (!host) return false;
+  return (SAM_LOOP_ALLOWED_DOMAINS as readonly string[]).includes(host);
+}
+
+/** UTC calendar date `YYYY-MM-DD` (a date prefix, not a full ISO timestamp). */
+export function startOfUtcDay(now = new Date()): string {
+  return now.toISOString().slice(0, 10);
+}
 
 export const SAM_LOOP_STEP_CAP = 24;
 

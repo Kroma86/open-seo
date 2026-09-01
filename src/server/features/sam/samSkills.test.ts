@@ -44,6 +44,7 @@ describe("buildSamSkillSource", () => {
 
     const pageGrowth = await source.load("page-growth");
     expect(pageGrowth?.body).toContain("niceseo.ai");
+    expect(pageGrowth?.body).toContain("twa.studio");
     expect(pageGrowth?.body).toContain("dogfooding");
     const refuse = await source.load("not-in-openseo");
     expect(refuse?.body).toContain("Cloud Stacks");

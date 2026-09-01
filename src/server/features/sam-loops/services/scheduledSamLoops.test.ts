@@ -10,6 +10,7 @@ type DueLoopRow = {
   cadence: "daily" | "weekly" | "monthly";
   nextRunAt: string | null;
   organizationId: string;
+  domain: string | null;
 };
 
 type ClaimInput = {
@@ -27,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   getDueLoopsWithOrganization:
     vi.fn<(nowIso: string) => Promise<DueLoopRow[]>>(),
   claimDueLoop: vi.fn<(input: ClaimInput) => Promise<boolean>>(),
+  countRunsCreatedSince: vi.fn<(sinceDate: string) => Promise<number>>(),
   beginSamLoopRun:
     vi.fn<(input: { loopId: string; trigger: string }) => Promise<BeginResult>>(),
 }));
@@ -38,6 +40,7 @@ vi.mock(
     SamLoopRepository: {
       getDueLoopsWithOrganization: mocks.getDueLoopsWithOrganization,
       claimDueLoop: mocks.claimDueLoop,
+      countRunsCreatedSince: mocks.countRunsCreatedSince,
     },
   }),
 );
@@ -58,6 +61,7 @@ function dueLoop(overrides: Partial<DueLoopRow> = {}): DueLoopRow {
     cadence: "weekly",
     nextRunAt: "2026-01-01T00:00:00.000Z",
     organizationId: "org_1",
+    domain: "niceseo.ai",
     ...overrides,
   };
 }
@@ -71,6 +75,7 @@ describe("runScheduledSamLoops", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.resetAllMocks();
+    mocks.countRunsCreatedSince.mockResolvedValue(0);
   });
 
   it("claims due loops and starts workflows", async () => {
@@ -113,5 +118,48 @@ describe("runScheduledSamLoops", () => {
     await runTick();
 
     expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when today's runs already reached the cap", async () => {
+    mocks.countRunsCreatedSince.mockResolvedValue(40);
+
+    await runTick();
+
+    expect(mocks.getDueLoopsWithOrganization).not.toHaveBeenCalled();
+    expect(mocks.claimDueLoop).not.toHaveBeenCalled();
+  });
+
+  it("stops claiming once the remaining budget is used", async () => {
+    mocks.countRunsCreatedSince.mockResolvedValue(39);
+    mocks.getDueLoopsWithOrganization.mockResolvedValue([
+      dueLoop({ id: "loop_1" }),
+      dueLoop({ id: "loop_2" }),
+    ]);
+    mocks.claimDueLoop.mockResolvedValue(true);
+    mocks.beginSamLoopRun.mockResolvedValue({ ok: true, runId: "run_1" });
+
+    await runTick();
+
+    expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("claims but never starts a due loop whose project domain is outside the allowlist", async () => {
+    mocks.getDueLoopsWithOrganization.mockResolvedValue([
+      dueLoop({ domain: "client-example.com" }),
+    ]);
+    mocks.claimDueLoop.mockResolvedValue(true);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runTick();
+
+    expect(mocks.claimDueLoop).toHaveBeenCalledTimes(1);
+    expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "sam_loops_scheduler_summary",
+        domainSkips: 1,
+        started: 0,
+      }),
+    );
   });
 });

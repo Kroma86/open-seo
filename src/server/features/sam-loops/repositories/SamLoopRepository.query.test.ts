@@ -308,3 +308,39 @@ describe("getContentVelocityForProject", () => {
     expect(rows[0]?.finishedAt).toBe("2026-08-03T00:00:00.000Z");
   });
 });
+
+describe("countRunsCreatedSince", () => {
+  it("counts runs on or after a YYYY-MM-DD prefix, including sqlite timestamps", async () => {
+    await seedProject();
+    await insertLoop({
+      id: "loop_1",
+      name: "Site health",
+      skillName: "site-health",
+    });
+    await client.execute({
+      sql: `INSERT INTO sam_loop_runs (id, loop_id, project_id, status, created_at)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: ["run_space", "loop_1", "project_1", "completed", "2026-09-01 08:00:00"],
+    });
+    await client.execute({
+      sql: `INSERT INTO sam_loop_runs (id, loop_id, project_id, status, created_at)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [
+        "run_iso",
+        "loop_1",
+        "project_1",
+        "completed",
+        "2026-09-01T08:00:00.000Z",
+      ],
+    });
+    await client.execute({
+      sql: `INSERT INTO sam_loop_runs (id, loop_id, project_id, status, created_at)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: ["run_old", "loop_1", "project_1", "completed", "2026-08-31 23:59:59"],
+    });
+
+    await expect(
+      SamLoopRepository.countRunsCreatedSince("2026-09-01"),
+    ).resolves.toBe(2);
+  });
+});

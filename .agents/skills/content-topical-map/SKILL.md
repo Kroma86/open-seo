@@ -20,7 +20,7 @@ on-demand only.
 
 ## NiceSEO gate
 
-Until Jon names another cutover, run this only for **niceseo.ai**. Other
+Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**. Other
 domains: still on Search Atlas. Do not invent volume, KD, or ranks.
 
 Follow `niceseo-pillars` / `PILLAR-RULES.md` if a NiceSEO ring comes up. A map
@@ -40,7 +40,7 @@ is **not** a Content pillar score. `position: null` is not #0.
 
 ## Workflow
 
-1. Confirm niceseo.ai. If not, stop.
+1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai. If not, stop.
 2. Read project context for business fit (goal, positioning, key pages).
 3. Free path: union saved keywords + rank-tracker rows + GSC queries. Drop
    brand-only and off-business terms. Coverage from `map_links` / key pages.

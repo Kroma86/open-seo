@@ -1,5 +1,9 @@
 import { env } from "cloudflare:workers";
 import { SamLoopRepository } from "@/server/features/sam-loops/repositories/SamLoopRepository";
+import {
+  SAM_LOOP_DAILY_RUN_CAP,
+  startOfUtcDay,
+} from "@/shared/sam-loops";
 import type { SamLoopTriggerResult } from "@/types/schemas/sam-loops";
 
 type RunRow = Awaited<ReturnType<typeof SamLoopRepository.getRunById>>;
@@ -121,6 +125,13 @@ export async function beginSamLoopRun(input: {
 }): Promise<SamLoopTriggerResult> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const runId = crypto.randomUUID();
+    // count-then-insert is not atomic; this narrows the race to the insert itself. Accepted residual: an overshoot bounded by the number of concurrent starters, each one loop run.
+    const runsToday = await SamLoopRepository.countRunsCreatedSince(
+      startOfUtcDay(),
+    );
+    if (runsToday >= SAM_LOOP_DAILY_RUN_CAP) {
+      return { ok: false, reason: "daily_cap" };
+    }
     const created = await SamLoopRepository.tryCreateRun({
       id: runId,
       loopId: input.loopId,

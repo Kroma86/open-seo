@@ -98,7 +98,12 @@ export async function handlePost(request: Request): Promise<Response> {
     names,
   });
   if (!result.ok) {
-    const status = result.reason === "domain_not_allowed" ? 403 : 404;
+    const status =
+      result.reason === "daily_cap"
+        ? 429
+        : result.reason === "domain_not_allowed"
+          ? 403
+          : 404;
     return Response.json(
       { error: result.reason },
       { status, headers: NO_STORE },

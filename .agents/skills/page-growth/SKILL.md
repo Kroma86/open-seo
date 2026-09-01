@@ -14,7 +14,7 @@ Name a short list of **our own pages** that can earn more Google clicks this mon
 
 ## NiceSEO gate
 
-Until Jon names another cutover, run this only for **niceseo.ai**. If the project domain is anything else, say: still on Search Atlas; NiceSEO is dogfooding niceseo.ai first. Do not invent numbers. Do not pull Search Atlas.
+Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**. If the project domain is anything else, say: still on Search Atlas; NiceSEO is dogfooding its own house domains first. Do not invent numbers. Do not pull Search Atlas.
 
 Follow `niceseo-pillars` if you mention a NiceSEO ring. HomeGrown OTTO is propose-only. Do not apply fixes. Do not call paid DataForSEO unless Jon asked this turn.
 
@@ -28,7 +28,7 @@ Follow `niceseo-pillars` if you mention a NiceSEO ring. HomeGrown OTTO is propos
 
 ## Workflow
 
-1. Confirm the domain is niceseo.ai. If not, stop.
+1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai. If not, stop.
 2. Call `get_niceseo_ops_status`.
 3. If GSC is connected, read `get_search_console_performance`. Prefer pages with impressions and a position worse than 10, or clicks that dropped.
 4. If GSC is not connected, say **Not measured** for Google clicks. Do not guess.

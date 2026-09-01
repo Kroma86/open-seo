@@ -8,7 +8,11 @@ import { ProjectContextService } from "@/server/features/project-context/service
 import type { ToolAuthContext } from "@/server/mcp/context";
 import { filterLoopTools } from "@/server/features/sam-loops/services/loopToolFilter";
 import { countProposalsQueued } from "@/server/features/sam-loops/services/countProposalsQueued";
-import { SAM_LOOP_STEP_CAP } from "@/shared/sam-loops";
+import {
+  isSamLoopDomainAllowed,
+  SAM_LOOP_ALLOWED_DOMAINS,
+  SAM_LOOP_STEP_CAP,
+} from "@/shared/sam-loops";
 
 const LOOP_REPORT_INSTRUCTION = [
   "You are running as a scheduled Sam Loop (headless — no chat user).",
@@ -18,6 +22,7 @@ const LOOP_REPORT_INSTRUCTION = [
   "The only allowed write is propose_homegrown_otto_fixes (queues proposals).",
   "If you spend paid credits, say so in the report. End with the report as",
   "your final message — no tool calls after the synthesis.",
+  `This loop is approved only for these domains: ${SAM_LOOP_ALLOWED_DOMAINS.join(", ")}. If the project domain is not one of them, write one line saying the loop is not enabled for this domain and stop without calling tools.`,
 ].join(" ");
 
 export type HeadlessSamLoopInput = {
@@ -49,6 +54,15 @@ export type HeadlessSamLoopResult = {
 export async function runHeadlessSamLoop(
   input: HeadlessSamLoopInput,
 ): Promise<HeadlessSamLoopResult> {
+  if (!isSamLoopDomainAllowed(input.project.domain)) {
+    return {
+      report: `Loop not enabled for this domain (${input.project.domain ?? "no domain"}). Allowed: ${SAM_LOOP_ALLOWED_DOMAINS.join(", ")}. No tools were called.`,
+      stepsUsed: 0,
+      proposalsQueued: 0,
+      costNote: "no model call",
+    };
+  }
+
   const context = await ProjectContextService.getProjectContext(
     input.project.id,
   );

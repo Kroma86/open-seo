@@ -17,7 +17,7 @@ target-keyword list that can seed topical maps. Evidence first. No fake scores.
 
 ## NiceSEO gate
 
-Until Jon names another cutover, run this only for **niceseo.ai**. Other
+Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**. Other
 domains: still on Search Atlas. Do not invent volume, KD, or ranks.
 
 Follow `niceseo-pillars` / `PILLAR-RULES.md` if you mention a NiceSEO ring.
@@ -38,7 +38,7 @@ DataForSEO Labs **only if Jon asked spend this turn**.
 
 ## Workflow
 
-1. Confirm niceseo.ai. If not, stop.
+1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai. If not, stop.
 2. Name 2–3 competitors from the human this turn. If they did not name at least
    two, ask once or confirm candidates from a single labeled
    `find_serp_competitors` call (only if Jon asked spend this turn) — do not

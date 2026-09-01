@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
 import { projects, samLoopRuns, samLoops } from "@/db/schema";
@@ -80,6 +80,7 @@ async function getDueLoopsWithOrganization(nowIso: string) {
       cadence: samLoops.cadence,
       nextRunAt: samLoops.nextRunAt,
       organizationId: projects.organizationId,
+      domain: projects.domain,
     })
     .from(samLoops)
     .innerJoin(projects, eq(samLoops.projectId, projects.id))
@@ -240,6 +241,21 @@ async function getContentVelocityForProject(
 }
 
 /**
+ * createdAt is a text column defaulting to sqlite current_timestamp, which
+ * stores YYYY-MM-DD HH:MM:SS (space separator, no Z). A full ISO bound
+ * YYYY-MM-DDT00:00:00.000Z would compare GREATER than every same-day row
+ * (' ' sorts before 'T') and count nothing. The date prefix compares
+ * correctly against both the sqlite format and any ISO string.
+ */
+async function countRunsCreatedSince(sinceDate: string): Promise<number> {
+  const [row] = await db
+    .select({ value: count() })
+    .from(samLoopRuns)
+    .where(gte(samLoopRuns.createdAt, sinceDate));
+  return Number(row?.value ?? 0);
+}
+
+/**
  * Insert missing default loops for a project. Idempotent via the
  * (projectId, name) unique index — conflicts are skipped (safe under
  * concurrent createProject + listSamLoops seeding).
@@ -306,6 +322,7 @@ export const SamLoopRepository = {
   getRunsForLoop,
   getRecentRunsForProject,
   getContentVelocityForProject,
+  countRunsCreatedSince,
   ensureDefaultLoops,
   seedDefaultsForAllProjects,
 };

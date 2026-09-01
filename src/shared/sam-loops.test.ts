@@ -2,8 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_SAM_LOOP_TEMPLATES,
   DOGFOOD_SAM_LOOP_TRIGGER_CAP,
+  SAM_LOOP_ALLOWED_DOMAINS,
+  SAM_LOOP_DAILY_RUN_CAP,
   SAM_LOOP_STEP_CAP,
   computeNextSamLoopRunAt,
+  isSamLoopDomainAllowed,
+  startOfUtcDay,
 } from "@/shared/sam-loops";
 import * as rankTracking from "@/shared/rank-tracking";
 
@@ -50,6 +54,7 @@ describe("sam-loops shared helpers", () => {
     expect(onPage.sourceType).toBe("custom");
     expect(onPage.cadence).toBe("weekly");
     expect(onPage.customPrompt).toContain("niceseo.ai");
+    expect(onPage.customPrompt).toContain("twa.studio");
     expect(onPage.customPrompt).toContain("too soon — skip");
     expect(onPage.customPrompt).toContain("propose_homegrown_otto_fixes");
     expect(onPage.customPrompt).toContain("Pending only");
@@ -60,6 +65,7 @@ describe("sam-loops shared helpers", () => {
     expect(keywords.sourceType).toBe("custom");
     expect(keywords.cadence).toBe("monthly");
     expect(keywords.customPrompt).toContain("niceseo.ai");
+    expect(keywords.customPrompt).toContain("twa.studio");
     expect(keywords.customPrompt).toContain("Do not buy keyword research");
     expect(keywords.customPrompt).toContain("research_keywords");
     expect(keywords.customPrompt).toContain("save_keywords");
@@ -97,5 +103,19 @@ describe("sam-loops shared helpers", () => {
       "2019-12-31T00:00:00.000Z",
     );
     expect(rankTracking.computeNextCheckAt).toHaveBeenNthCalledWith(2, "daily");
+  });
+
+  it("gates house domains and exposes the daily run cap", () => {
+    expect(SAM_LOOP_ALLOWED_DOMAINS).toEqual([
+      "niceseo.ai",
+      "twa.studio",
+      "niceapp.ai",
+    ]);
+    expect(isSamLoopDomainAllowed("WWW.TWA.STUDIO ")).toBe(true);
+    expect(isSamLoopDomainAllowed("https://twa.studio/page")).toBe(true);
+    expect(isSamLoopDomainAllowed("example.com")).toBe(false);
+    expect(isSamLoopDomainAllowed(null)).toBe(false);
+    expect(startOfUtcDay(new Date("2026-09-01T23:59:59Z"))).toBe("2026-09-01");
+    expect(SAM_LOOP_DAILY_RUN_CAP).toBe(40);
   });
 });

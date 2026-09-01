@@ -1,12 +1,30 @@
 import { SamLoopRepository } from "@/server/features/sam-loops/repositories/SamLoopRepository";
 import { beginSamLoopRun } from "@/server/features/sam-loops/services/samLoopRunGuards";
-import { computeNextSamLoopRunAt } from "@/shared/sam-loops";
+import {
+  SAM_LOOP_DAILY_RUN_CAP,
+  computeNextSamLoopRunAt,
+  isSamLoopDomainAllowed,
+  startOfUtcDay,
+} from "@/shared/sam-loops";
 
 const TICK_DEADLINE_MS = 3 * 60_000;
 const ALREADY_RUNNING_IDS_CAP = 20;
 
 /** Cron body: claim due enabled loops and start SamLoopWorkflow for each. */
 export async function runScheduledSamLoops(env: Env) {
+  const runsToday = await SamLoopRepository.countRunsCreatedSince(
+    startOfUtcDay(),
+  );
+  if (runsToday >= SAM_LOOP_DAILY_RUN_CAP) {
+    console.error({
+      event: "sam_loops_daily_cap_hit",
+      cap: SAM_LOOP_DAILY_RUN_CAP,
+      runsToday,
+    });
+    return;
+  }
+  let budget = SAM_LOOP_DAILY_RUN_CAP - runsToday;
+
   const nowIso = new Date().toISOString();
   const dueLoops =
     await SamLoopRepository.getDueLoopsWithOrganization(nowIso);
@@ -14,11 +32,13 @@ export async function runScheduledSamLoops(env: Env) {
   const deadline = Date.now() + TICK_DEADLINE_MS;
   let started = 0;
   let stoppedByDeadline = false;
+  let stoppedByCap = false;
   let concurrentChangeSkips = 0;
   let alreadyRunning = 0;
   const alreadyRunningLoopIds: string[] = [];
   let workflowStartErrors = 0;
   let loopErrors = 0;
+  let domainSkips = 0;
 
   for (const loop of dueLoops) {
     if (Date.now() >= deadline) {
@@ -34,6 +54,22 @@ export async function runScheduledSamLoops(env: Env) {
         loop.cadence,
         observedNextRunAt,
       );
+
+      if (!isSamLoopDomainAllowed(loop.domain)) {
+        await SamLoopRepository.claimDueLoop({
+          loopId: loop.id,
+          projectId: loop.projectId,
+          observedNextRunAt,
+          nextRunAt,
+        });
+        domainSkips++;
+        continue;
+      }
+
+      if (started >= budget) {
+        stoppedByCap = true;
+        break;
+      }
 
       const claimed = await SamLoopRepository.claimDueLoop({
         loopId: loop.id,
@@ -100,11 +136,14 @@ export async function runScheduledSamLoops(env: Env) {
     candidates: dueLoops.length,
     started,
     stoppedByDeadline,
+    stoppedByCap,
+    runsToday,
     concurrentChangeSkips,
     alreadyRunning,
     alreadyRunningLoopIds,
     workflowStartErrors,
     loopErrors,
+    domainSkips,
     oldestDueAgeMs: oldestDue
       ? Date.now() - new Date(oldestDue).getTime()
       : null,

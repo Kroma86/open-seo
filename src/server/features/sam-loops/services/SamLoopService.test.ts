@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   updateLoop: vi.fn(),
   beginSamLoopRun: vi.fn(),
   ensureDefaultLoops: vi.fn(),
+  countRunsCreatedSince: vi.fn(),
   getProjectById: vi.fn(),
   getAgencyScoreInputsGlobal: vi.fn(),
 }));
@@ -23,6 +24,7 @@ vi.mock(
       claimDueLoop: mocks.claimDueLoop,
       updateLoop: mocks.updateLoop,
       ensureDefaultLoops: mocks.ensureDefaultLoops,
+      countRunsCreatedSince: mocks.countRunsCreatedSince,
     },
   }),
 );
@@ -38,7 +40,10 @@ vi.mock("@/server/features/agency/AgencyScoreInputsService", () => ({
   getAgencyScoreInputsGlobal: mocks.getAgencyScoreInputsGlobal,
 }));
 
-import { DOGFOOD_SAM_LOOP_TRIGGER_CAP } from "@/shared/sam-loops";
+import {
+  DOGFOOD_SAM_LOOP_TRIGGER_CAP,
+  SAM_LOOP_DAILY_RUN_CAP,
+} from "@/shared/sam-loops";
 import {
   seedDefaultSamLoopsForProject,
   triggerSamLoop,
@@ -269,6 +274,7 @@ describe("triggerSamLoopsForDomain", () => {
     vi.setSystemTime(new Date("2026-09-01T15:00:00.000Z"));
     mocks.beginSamLoopRun.mockResolvedValue({ ok: true, runId: "run_1" });
     mocks.ensureDefaultLoops.mockResolvedValue([]);
+    mocks.countRunsCreatedSince.mockResolvedValue(0);
     mocks.getAgencyScoreInputsGlobal.mockResolvedValue({
       projectId: "project_niceseo",
     });
@@ -317,12 +323,43 @@ describe("triggerSamLoopsForDomain", () => {
     vi.useRealTimers();
   });
 
-  it("returns domain_not_allowed for anything other than niceseo.ai", async () => {
+  it("returns domain_not_allowed for a domain outside the house allowlist", async () => {
     await expect(
-      triggerSamLoopsForDomain({ domain: "twa.studio" }),
+      triggerSamLoopsForDomain({ domain: "example.com" }),
     ).resolves.toEqual({ ok: false, reason: "domain_not_allowed" });
     expect(mocks.getAgencyScoreInputsGlobal).not.toHaveBeenCalled();
     expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
+  });
+
+  it("allows twa.studio and niceapp.ai through the house-domain gate", async () => {
+    for (const domain of ["twa.studio", "niceapp.ai"] as const) {
+      mocks.getAgencyScoreInputsGlobal.mockResolvedValue({
+        projectId: "project_niceseo",
+      });
+      const result = await triggerSamLoopsForDomain({ domain });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.projectId).toBe("project_niceseo");
+    }
+  });
+
+  it("returns daily_cap when today's run count is at the cap", async () => {
+    mocks.countRunsCreatedSince.mockResolvedValue(SAM_LOOP_DAILY_RUN_CAP);
+    await expect(
+      triggerSamLoopsForDomain({ domain: "niceseo.ai" }),
+    ).resolves.toEqual({ ok: false, reason: "daily_cap" });
+    expect(mocks.ensureDefaultLoops).not.toHaveBeenCalled();
+    expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
+  });
+
+  it("caps started loops to remaining daily budget", async () => {
+    mocks.countRunsCreatedSince.mockResolvedValue(SAM_LOOP_DAILY_RUN_CAP - 1);
+    const result = await triggerSamLoopsForDomain({ domain: "niceseo.ai" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.capped).toBe(true);
+    expect(result.results).toHaveLength(1);
+    expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(1);
   });
 
   it("returns project_not_found when the domain has no project", async () => {

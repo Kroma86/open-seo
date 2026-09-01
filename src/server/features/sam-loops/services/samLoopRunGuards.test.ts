@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getRunById: vi.fn(),
   updateRun: vi.fn(),
   getWorkflow: vi.fn(),
+  countRunsCreatedSince: vi.fn(),
 }));
 
 vi.mock("cloudflare:workers", () => ({
@@ -30,6 +31,7 @@ const input = {
 describe("beginSamLoopRun", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.countRunsCreatedSince.mockResolvedValue(0);
   });
 
   it("creates a run and starts the workflow", async () => {
@@ -91,5 +93,19 @@ describe("beginSamLoopRun", () => {
     expect(result.ok).toBe(true);
     expect(mocks.updateRun).toHaveBeenCalled();
     expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to create a run when today's count is at the cap", async () => {
+    mocks.countRunsCreatedSince.mockResolvedValue(40);
+    const create = vi.fn();
+    const workflow = { create } as unknown as Env["SAM_LOOP_WORKFLOW"];
+
+    const result = await beginSamLoopRun({ ...input, workflow });
+    expect(result).toEqual({
+      ok: false,
+      reason: "daily_cap",
+    });
+    expect(mocks.tryCreateRun).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 });

@@ -7,9 +7,12 @@ import { getAgencyScoreInputsGlobal } from "@/server/features/agency/AgencyScore
 import { buildSamSkillSource } from "@/server/features/sam/samSkills";
 import {
   DOGFOOD_SAM_LOOP_TRIGGER_CAP,
+  SAM_LOOP_DAILY_RUN_CAP,
   computeNextSamLoopRunAt,
   expectedSamLoopDraftsPerMonth,
   isSamContentLoop,
+  isSamLoopDomainAllowed,
+  startOfUtcDay,
 } from "@/shared/sam-loops";
 import type { ContentVelocity } from "@/types/schemas/sam-loops";
 import type {
@@ -279,7 +282,7 @@ export type DomainLoopTriggerRow = {
 };
 
 export type DomainLoopTriggerResult =
-  | { ok: false; reason: "project_not_found" | "domain_not_allowed" }
+  | { ok: false; reason: "project_not_found" | "domain_not_allowed" | "daily_cap" }
   | {
       ok: true;
       projectId: string;
@@ -289,9 +292,6 @@ export type DomainLoopTriggerResult =
       capped: boolean;
       results: DomainLoopTriggerRow[];
     };
-
-/** Internal soak trigger is dogfood-only. Skills already refuse other domains. */
-const DOGFOOD_TRIGGER_DOMAIN = "niceseo.ai";
 
 function normalizeTriggerDomain(raw: string): string {
   let host = raw.trim().toLowerCase();
@@ -305,14 +305,14 @@ function normalizeTriggerDomain(raw: string): string {
 /**
  * Seed missing defaults, then start a manual run for each matching enabled
  * loop on the project that owns `domain`. Used by the Hermes/internal soak
- * path so we can fire niceseo.ai loops without Cloudflare Access.
+ * path so we can fire house-domain loops without Cloudflare Access.
  */
 export async function triggerSamLoopsForDomain(input: {
   domain: string;
   names?: string[];
 }): Promise<DomainLoopTriggerResult> {
   const domain = normalizeTriggerDomain(input.domain);
-  if (domain !== DOGFOOD_TRIGGER_DOMAIN) {
+  if (!isSamLoopDomainAllowed(domain)) {
     return { ok: false, reason: "domain_not_allowed" };
   }
   const score = await getAgencyScoreInputsGlobal(domain);
@@ -323,6 +323,14 @@ export async function triggerSamLoopsForDomain(input: {
   if (!project) {
     return { ok: false, reason: "project_not_found" };
   }
+
+  const runsToday = await SamLoopRepository.countRunsCreatedSince(
+    startOfUtcDay(),
+  );
+  if (runsToday >= SAM_LOOP_DAILY_RUN_CAP) {
+    return { ok: false, reason: "daily_cap" };
+  }
+  const remaining = SAM_LOOP_DAILY_RUN_CAP - runsToday;
 
   const seeded = await SamLoopRepository.ensureDefaultLoops(project.id);
   const loops = await SamLoopRepository.getLoopsForProject(project.id);
@@ -338,9 +346,10 @@ export async function triggerSamLoopsForDomain(input: {
     return want.some((needle) => needle === skill || needle === name);
   });
 
-  const capped = selected.length > DOGFOOD_SAM_LOOP_TRIGGER_CAP;
+  const startCap = Math.min(DOGFOOD_SAM_LOOP_TRIGGER_CAP, remaining);
+  const capped = selected.length > startCap;
   if (capped) {
-    selected.length = DOGFOOD_SAM_LOOP_TRIGGER_CAP;
+    selected.length = startCap;
   }
 
   const results: DomainLoopTriggerRow[] = [];
