@@ -25,6 +25,7 @@ import type { PromptExplorerResult } from "@/types/schemas/ai-search";
 
 type RunDetail = {
   source: "dataforseo_llm_mentions";
+  promptsAttempted: number;
   brandLookup: {
     fetchedAt: string;
     totalMentions: number | null;
@@ -37,11 +38,12 @@ type RunDetail = {
     promptId: string;
     prompt: string;
     fetchedAt: string | null;
+    error?: string;
     results: PromptExplorerResult["results"];
   }>;
 };
 
-/** Brand lookup preserves cached fetchedAt; fresh paid calls set fetchedAt to now. */
+/** Brand lookup preserves cached fetchedAt; fresh calls set fetchedAt to now. */
 const BRAND_LOOKUP_FRESH_MS = 5_000;
 
 function targetSharePct(brandLookup: BrandLookupResult): number | null {
@@ -59,11 +61,11 @@ function promptRowMentionsBrand(
   return flags.some(Boolean);
 }
 
-function countSuccessfulPromptChecks(
+function countPromptsWithDefinitiveAnswer(
   promptResults: RunDetail["prompts"],
 ): number {
-  return promptResults.filter((row) =>
-    row.results.some((result) => result.status === "success"),
+  return promptResults.filter(
+    (row) => promptRowMentionsBrand(row.results) !== null,
   ).length;
 }
 
@@ -79,19 +81,21 @@ function countPromptsWithBrand(
   ).length;
 }
 
-function classifyBrandLookupCost(fetchedAt: string): "cache" | "paid" {
+function classifyBrandLookupCost(
+  fetchedAt: string,
+): "cache" | "cache/paid uncertain" {
   const ageMs = Date.now() - new Date(fetchedAt).getTime();
-  return ageMs > BRAND_LOOKUP_FRESH_MS ? "cache" : "paid";
+  return ageMs > BRAND_LOOKUP_FRESH_MS ? "cache" : "cache/paid uncertain";
 }
 
 function buildCostNote(input: {
-  brandLookup: "cache" | "paid";
+  brandLookup: "cache" | "cache/paid uncertain";
   promptExplorerCalls: number;
 }): string {
   const brandLabel =
     input.brandLookup === "cache"
       ? "brand lookup cache hit"
-      : "brand lookup paid";
+      : "brand lookup cache/paid uncertain";
   if (input.promptExplorerCalls === 0) return brandLabel;
   return `${brandLabel}; ${input.promptExplorerCalls} prompt check(s): cache/paid uncertain`;
 }
@@ -101,7 +105,7 @@ async function executeRun(input: {
   configId: string;
   projectId: string;
   billingCustomer: BillingCustomerContext;
-}) {
+}): Promise<"completed" | "reclaimed"> {
   const config = await AiVisibilityManagementService.getValidatedConfig(
     input.configId,
     input.projectId,
@@ -143,6 +147,9 @@ async function executeRun(input: {
   const brandLookupCost = classifyBrandLookupCost(brandLookup.fetchedAt);
 
   const promptResults: RunDetail["prompts"] = [];
+  // Up to 10 prompts, each explorePrompt call isolated in try/catch so one failure
+  // cannot abort the run. Worst case ~10 sequential calls still fits inside the
+  // 60-minute stale threshold (STALE_AI_VISIBILITY_RUN_MS).
   for (const trackedPrompt of activePrompts) {
     if (explorerModels.length === 0) {
       promptResults.push({
@@ -155,33 +162,46 @@ async function executeRun(input: {
     }
 
     promptExplorerCalls += 1;
-    const explorer = await explorePrompt(
-      {
-        projectId: input.projectId,
+    try {
+      const explorer = await explorePrompt(
+        {
+          projectId: input.projectId,
+          prompt: trackedPrompt.prompt,
+          models: explorerModels,
+          highlightBrand: config.brand,
+          webSearch: true,
+        },
+        input.billingCustomer,
+      );
+      promptResults.push({
+        promptId: trackedPrompt.id,
         prompt: trackedPrompt.prompt,
-        models: explorerModels,
-        highlightBrand: config.brand,
-        webSearch: true,
-      },
-      input.billingCustomer,
-    );
-    promptResults.push({
-      promptId: trackedPrompt.id,
-      prompt: trackedPrompt.prompt,
-      fetchedAt: explorer.fetchedAt,
-      results: explorer.results,
-    });
+        fetchedAt: explorer.fetchedAt,
+        results: explorer.results,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Prompt explorer failed";
+      promptResults.push({
+        promptId: trackedPrompt.id,
+        prompt: trackedPrompt.prompt,
+        fetchedAt: null,
+        error: message,
+        results: [],
+      });
+    }
   }
 
   const filteredPlatformRows = brandLookup.perPlatform.filter((row) =>
     lookupPlatforms.includes(row.platform),
   );
   const mentionsSum = sumMentionsForPlatforms(brandLookup, lookupPlatforms);
-  const promptsChecked = countSuccessfulPromptChecks(promptResults);
+  const promptsChecked = countPromptsWithDefinitiveAnswer(promptResults);
   const promptsWithBrand = countPromptsWithBrand(promptResults);
 
   const detail: RunDetail = {
     source: "dataforseo_llm_mentions",
+    promptsAttempted: promptExplorerCalls,
     brandLookup: {
       fetchedAt: brandLookup.fetchedAt,
       totalMentions: mentionsSum.total,
@@ -194,22 +214,34 @@ async function executeRun(input: {
   };
 
   const finishedAt = new Date().toISOString();
-  await AiVisibilityRepository.updateRun(input.runId, {
-    status: "completed",
-    finishedAt,
-    totalMentions: detail.brandLookup.totalMentions,
-    shareOfVoicePct: detail.brandLookup.shareOfVoicePct,
-    promptsWithBrand,
-    promptsChecked,
-    detail: JSON.stringify(detail),
-    costNote: buildCostNote({
-      brandLookup: brandLookupCost,
-      promptExplorerCalls,
-    }),
-  });
+  const completed = await AiVisibilityRepository.updateRunIfInFlight(
+    input.runId,
+    {
+      status: "completed",
+      finishedAt,
+      totalMentions: detail.brandLookup.totalMentions,
+      shareOfVoicePct: detail.brandLookup.shareOfVoicePct,
+      promptsWithBrand,
+      promptsChecked,
+      detail: JSON.stringify(detail),
+      costNote: buildCostNote({
+        brandLookup: brandLookupCost,
+        promptExplorerCalls,
+      }),
+    },
+    { requireRunning: true },
+  );
+  if (!completed) {
+    console.log(
+      `AI visibility: run ${input.runId} was reclaimed before completion`,
+    );
+    return "reclaimed";
+  }
+
   await AiVisibilityRepository.updateConfig(input.configId, input.projectId, {
     lastRunAt: finishedAt,
   });
+  return "completed";
 }
 
 export async function runAiVisibilityCheck(input: {

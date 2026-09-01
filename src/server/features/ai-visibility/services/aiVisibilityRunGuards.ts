@@ -16,13 +16,17 @@ export async function failRunIfActive(
     current.status === "completed" ||
     current.status === "failed"
   ) {
-    return;
+    return false;
   }
-  await AiVisibilityRepository.updateRun(runId, {
-    status: "failed",
-    error: reason,
-    finishedAt: new Date().toISOString(),
-  });
+  return AiVisibilityRepository.updateRunIfInFlight(
+    runId,
+    {
+      status: "failed",
+      error: reason,
+      finishedAt: new Date().toISOString(),
+    },
+    { requireRunning: false },
+  );
 }
 
 export async function beginAiVisibilityRun(input: {

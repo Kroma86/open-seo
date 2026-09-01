@@ -23,12 +23,8 @@ beforeAll(async () => {
   client = createClient({ url: "file::memory:" });
   testDb = drizzle(client);
   vi.doMock("@/db", () => ({ db: testDb }));
-  vi.doMock("@/db/runBatch", () => ({
-    runBatch: async (
-      build: (tx: typeof testDb) => readonly Promise<unknown>[],
-    ) => {
-      for (const statement of build(testDb)) await statement;
-    },
+  vi.doMock("@/db/provider", () => ({
+    getDatabaseProvider: () => "d1",
   }));
 
   await client.executeMultiple(`
@@ -191,28 +187,45 @@ describe("AiVisibilityRepository queries", () => {
     });
     expect(eleventh).toEqual({ ok: false, reason: "cap" });
 
+    expect(
+      await AiVisibilityRepository.countActivePromptsForConfig("config_1"),
+    ).toBe(10);
+  });
+
+  it("self-repairs when two adds race at nine active prompts", async () => {
+    for (let i = 0; i < 9; i++) {
+      const result = await AiVisibilityRepository.addPromptRespectingCap({
+        id: `prompt_${String(i).padStart(2, "0")}`,
+        configId: "config_1",
+        prompt: `race base ${i}`,
+      });
+      expect(result.ok).toBe(true);
+    }
+
     const [raceFirst, raceSecond] = await Promise.all([
       AiVisibilityRepository.addPromptRespectingCap({
-        id: "prompt_race_a",
+        id: "prompt_09",
         configId: "config_1",
         prompt: "prompt race a",
       }),
       AiVisibilityRepository.addPromptRespectingCap({
-        id: "prompt_race_b",
+        id: "prompt_10",
         configId: "config_1",
         prompt: "prompt race b",
       }),
     ]);
-    const raceSuccesses = [raceFirst, raceSecond].filter((row) => row.ok);
-    expect(raceSuccesses.length).toBeLessThanOrEqual(1);
-
+    const outcomes = [raceFirst, raceSecond];
+    expect(outcomes.filter((row) => row.ok)).toHaveLength(1);
+    expect(outcomes.filter((row) => !row.ok && row.reason === "cap")).toHaveLength(
+      1,
+    );
     expect(
       await AiVisibilityRepository.countActivePromptsForConfig("config_1"),
     ).toBe(10);
   });
 
   it("allows a new run after reclaiming a stale in-flight row", async () => {
-    const staleStarted = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const staleStarted = new Date(Date.now() - 61 * 60 * 1000).toISOString();
     await client.execute({
       sql: `
         INSERT INTO ai_visibility_runs (
@@ -267,5 +280,34 @@ describe("AiVisibilityRepository queries", () => {
       promptSetVersion: 1,
     });
     expect(created).toBe(false);
+  });
+
+  it("reclaims a same-day stale run when cutoff uses ISO timestamps", async () => {
+    const staleStarted = new Date(Date.now() - 61 * 60 * 1000).toISOString();
+    await client.execute({
+      sql: `
+        INSERT INTO ai_visibility_runs (
+          id, config_id, project_id, prompt_set_version, status,
+          started_at, created_at
+        ) VALUES (
+          'run_same_day', 'config_1', 'project_1', 1, 'running',
+          ?, ?
+        )
+      `,
+      args: [staleStarted, staleStarted],
+    });
+
+    const { reconcileStaleAiVisibilityRuns } = await import(
+      "../services/aiVisibilityReconciler"
+    );
+    await reconcileStaleAiVisibilityRuns();
+
+    const row = await client.execute({
+      sql: `SELECT status, error FROM ai_visibility_runs WHERE id = 'run_same_day'`,
+    });
+    expect(row.rows[0]).toMatchObject({
+      status: "failed",
+      error: "stale run reclaimed",
+    });
   });
 });

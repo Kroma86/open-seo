@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   getDueConfigsWithOrganization: vi.fn<(nowIso: string) => Promise<DueConfigRow[]>>(),
   getActivePromptsForConfig: vi.fn(),
   claimDueConfig: vi.fn(),
+  updateConfig: vi.fn(),
   runAiVisibilityCheck: vi.fn(),
   customerHasPaidPlan: vi.fn(),
   isHostedServerAuthMode: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock(
       getDueConfigsWithOrganization: mocks.getDueConfigsWithOrganization,
       getActivePromptsForConfig: mocks.getActivePromptsForConfig,
       claimDueConfig: mocks.claimDueConfig,
+      updateConfig: mocks.updateConfig,
     },
   }),
 );
@@ -74,6 +76,7 @@ describe("runScheduledAiVisibilityChecks", () => {
     mocks.isHostedServerAuthMode.mockResolvedValue(true);
     mocks.customerHasPaidPlan.mockResolvedValue(true);
     mocks.claimDueConfig.mockResolvedValue(true);
+    mocks.updateConfig.mockResolvedValue(undefined);
     mocks.runAiVisibilityCheck.mockResolvedValue({ ok: true, runId: "run_1" });
     mocks.getActivePromptsForConfig.mockResolvedValue([
       { id: "prompt_1", prompt: "best tools" },
@@ -106,5 +109,21 @@ describe("runScheduledAiVisibilityChecks", () => {
     expect(mocks.runAiVisibilityCheck).toHaveBeenCalledWith(
       expect.objectContaining({ trigger: "scheduled" }),
     );
+  });
+
+  it("backs off nextRunAt by one hour when a scheduled run throws", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-01T12:00:00.000Z"));
+    mocks.getDueConfigsWithOrganization.mockResolvedValue([dueConfig()]);
+    mocks.runAiVisibilityCheck.mockRejectedValue(new Error("upstream failed"));
+
+    await runTick();
+
+    expect(mocks.updateConfig).toHaveBeenCalledWith(
+      "config_1",
+      "project_1",
+      { nextRunAt: "2026-02-01T13:00:00.000Z" },
+    );
+    vi.useRealTimers();
   });
 });

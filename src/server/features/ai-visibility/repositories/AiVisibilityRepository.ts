@@ -11,7 +11,6 @@ import {
 } from "drizzle-orm";
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
-import { runBatch } from "@/db/runBatch";
 import {
   aiVisibilityConfigs,
   aiVisibilityPrompts,
@@ -171,6 +170,23 @@ async function updateRun(
     .where(eq(aiVisibilityRuns.id, runId));
 }
 
+/** Compare-and-swap terminal updates so a reclaimed run cannot accept results. */
+async function updateRunIfInFlight(
+  runId: string,
+  data: Partial<InferInsertModel<typeof aiVisibilityRuns>>,
+  options: { requireRunning: boolean },
+): Promise<boolean> {
+  const statusFilter = options.requireRunning
+    ? eq(aiVisibilityRuns.status, "running")
+    : inArray(aiVisibilityRuns.status, ["pending", "running"]);
+  const updated = await db
+    .update(aiVisibilityRuns)
+    .set(data)
+    .where(and(eq(aiVisibilityRuns.id, runId), statusFilter))
+    .returning({ id: aiVisibilityRuns.id });
+  return updated.length > 0;
+}
+
 async function getRunById(runId: string) {
   const rows = await db
     .select()
@@ -241,27 +257,11 @@ async function getActivePromptsForConfig(configId: string) {
         eq(aiVisibilityPrompts.isActive, true),
       ),
     )
-    .orderBy(aiVisibilityPrompts.createdAt);
+    .orderBy(asc(aiVisibilityPrompts.createdAt), asc(aiVisibilityPrompts.id));
 }
 
 async function countActivePromptsForConfig(configId: string) {
   const rows = await db
-    .select({ value: count() })
-    .from(aiVisibilityPrompts)
-    .where(
-      and(
-        eq(aiVisibilityPrompts.configId, configId),
-        eq(aiVisibilityPrompts.isActive, true),
-      ),
-    );
-  return rows[0]?.value ?? 0;
-}
-
-async function countActivePromptsForConfigInTx(
-  tx: typeof db,
-  configId: string,
-) {
-  const rows = await tx
     .select({ value: count() })
     .from(aiVisibilityPrompts)
     .where(
@@ -290,43 +290,50 @@ type AddPromptOutcome =
   | { ok: true; promptId: string }
   | { ok: false; reason: "duplicate" | "cap" };
 
+async function repairActivePromptCap(
+  configId: string,
+  promptId: string,
+  mode: "insert" | "activate",
+): Promise<"ok" | "cap"> {
+  const active = await getActivePromptsForConfig(configId);
+  if (active.length <= MAX_ACTIVE_PROMPTS_PER_CONFIG) return "ok";
+  const survivors = active
+    .slice(0, MAX_ACTIVE_PROMPTS_PER_CONFIG)
+    .map((row) => row.id);
+  if (survivors.includes(promptId)) return "ok";
+  if (mode === "insert") {
+    await db
+      .delete(aiVisibilityPrompts)
+      .where(eq(aiVisibilityPrompts.id, promptId));
+  } else {
+    await db
+      .update(aiVisibilityPrompts)
+      .set({ isActive: false })
+      .where(eq(aiVisibilityPrompts.id, promptId));
+  }
+  return "cap";
+}
+
 /**
- * Insert an active prompt and roll back when the post-insert count exceeds the cap.
- * Atomic on Postgres (transaction) and D1 (batch).
+ * Insert an active prompt, then self-repair when concurrent adds exceed the cap.
+ * Post-commit ordering by (createdAt, id) ensures at most MAX survive.
  */
 async function addPromptRespectingCap(data: {
   id: string;
   configId: string;
   prompt: string;
 }): Promise<AddPromptOutcome> {
-  let outcome: AddPromptOutcome = { ok: false, reason: "duplicate" };
+  const inserted = await db
+    .insert(aiVisibilityPrompts)
+    .values({ ...data, isActive: true })
+    .onConflictDoNothing()
+    .returning({ id: aiVisibilityPrompts.id });
+  const promptId = inserted[0]?.id;
+  if (!promptId) return { ok: false, reason: "duplicate" };
 
-  await runBatch((tx) => [
-    (async () => {
-      const inserted = await tx
-        .insert(aiVisibilityPrompts)
-        .values({ ...data, isActive: true })
-        .onConflictDoNothing()
-        .returning({ id: aiVisibilityPrompts.id });
-      const promptId = inserted[0]?.id;
-      if (!promptId) return;
-
-      const activeCount = await countActivePromptsForConfigInTx(
-        tx,
-        data.configId,
-      );
-      if (activeCount > MAX_ACTIVE_PROMPTS_PER_CONFIG) {
-        await tx
-          .delete(aiVisibilityPrompts)
-          .where(eq(aiVisibilityPrompts.id, promptId));
-        outcome = { ok: false, reason: "cap" };
-        return;
-      }
-      outcome = { ok: true, promptId };
-    })(),
-  ]);
-
-  return outcome;
+  const repaired = await repairActivePromptCap(data.configId, promptId, "insert");
+  if (repaired === "cap") return { ok: false, reason: "cap" };
+  return { ok: true, promptId };
 }
 
 type ActivatePromptOutcome =
@@ -337,37 +344,22 @@ async function activatePromptRespectingCap(
   promptId: string,
   configId: string,
 ): Promise<ActivatePromptOutcome> {
-  let outcome: ActivatePromptOutcome = { ok: false, reason: "not_found" };
+  const updated = await db
+    .update(aiVisibilityPrompts)
+    .set({ isActive: true })
+    .where(
+      and(
+        eq(aiVisibilityPrompts.id, promptId),
+        eq(aiVisibilityPrompts.configId, configId),
+        eq(aiVisibilityPrompts.isActive, false),
+      ),
+    )
+    .returning({ id: aiVisibilityPrompts.id });
+  if (!updated[0]) return { ok: false, reason: "not_found" };
 
-  await runBatch((tx) => [
-    (async () => {
-      const updated = await tx
-        .update(aiVisibilityPrompts)
-        .set({ isActive: true })
-        .where(
-          and(
-            eq(aiVisibilityPrompts.id, promptId),
-            eq(aiVisibilityPrompts.configId, configId),
-            eq(aiVisibilityPrompts.isActive, false),
-          ),
-        )
-        .returning({ id: aiVisibilityPrompts.id });
-      if (!updated[0]) return;
-
-      const activeCount = await countActivePromptsForConfigInTx(tx, configId);
-      if (activeCount > MAX_ACTIVE_PROMPTS_PER_CONFIG) {
-        await tx
-          .update(aiVisibilityPrompts)
-          .set({ isActive: false })
-          .where(eq(aiVisibilityPrompts.id, promptId));
-        outcome = { ok: false, reason: "cap" };
-        return;
-      }
-      outcome = { ok: true };
-    })(),
-  ]);
-
-  return outcome;
+  const repaired = await repairActivePromptCap(configId, promptId, "activate");
+  if (repaired === "cap") return { ok: false, reason: "cap" };
+  return { ok: true };
 }
 
 async function removePrompt(promptId: string, configId: string) {
@@ -426,6 +418,7 @@ export const AiVisibilityRepository = {
   claimDueConfig,
   tryCreateRun,
   updateRun,
+  updateRunIfInFlight,
   getRunById,
   getActiveRunForConfig,
   getLatestCompletedRunForConfig,

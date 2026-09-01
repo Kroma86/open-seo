@@ -8,6 +8,13 @@ import {
   isScheduledAiVisibilityInterval,
 } from "@/shared/ai-visibility";
 
+/** Back off failed scheduled runs so the interval is not lost to a hot loop. */
+const SCHEDULED_RUN_FAILURE_BACKOFF_MS = 60 * 60 * 1000;
+
+function scheduleRetryAfterFailure(): string {
+  return new Date(Date.now() + SCHEDULED_RUN_FAILURE_BACKOFF_MS).toISOString();
+}
+
 export async function runScheduledAiVisibilityChecks(_env: Env) {
   await reconcileStaleAiVisibilityRuns();
 
@@ -105,6 +112,10 @@ export async function runScheduledAiVisibilityChecks(_env: Env) {
         });
       } catch (err) {
         runErrors++;
+        // Retry in one hour instead of waiting a full weekly/monthly interval.
+        await AiVisibilityRepository.updateConfig(config.id, config.projectId, {
+          nextRunAt: scheduleRetryAfterFailure(),
+        });
         console.error(
           `[cron] AI visibility check failed for config ${config.id}:`,
           err,

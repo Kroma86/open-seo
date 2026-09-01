@@ -1,7 +1,6 @@
 import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { db } from "@/db";
 import { aiVisibilityRuns } from "@/db/schema";
-import { getDatabaseProvider } from "@/db/provider";
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import {
   isStaleInFlightRun,
@@ -11,19 +10,17 @@ import {
 
 const WATCHDOG_BATCH_LIMIT = 100;
 
-function startedBeforeForProvider(cutoff: Date): string {
-  const iso = cutoff.toISOString();
-  return getDatabaseProvider() === "postgres"
-    ? iso
-    : iso.replace("T", " ").slice(0, 19);
-}
-
 async function failStaleRun(runId: string) {
-  await AiVisibilityRepository.updateRun(runId, {
-    status: "failed",
-    error: STALE_AI_VISIBILITY_RUN_ERROR,
-    finishedAt: new Date().toISOString(),
-  });
+  const updated = await AiVisibilityRepository.updateRunIfInFlight(
+    runId,
+    {
+      status: "failed",
+      error: STALE_AI_VISIBILITY_RUN_ERROR,
+      finishedAt: new Date().toISOString(),
+    },
+    { requireRunning: false },
+  );
+  return updated;
 }
 
 /** Reclaim stale in-flight runs for one config before starting a new run. */
@@ -48,7 +45,8 @@ export async function reclaimStaleRunsForConfig(configId: string) {
 
   for (const run of runs) {
     if (!isStaleInFlightRun(run)) continue;
-    await failStaleRun(run.id);
+    const reclaimed = await failStaleRun(run.id);
+    if (!reclaimed) continue;
     console.log(
       `AI visibility: reclaimed stale run ${run.id} for config ${configId}`,
     );
@@ -57,10 +55,9 @@ export async function reclaimStaleRunsForConfig(configId: string) {
 
 /** Cron watchdog: sweep globally stale in-flight runs. */
 export async function reconcileStaleAiVisibilityRuns() {
-  const startedBefore = startedBeforeForProvider(
-    new Date(Date.now() - STALE_AI_VISIBILITY_RUN_MS),
-  );
-  const createdBefore = startedBefore;
+  const cutoffIso = new Date(
+    Date.now() - STALE_AI_VISIBILITY_RUN_MS,
+  ).toISOString();
 
   const stale = await db
     .select({
@@ -79,11 +76,11 @@ export async function reconcileStaleAiVisibilityRuns() {
         or(
           and(
             isNull(aiVisibilityRuns.startedAt),
-            lt(aiVisibilityRuns.createdAt, createdBefore),
+            lt(aiVisibilityRuns.createdAt, cutoffIso),
           ),
           and(
             isNotNull(aiVisibilityRuns.startedAt),
-            lt(aiVisibilityRuns.startedAt, startedBefore),
+            lt(aiVisibilityRuns.startedAt, cutoffIso),
           ),
         ),
       ),
@@ -94,7 +91,8 @@ export async function reconcileStaleAiVisibilityRuns() {
   for (const run of stale) {
     try {
       if (!isStaleInFlightRun(run)) continue;
-      await failStaleRun(run.id);
+      const reclaimed = await failStaleRun(run.id);
+      if (!reclaimed) continue;
       console.log(
         `AI visibility watchdog: reclaimed stale run ${run.id} (config ${run.configId})`,
       );

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getProjectForOrganization: vi.fn(),
   getActivePromptsForConfig: vi.fn(),
   updateRun: vi.fn(),
+  updateRunIfInFlight: vi.fn(),
   updateConfig: vi.fn(),
   beginAiVisibilityRun: vi.fn(),
   failRunIfActive: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock(
     AiVisibilityRepository: {
       getActivePromptsForConfig: mocks.getActivePromptsForConfig,
       updateRun: mocks.updateRun,
+      updateRunIfInFlight: mocks.updateRunIfInFlight,
       updateConfig: mocks.updateConfig,
     },
   }),
@@ -84,6 +86,7 @@ describe("runAiVisibilityCheck", () => {
       languageCode: "en",
     });
     mocks.beginAiVisibilityRun.mockResolvedValue({ ok: true, runId: "run_1" });
+    mocks.updateRunIfInFlight.mockResolvedValue(true);
     mocks.getBrandLookup.mockResolvedValue({
       query: "Acme",
       resolvedTarget: "acme.com",
@@ -116,13 +119,85 @@ describe("runAiVisibilityCheck", () => {
     });
 
     expect(mocks.explorePrompt).not.toHaveBeenCalled();
-    const completedUpdate = mocks.updateRun.mock.calls.find(
+    const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
       (call) => call[1]?.status === "completed",
     );
     expect(completedUpdate?.[1]).toMatchObject({
       promptsChecked: 0,
       promptsWithBrand: null,
     });
+  });
+
+  it("counts promptsChecked only for definitive brandMentioned answers", async () => {
+    mocks.getValidatedConfig.mockResolvedValue({
+      ...config,
+      platforms: '["chat_gpt","google"]',
+    });
+    mocks.getActivePromptsForConfig.mockResolvedValue([
+      { id: "prompt_1", prompt: "answered" },
+      { id: "prompt_2", prompt: "errored" },
+    ]);
+    mocks.explorePrompt
+      .mockResolvedValueOnce({
+        prompt: "answered",
+        highlightBrand: "Acme",
+        fetchedAt: new Date().toISOString(),
+        results: [
+          {
+            model: "chat_gpt",
+            status: "success",
+            error: null,
+            response: "Acme is great",
+            citations: [],
+            brandMentioned: true,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        prompt: "errored",
+        highlightBrand: "Acme",
+        fetchedAt: new Date().toISOString(),
+        results: [
+          {
+            model: "chat_gpt",
+            status: "error",
+            error: "upstream failed",
+            response: null,
+            citations: [],
+            brandMentioned: null,
+          },
+        ],
+      });
+
+    await runAiVisibilityCheck({
+      configId: "config_1",
+      projectId: "project_1",
+      billingCustomer,
+      trigger: "manual",
+    });
+
+    const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
+      (call) => call[1]?.status === "completed",
+    );
+    expect(completedUpdate?.[1]).toMatchObject({
+      promptsChecked: 1,
+      promptsWithBrand: 1,
+    });
+    const detail = JSON.parse(String(completedUpdate?.[1]?.detail));
+    expect(detail.promptsAttempted).toBe(2);
+  });
+
+  it("does not write results when the run was reclaimed before completion", async () => {
+    mocks.updateRunIfInFlight.mockResolvedValue(false);
+
+    await runAiVisibilityCheck({
+      configId: "config_1",
+      projectId: "project_1",
+      billingCustomer,
+      trigger: "manual",
+    });
+
+    expect(mocks.updateConfig).not.toHaveBeenCalled();
   });
 
   it("stores null promptsWithBrand when every explorer call fails", async () => {
@@ -153,7 +228,7 @@ describe("runAiVisibilityCheck", () => {
       trigger: "manual",
     });
 
-    const completedUpdate = mocks.updateRun.mock.calls.find(
+    const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
       (call) => call[1]?.status === "completed",
     );
     expect(completedUpdate?.[1]).toMatchObject({
@@ -162,7 +237,7 @@ describe("runAiVisibilityCheck", () => {
     });
   });
 
-  it("labels prompt costs as uncertain while using brand lookup cache signal", async () => {
+  it("labels fresh brand lookup costs as uncertain while using cache signal for hits", async () => {
     mocks.getValidatedConfig.mockResolvedValue({
       ...config,
       platforms: '["chat_gpt","google"]',
@@ -202,11 +277,59 @@ describe("runAiVisibilityCheck", () => {
       trigger: "manual",
     });
 
-    const completedUpdate = mocks.updateRun.mock.calls.find(
+    const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
       (call) => call[1]?.status === "completed",
     );
     expect(completedUpdate?.[1]?.costNote).toBe(
       "brand lookup cache hit; 1 prompt check(s): cache/paid uncertain",
+    );
+  });
+
+  it("never labels a fresh brand lookup as paid from latency alone", async () => {
+    mocks.getValidatedConfig.mockResolvedValue({
+      ...config,
+      platforms: '["chat_gpt","google"]',
+    });
+    mocks.getBrandLookup.mockResolvedValue({
+      query: "Acme",
+      resolvedTarget: "acme.com",
+      fetchedAt: new Date().toISOString(),
+      hasData: true,
+      perPlatform: [
+        { platform: "google", mentions: 5, impressions: null },
+        { platform: "chat_gpt", mentions: 3, impressions: null },
+      ],
+      topPages: [],
+      shareOfVoice: null,
+    });
+    mocks.explorePrompt.mockResolvedValue({
+      prompt: "best tools",
+      highlightBrand: "Acme",
+      fetchedAt: new Date().toISOString(),
+      results: [
+        {
+          model: "chat_gpt",
+          status: "success",
+          error: null,
+          response: "Acme is great",
+          citations: [],
+          brandMentioned: true,
+        },
+      ],
+    });
+
+    await runAiVisibilityCheck({
+      configId: "config_1",
+      projectId: "project_1",
+      billingCustomer,
+      trigger: "manual",
+    });
+
+    const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
+      (call) => call[1]?.status === "completed",
+    );
+    expect(completedUpdate?.[1]?.costNote).toBe(
+      "brand lookup cache/paid uncertain; 1 prompt check(s): cache/paid uncertain",
     );
   });
 });

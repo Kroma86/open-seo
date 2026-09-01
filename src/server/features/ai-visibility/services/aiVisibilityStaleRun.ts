@@ -1,5 +1,5 @@
 /** Runs still in-flight after this long get reclaimed (worker kill, deploy reset). */
-export const STALE_AI_VISIBILITY_RUN_MS = 15 * 60 * 1000;
+export const STALE_AI_VISIBILITY_RUN_MS = 60 * 60 * 1000;
 
 export const STALE_AI_VISIBILITY_RUN_ERROR = "stale run reclaimed";
 

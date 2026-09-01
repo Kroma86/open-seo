@@ -122,3 +122,25 @@ Addressed reviewer findings without schema/migration, env, or dependency changes
 | `node --max-old-space-size=12288 node_modules/typescript/bin/tsc --noEmit` | **Clean** |
 | Schema / migrations | **Not touched** |
 | Commit | **Not made** (per instructions) |
+
+## Repair round 2
+
+Addressed final reviewer findings without schema/migration, env, or dependency changes.
+
+| Finding | Fix |
+|---------|-----|
+| **HIGH — watchdog can reclaim a live run → double paid runs** | `AiVisibilityRepository.updateRunIfInFlight` compare-and-swap on terminal updates (`requireRunning: true` for completion, pending/running for failure). `runAiVisibilityCheck` skips `lastRunAt` when CAS returns 0 rows; reconciler `failStaleRun` uses the same guard. Stale threshold raised to **60 minutes**. Each `explorePrompt` call wrapped in try/catch so one prompt failure cannot abort the run; comment documents worst-case runtime vs threshold. |
+| **HIGH — 10-active-prompt cap race** | Post-commit self-repair: insert/activate, then re-read active prompts ordered by `(createdAt, id)`; losers delete/deactivate their own row. Repository test races two adds at 9 active and asserts exactly one survives with cap error on the loser. |
+| **MEDIUM — D1 stale-cutoff format mismatch** | Reconciler cutoff built with `new Date(Date.now() - THRESHOLD).toISOString()` for all providers (removed space-separated D1 format). Repository test reclaims a same-day stale run via ISO cutoff. |
+| **MEDIUM — failed scheduled run silently eats the whole interval** | On thrown scheduled run (not `already_running`), `nextRunAt` set to now + 1 hour with backoff comment; test asserts `+1h` and failed run path. |
+| **LOW — mixed denominator** | `promptsChecked` counts only prompts with a definitive `brandMentioned` answer; `detail.promptsAttempted` keeps the attempted count. |
+| **LOW — brand cost label guess** | Fresh `fetchedAt` heuristic labels brand lookup `cache/paid uncertain` (never `paid` from latency). Preserved old `fetchedAt` still labeled cache hit. `getBrandLookup` exposes no cache/paid flag — freshness heuristic only. |
+
+### Acceptance (repair round 2)
+
+| Check | Result |
+|-------|--------|
+| `npx vitest run` | **1281 passed** (160 files) |
+| `node --max-old-space-size=12288 node_modules/typescript/bin/tsc --noEmit` | **Clean** |
+| Schema / migrations | **Not touched** |
+| Commit | **Not made** (per instructions) |
