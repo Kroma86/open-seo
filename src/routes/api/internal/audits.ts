@@ -65,6 +65,10 @@ function unsupportedAuthMode(): Response {
   );
 }
 
+function tenantIsWholeDeployment(): boolean {
+  return getAuthMode(env.AUTH_MODE) === "cloudflare_access";
+}
+
 function createdAtMs(value: Date | number | string | null | undefined): number {
   if (value instanceof Date) return value.getTime();
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -94,19 +98,29 @@ async function findOwnedProject(organizationId: string, projectId: string) {
 // Earliest-created member of the org (better-auth `member` + `user`), used as
 // the unattended actor for startAudit. Invitations are not members.
 async function resolveActor(organizationId: string) {
-  const rows = await db
-    .select({
-      userId: user.id,
-      userEmail: user.email,
-      createdAt: member.createdAt,
-    })
-    .from(member)
-    .innerJoin(user, eq(member.userId, user.id))
-    .where(eq(member.organizationId, organizationId))
-    .orderBy(asc(member.createdAt), asc(user.id));
+  // Workspace-merge moved projects onto shared-workspace; member rows did not follow.
+  const rows = tenantIsWholeDeployment()
+    ? await db
+        .select({
+          userId: user.id,
+          userEmail: user.email,
+          createdAt: user.createdAt,
+        })
+        .from(user)
+        .orderBy(asc(user.createdAt), asc(user.id))
+    : await db
+        .select({
+          userId: user.id,
+          userEmail: user.email,
+          createdAt: member.createdAt,
+        })
+        .from(member)
+        .innerJoin(user, eq(member.userId, user.id))
+        .where(eq(member.organizationId, organizationId))
+        .orderBy(asc(member.createdAt), asc(user.id));
 
   const actor = rows
-    .filter((row) => row.userEmail.trim())
+    .filter((row) => (row.userEmail ?? "").trim())
     .toSorted((left, right) => {
       const byCreated = createdAtMs(left.createdAt) - createdAtMs(right.createdAt);
       if (byCreated !== 0) return byCreated;
@@ -114,7 +128,7 @@ async function resolveActor(organizationId: string) {
     })[0];
 
   if (!actor) return null;
-  return { userId: actor.userId, userEmail: actor.userEmail.trim() };
+  return { userId: actor.userId, userEmail: (actor.userEmail ?? "").trim() };
 }
 
 export async function handleGet(request: Request): Promise<Response> {

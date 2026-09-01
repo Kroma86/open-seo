@@ -4,6 +4,7 @@ import { AppError } from "@/server/lib/errors";
 const {
   mockEnv,
   listMembers,
+  listUsers,
   listGrants,
   getProjectForOrganization,
   getConnection,
@@ -11,10 +12,12 @@ const {
   setProperty,
 } = vi.hoisted(() => {
   const listMembers = vi.fn();
+  const listUsers = vi.fn();
   const listGrants = vi.fn();
   return {
     mockEnv: {} as { AGENCY_SCORE_EXPORT_TOKEN?: string; AUTH_MODE?: string },
     listMembers,
+    listUsers,
     listGrants,
     getProjectForOrganization: vi.fn(),
     getConnection: vi.fn(),
@@ -31,9 +34,10 @@ vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => () => ({}),
 }));
 
-vi.mock("@/db", () => {
+vi.mock("@/db", async () => {
+  const { account, member, user } = await import("@/db/schema");
   const chain: {
-    from: () => unknown;
+    from: (table?: unknown) => unknown;
     innerJoin: () => unknown;
     where: () => unknown;
     orderBy: () => unknown;
@@ -42,11 +46,14 @@ vi.mock("@/db", () => {
       onFulfilled: (value: unknown) => unknown,
       onRejected?: (reason: unknown) => unknown,
     ) => Promise<unknown>;
-    _kind: "members" | "grants";
+    _kind: "members" | "grants" | "users";
   } = {
     _kind: "grants",
-    from: () => {
-      chain._kind = "grants";
+    from: (table?: unknown) => {
+      if (table === user) chain._kind = "users";
+      else if (table === member) chain._kind = "members";
+      else if (table === account) chain._kind = "grants";
+      else chain._kind = "grants";
       return chain;
     },
     innerJoin: () => {
@@ -60,10 +67,13 @@ vi.mock("@/db", () => {
       onFulfilled: (value: unknown) => unknown,
       onRejected?: (reason: unknown) => unknown,
     ) =>
-      Promise.resolve(chain._kind === "members" ? listMembers() : listGrants()).then(
-        onFulfilled,
-        onRejected,
-      ),
+      Promise.resolve(
+        chain._kind === "members"
+          ? listMembers()
+          : chain._kind === "users"
+            ? listUsers()
+            : listGrants(),
+      ).then(onFulfilled, onRejected),
   };
   return { db: { select: () => chain } };
 });
@@ -198,6 +208,7 @@ beforeEach(() => {
     },
   );
   listMembers.mockResolvedValue([LATE_MEMBER, EARLY_MEMBER]);
+  listUsers.mockResolvedValue([LATE_MEMBER, EARLY_MEMBER]);
   listGrants.mockResolvedValue([EARLY_GRANT]);
   getConnection.mockResolvedValue(null);
   listPropertiesForUserWithGrantStatus.mockResolvedValue(
@@ -256,6 +267,7 @@ describe("internal ga4 auth", () => {
 
   it("scopes ownership and setProperty to delegated-local-admin under AUTH_MODE=local_noauth", async () => {
     mockEnv.AUTH_MODE = "local_noauth";
+    listUsers.mockResolvedValue([]);
 
     const listed = await handleGet(get(`?projectId=${PROJECT_ID}`, auth));
     expect(listed.status).toBe(200);
@@ -273,6 +285,8 @@ describe("internal ga4 auth", () => {
       accountId: "ga4_acct_early",
       userId: "user_early",
     });
+    expect(listMembers).toHaveBeenCalled();
+    expect(listUsers).not.toHaveBeenCalled();
   });
 });
 
@@ -412,6 +426,61 @@ describe("internal ga4 handlePost", () => {
     });
     expect(listPropertiesForUserWithGrantStatus).not.toHaveBeenCalled();
     expectNoWrite();
+  });
+
+  it("attaches using a deployment user when AUTH_MODE=cloudflare_access even with zero members", async () => {
+    mockEnv.AUTH_MODE = "cloudflare_access";
+    listMembers.mockResolvedValue([]);
+    listUsers.mockResolvedValue([EARLY_MEMBER]);
+    listGrants.mockResolvedValue([EARLY_GRANT]);
+
+    const res = await handlePost(post({ projectId: PROJECT_ID }, auth));
+    expect(res.status).toBe(200);
+    expect(setProperty).toHaveBeenCalledWith({
+      projectId: PROJECT_ID,
+      organizationId: ORG_ID,
+      propertyId: PROPERTY_ID,
+      accountId: "ga4_acct_early",
+      userId: "user_early",
+    });
+    expect(listUsers).toHaveBeenCalled();
+    expect(listMembers).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 no_grant when AUTH_MODE=cloudflare_access and there are no users", async () => {
+    mockEnv.AUTH_MODE = "cloudflare_access";
+    listMembers.mockResolvedValue([EARLY_MEMBER]);
+    listUsers.mockResolvedValue([]);
+    listGrants.mockResolvedValue([EARLY_GRANT]);
+
+    const res = await handlePost(post({ projectId: PROJECT_ID }, auth));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      error: "property_not_visible",
+      reason: "no_grant",
+      candidates: [],
+    });
+    expect(listPropertiesForUserWithGrantStatus).not.toHaveBeenCalled();
+    expectNoWrite();
+    expect(listUsers).toHaveBeenCalled();
+    expect(listMembers).not.toHaveBeenCalled();
+  });
+
+  it("attaches using a grant holder with a blank email under AUTH_MODE=cloudflare_access", async () => {
+    mockEnv.AUTH_MODE = "cloudflare_access";
+    listUsers.mockResolvedValue([{ ...EARLY_MEMBER, userEmail: "" }]);
+    listGrants.mockResolvedValue([EARLY_GRANT]);
+
+    const res = await handlePost(post({ projectId: PROJECT_ID }, auth));
+    expect(res.status).toBe(200);
+    expect(setProperty).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user_early",
+        accountId: "ga4_acct_early",
+      }),
+    );
+    expect(listUsers).toHaveBeenCalled();
+    expect(listMembers).not.toHaveBeenCalled();
   });
 
   it("picks the earliest member even when that member has a blank email", async () => {
