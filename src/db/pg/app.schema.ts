@@ -579,6 +579,7 @@ export const agencyOpsArtifacts = pgTable(
         "index-watchdog",
         "schema-proposals",
         "citations",
+        "heatmap",
       ],
     }).notNull(),
     domain: text("domain"),
