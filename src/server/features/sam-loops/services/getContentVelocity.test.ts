@@ -112,6 +112,60 @@ describe("getContentVelocity", () => {
     );
   });
 
+  it("excludes empty-string report runs from drafted count", async () => {
+    mocks.getLoopsForProject.mockResolvedValue([
+      {
+        id: "loop_content",
+        name: "Monthly content",
+        skillName: null,
+        cadence: "monthly",
+        isEnabled: true,
+      },
+    ]);
+    mocks.getContentVelocityForProject.mockResolvedValue([
+      {
+        loopId: "loop_content",
+        loopName: "Monthly content",
+        cadence: "monthly",
+        isEnabled: true,
+        finishedAt: "2026-08-10T00:00:00.000Z",
+        hasReport: false,
+      },
+    ]);
+
+    await expect(getContentVelocity("project_1")).resolves.toEqual({
+      months: ["2026-07", "2026-08", "2026-09"],
+      loops: [
+        {
+          loopId: "loop_content",
+          loopName: "Monthly content",
+          cadence: "monthly",
+          isEnabled: true,
+          expectedPerMonth: 1,
+          drafted: { "2026-07": 0, "2026-08": 0, "2026-09": 0 },
+          completedWithoutDraft: { "2026-07": 0, "2026-08": 1, "2026-09": 0 },
+        },
+      ],
+    });
+  });
+
+  it("throws for unknown cadence when mapping expectedPerMonth", async () => {
+    mocks.getLoopsForProject.mockResolvedValue([
+      {
+        id: "loop_bad",
+        name: "Monthly content",
+        skillName: null,
+        cadence: "quarterly",
+        isEnabled: true,
+      },
+    ]);
+    mocks.getContentVelocityForProject.mockResolvedValue([]);
+
+    await expect(getContentVelocity("project_1")).rejects.toThrow(
+      "unknown cadence: quarterly",
+    );
+  });
+
   it("lists content loops with zero runs and maps expectedPerMonth by cadence", async () => {
     mocks.getLoopsForProject.mockResolvedValue([
       {

@@ -109,8 +109,12 @@ export function SamLoopsPage({ projectId }: { projectId: string }) {
     queryFn: () => listSamLoopSkills({ data: { projectId } }),
   });
 
-  const invalidate = () =>
+  const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["sam-loops", projectId] });
+    void queryClient.invalidateQueries({
+      queryKey: ["sam-loops-velocity", projectId],
+    });
+  };
 
   const toggleMutation = useMutation({
     mutationFn: (input: { loopId: string; isEnabled: boolean }) =>
