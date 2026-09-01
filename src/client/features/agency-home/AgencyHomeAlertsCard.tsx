@@ -66,17 +66,21 @@ export function AgencyHomeAlertsCard({
             <ul className="space-y-2">
               {data.highAlerts.slice(0, DISPLAY_LIMIT).map((alert, index) => (
                 <li
-                  key={`${alert.domain}-${index}`}
+                  key={`${alert.domain ?? "site-wide"}-${index}`}
                   className="text-sm text-base-content/85"
                 >
-                  <span className="font-semibold">{alert.domain}</span>
-                  {" — "}
+                  {alert.domain ? (
+                    <>
+                      <span className="font-semibold">{alert.domain}</span>
+                      {" — "}
+                    </>
+                  ) : null}
                   {alert.message}
                 </li>
               ))}
-              {data.highAlerts.length > DISPLAY_LIMIT ? (
+              {data.highCount > DISPLAY_LIMIT ? (
                 <li className="text-xs text-base-content/50">
-                  +{data.highAlerts.length - DISPLAY_LIMIT} more
+                  +{data.highCount - DISPLAY_LIMIT} more in this cycle
                 </li>
               ) : null}
             </ul>

@@ -54,9 +54,10 @@ const baseInput = {
   domain: "example.com",
   date: "2026-08-31",
   contentType: "json" as const,
+  // Shape matches what the box actually writes: snake_case keys.
   content: JSON.stringify({
-    generatedAt: "2026-08-31T12:00:00.000Z",
-    countsBySeverity: { high: 2, medium: 1 },
+    generated_at: "2026-08-31T12:00:00.000Z",
+    counts_by_severity: { high: 2, medium: 1 },
     alerts: [
       {
         severity: "high",
@@ -65,9 +66,9 @@ const baseInput = {
         message: "Dropped 5 positions",
       },
       {
-        severity: "high",
+        severity: "HIGH",
         type: "crawl_error",
-        domain: "b.com",
+        domain: null,
         message: "5xx spike",
       },
       { severity: "medium", type: "info", domain: "c.com", message: "note" },
@@ -138,17 +139,42 @@ describe("AgencyOpsArtifactsService", () => {
     expect(alerts[0]?.kind).toBe("alert-cycle");
   });
 
-  it("latestAlertCycle returns parsed summary", async () => {
+  it("latestAlertCycle parses the box's snake_case shape, case-insensitive severity, null domain", async () => {
     await AgencyOpsArtifactsService.ingest(baseInput);
     const latest = await AgencyOpsArtifactsService.latestAlertCycle();
     expect(latest).toMatchObject({
       generatedAt: "2026-08-31T12:00:00.000Z",
       countsBySeverity: { high: 2, medium: 1 },
+      highCount: 2,
       highAlerts: [
         { type: "rank_drop", domain: "a.com", message: "Dropped 5 positions" },
-        { type: "crawl_error", domain: "b.com", message: "5xx spike" },
+        { type: "crawl_error", domain: null, message: "5xx spike" },
       ],
     });
+  });
+
+  it("latestAlertCycle counts all high-tier alerts beyond the 10-item cap", async () => {
+    const manyHigh = Array.from({ length: 14 }, (_, i) => ({
+      severity: i % 2 === 0 ? "high" : "critical",
+      type: "rank_drop",
+      domain: `d${i}.com`,
+      message: `drop ${i}`,
+    }));
+    await AgencyOpsArtifactsService.ingest({
+      ...baseInput,
+      content: JSON.stringify({
+        generated_at: "2026-08-31T12:00:00.000Z",
+        counts_by_severity: { high: 14 },
+        alerts: manyHigh,
+      }),
+    });
+    const latest = await AgencyOpsArtifactsService.latestAlertCycle();
+    expect(latest).toMatchObject({ highCount: 14 });
+    if (latest && "highAlerts" in latest) {
+      expect(latest.highAlerts).toHaveLength(10);
+    } else {
+      throw new Error("expected parsed alert cycle");
+    }
   });
 
   it("latestAlertCycle returns parseError on malformed JSON content", async () => {
@@ -159,5 +185,35 @@ describe("AgencyOpsArtifactsService", () => {
     const latest = await AgencyOpsArtifactsService.latestAlertCycle();
     expect(latest).toMatchObject({ parseError: true });
     expect(latest?.receivedAt).toBeTruthy();
+  });
+
+  it("latestAlertCycle returns parseError when the root is a JSON array", async () => {
+    await AgencyOpsArtifactsService.ingest({
+      ...baseInput,
+      content: "[]",
+    });
+    const latest = await AgencyOpsArtifactsService.latestAlertCycle();
+    expect(latest).toMatchObject({ parseError: true });
+  });
+
+  it("ingest rejects invalid bodies with the contract error strings", async () => {
+    await expect(
+      AgencyOpsArtifactsService.ingest({ ...baseInput, kind: "nope" }),
+    ).rejects.toThrow("kind_invalid");
+    await expect(
+      AgencyOpsArtifactsService.ingest({ ...baseInput, date: "31-08-2026" }),
+    ).rejects.toThrow("date_invalid");
+    await expect(
+      AgencyOpsArtifactsService.ingest({
+        ...baseInput,
+        content: "x".repeat(262_145),
+      }),
+    ).rejects.toThrow("content_invalid");
+    await expect(
+      AgencyOpsArtifactsService.ingest({ ...baseInput, sourceKey: "" }),
+    ).rejects.toThrow("sourceKey_invalid");
+    await expect(
+      AgencyOpsArtifactsService.ingest({ ...baseInput, domain: 42 }),
+    ).rejects.toThrow("domain_invalid");
   });
 });

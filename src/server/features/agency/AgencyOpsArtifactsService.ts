@@ -25,8 +25,14 @@ export type LatestAlertCycleResult =
       receivedAt: string;
       generatedAt: string | null;
       countsBySeverity: Record<string, number>;
-      highAlerts: Array<{ type: string; domain: string; message: string }>;
+      /** True count of high-tier alerts in the cycle (not capped at 10). */
+      highCount: number;
+      highAlerts: Array<{ type: string; domain: string | null; message: string }>;
     };
+
+// The box writes snake_case ("counts_by_severity", "generated_at"); tolerate
+// camelCase too so a future producer change cannot silently blank the card.
+const HIGH_TIER = new Set(["high", "critical"]);
 
 function asString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
@@ -99,41 +105,50 @@ async function latestAlertCycle(): Promise<LatestAlertCycleResult | null> {
 
   try {
     const parsed: unknown = JSON.parse(artifact.content);
-    if (!parsed || typeof parsed !== "object") {
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return { receivedAt: artifact.receivedAt, parseError: true };
     }
 
     const record = parsed as Record<string, unknown>;
+    const countsRaw = record.counts_by_severity ?? record.countsBySeverity;
     const countsBySeverity: Record<string, number> = {};
-    if (record.countsBySeverity && typeof record.countsBySeverity === "object") {
+    if (countsRaw && typeof countsRaw === "object" && !Array.isArray(countsRaw)) {
       for (const [key, value] of Object.entries(
-        record.countsBySeverity as Record<string, unknown>,
+        countsRaw as Record<string, unknown>,
       )) {
         if (typeof value === "number" && Number.isFinite(value)) {
-          countsBySeverity[key] = value;
+          countsBySeverity[key.toLowerCase()] = value;
         }
       }
     }
 
-    const highAlerts: Array<{ type: string; domain: string; message: string }> =
-      [];
+    const highAlerts: Array<{
+      type: string;
+      domain: string | null;
+      message: string;
+    }> = [];
+    let highCount = 0;
     const alerts = Array.isArray(record.alerts) ? record.alerts : [];
     for (const entry of alerts) {
       if (!entry || typeof entry !== "object") continue;
       const alert = entry as Record<string, unknown>;
-      if (alert.severity !== "high") continue;
+      const severity = asString(alert.severity)?.toLowerCase();
+      if (!severity || !HIGH_TIER.has(severity)) continue;
       const type = asString(alert.type);
-      const domain = asString(alert.domain);
       const message = asString(alert.message);
-      if (!type || !domain || !message) continue;
-      highAlerts.push({ type, domain, message });
-      if (highAlerts.length >= 10) break;
+      if (!type || !message) continue;
+      highCount += 1;
+      if (highAlerts.length < 10) {
+        // domain is legitimately null for site-wide alerts (e.g. scan errors)
+        highAlerts.push({ type, domain: asString(alert.domain), message });
+      }
     }
 
     return {
       receivedAt: artifact.receivedAt,
-      generatedAt: asString(record.generatedAt),
+      generatedAt: asString(record.generated_at ?? record.generatedAt),
       countsBySeverity,
+      highCount,
       highAlerts,
     };
   } catch {

@@ -48,7 +48,7 @@ function severityPill(severity: string) {
 function AlertCycleDetail({ content }: { content: string }) {
   try {
     const parsed: unknown = JSON.parse(content);
-    if (!parsed || typeof parsed !== "object") {
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return (
         <p className="text-sm text-error">
           Could not parse alert-cycle JSON — raw content is invalid.
@@ -212,6 +212,10 @@ export function AgencyOpsPage() {
               <div className="flex justify-center py-12">
                 <span className="loading loading-spinner loading-md" />
               </div>
+            ) : listQuery.isError ? (
+              <p className="rounded-xl border border-dashed border-error/50 bg-error/5 px-4 py-8 text-center text-sm text-error">
+                Could not load artifacts — try reloading the page.
+              </p>
             ) : artifacts.length === 0 ? (
               <p className="rounded-xl border border-dashed border-base-300/80 bg-base-200/30 px-4 py-8 text-center text-sm text-base-content/55">
                 No artifacts received yet.
@@ -249,8 +253,16 @@ export function AgencyOpsPage() {
               <div className="flex justify-center py-12">
                 <span className="loading loading-spinner loading-md" />
               </div>
+            ) : selectedId && detailQuery.isError ? (
+              <p className="rounded-xl border border-dashed border-error/50 bg-error/5 px-4 py-8 text-center text-sm text-error">
+                Could not load this artifact — try again.
+              </p>
             ) : selectedId && detailQuery.data ? (
               <ArtifactDetail artifact={detailQuery.data} />
+            ) : selectedId && detailQuery.isSuccess ? (
+              <p className="rounded-xl border border-dashed border-base-300/80 bg-base-200/30 px-4 py-8 text-center text-sm text-base-content/55">
+                This artifact no longer exists.
+              </p>
             ) : (
               <p className="rounded-xl border border-dashed border-base-300/80 bg-base-200/30 px-4 py-8 text-center text-sm text-base-content/55">
                 Select an artifact to view its contents.

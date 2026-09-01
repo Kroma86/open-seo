@@ -44,10 +44,10 @@ export function AgencyHomePage() {
     enabled: Boolean(projectsQuery.data?.length),
   });
 
+  // Not gated on projects: ops artifacts are box-wide, not project-bound.
   const alertsQuery = useQuery({
     queryKey: ["agency-home-alerts"],
     queryFn: () => getLatestAlertCycle(),
-    enabled: Boolean(projectsQuery.data?.length),
   });
 
   useEffect(() => {
