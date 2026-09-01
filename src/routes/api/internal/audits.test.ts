@@ -4,6 +4,7 @@ import { AppError } from "@/server/lib/errors";
 const {
   mockEnv,
   listMembers,
+  listUsers,
   getProjectForOrganization,
   getStatus,
   getHistory,
@@ -12,9 +13,11 @@ const {
   resolveAuditLimitTier,
 } = vi.hoisted(() => {
   const listMembers = vi.fn();
+  const listUsers = vi.fn();
   return {
     mockEnv: {} as { AGENCY_SCORE_EXPORT_TOKEN?: string; AUTH_MODE?: string },
     listMembers,
+    listUsers,
     getProjectForOrganization: vi.fn(),
     getStatus: vi.fn(),
     getHistory: vi.fn(),
@@ -32,9 +35,25 @@ vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => () => ({}),
 }));
 
-vi.mock("@/db", () => {
-  const chain = {
-    from: () => chain,
+vi.mock("@/db", async () => {
+  const { user } = await import("@/db/schema");
+  const chain: {
+    from: (table?: unknown) => unknown;
+    innerJoin: () => unknown;
+    where: () => unknown;
+    orderBy: () => unknown;
+    limit: () => unknown;
+    then: (
+      onFulfilled: (value: unknown) => unknown,
+      onRejected?: (reason: unknown) => unknown,
+    ) => Promise<unknown>;
+    _from: unknown;
+  } = {
+    _from: null,
+    from: (table?: unknown) => {
+      chain._from = table;
+      return chain;
+    },
     innerJoin: () => chain,
     where: () => chain,
     orderBy: () => chain,
@@ -42,7 +61,11 @@ vi.mock("@/db", () => {
     then: (
       onFulfilled: (value: unknown) => unknown,
       onRejected?: (reason: unknown) => unknown,
-    ) => Promise.resolve(listMembers()).then(onFulfilled, onRejected),
+    ) =>
+      Promise.resolve(chain._from === user ? listUsers() : listMembers()).then(
+        onFulfilled,
+        onRejected,
+      ),
   };
   return { db: { select: () => chain } };
 });
@@ -137,6 +160,7 @@ beforeEach(() => {
     },
   );
   listMembers.mockResolvedValue([LATE_MEMBER, EARLY_MEMBER]);
+  listUsers.mockResolvedValue([LATE_MEMBER, EARLY_MEMBER]);
   getStatus.mockResolvedValue({ id: "audit_1", status: "completed" });
   getHistory.mockResolvedValue([]);
   getLatestAuditForProject.mockResolvedValue(null);
@@ -195,6 +219,35 @@ describe("internal audits auth", () => {
       "delegated-local-admin",
       PROJECT_ID,
     );
+  });
+
+  it("starts an audit as an org member under AUTH_MODE=local_noauth, ignoring the user table", async () => {
+    mockEnv.AUTH_MODE = "local_noauth";
+    listUsers.mockResolvedValue([
+      {
+        userId: "user_other",
+        userEmail: "other@example.com",
+        createdAt: new Date("2025-01-01T00:00:00.000Z"),
+      },
+    ]);
+    listMembers.mockResolvedValue([EARLY_MEMBER]);
+
+    const res = await handlePost(
+      post({ projectId: PROJECT_ID, startUrl: "https://example.com" }, auth),
+    );
+    expect(res.status).toBe(202);
+    expect(startAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: "user_early",
+        billingCustomer: expect.objectContaining({
+          organizationId: "delegated-local-admin",
+          userId: "user_early",
+          userEmail: "early@example.com",
+        }),
+      }),
+    );
+    expect(listMembers).toHaveBeenCalled();
+    expect(listUsers).not.toHaveBeenCalled();
   });
 });
 
@@ -306,6 +359,7 @@ describe("internal audits handlePost", () => {
   });
 
   it("returns 409 when the organization has no members", async () => {
+    mockEnv.AUTH_MODE = "local_noauth";
     listMembers.mockResolvedValueOnce([]);
 
     const res = await handlePost(
@@ -315,6 +369,96 @@ describe("internal audits handlePost", () => {
     expect(await res.json()).toEqual({ error: "no_actor_available" });
     expect(startAudit).not.toHaveBeenCalled();
     expect(resolveAuditLimitTier).not.toHaveBeenCalled();
+    expect(listMembers).toHaveBeenCalled();
+    expect(listUsers).not.toHaveBeenCalled();
+  });
+
+  it("starts an audit as a deployment user when AUTH_MODE=cloudflare_access even with zero members", async () => {
+    mockEnv.AUTH_MODE = "cloudflare_access";
+    listMembers.mockResolvedValue([]);
+    listUsers.mockResolvedValue([
+      {
+        userId: "user_solo",
+        userEmail: "solo@example.com",
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    ]);
+
+    const res = await handlePost(
+      post({ projectId: PROJECT_ID, startUrl: "https://example.com" }, auth),
+    );
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ auditId: "audit_1" });
+    expect(startAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: "user_solo",
+        billingCustomer: expect.objectContaining({
+          organizationId: ORG_ID,
+          userId: "user_solo",
+          userEmail: "solo@example.com",
+        }),
+      }),
+    );
+    expect(listUsers).toHaveBeenCalled();
+    expect(listMembers).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when AUTH_MODE=cloudflare_access and there are no users", async () => {
+    mockEnv.AUTH_MODE = "cloudflare_access";
+    listMembers.mockResolvedValue([EARLY_MEMBER]);
+    listUsers.mockResolvedValue([]);
+
+    const res = await handlePost(
+      post({ projectId: PROJECT_ID, startUrl: "https://example.com" }, auth),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "no_actor_available" });
+    expect(startAudit).not.toHaveBeenCalled();
+    expect(resolveAuditLimitTier).not.toHaveBeenCalled();
+    expect(listUsers).toHaveBeenCalled();
+    expect(listMembers).not.toHaveBeenCalled();
+  });
+
+  it("skips blank-email users under AUTH_MODE=cloudflare_access and starts as the next user with an email", async () => {
+    mockEnv.AUTH_MODE = "cloudflare_access";
+    listUsers.mockResolvedValue([
+      {
+        userId: "u1",
+        userEmail: "",
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      {
+        userId: "u2",
+        userEmail: "ops@example.com",
+        createdAt: new Date("2026-06-01T00:00:00.000Z"),
+      },
+    ]);
+
+    const res = await handlePost(
+      post({ projectId: PROJECT_ID, startUrl: "https://example.com" }, auth),
+    );
+    expect(res.status).toBe(202);
+    expect(startAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: "u2",
+        billingCustomer: expect.objectContaining({
+          userId: "u2",
+          userEmail: "ops@example.com",
+        }),
+      }),
+    );
+  });
+
+  it("returns 409 when AUTH_MODE=cloudflare_access and the only user has a null email", async () => {
+    mockEnv.AUTH_MODE = "cloudflare_access";
+    listUsers.mockResolvedValue([{ userId: "u1", userEmail: null }]);
+
+    const res = await handlePost(
+      post({ projectId: PROJECT_ID, startUrl: "https://example.com" }, auth),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "no_actor_available" });
+    expect(startAudit).not.toHaveBeenCalled();
   });
 
   it("returns 400 validation_failed on VALIDATION_ERROR", async () => {
