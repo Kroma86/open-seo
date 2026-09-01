@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import {
   createSamLoop,
+  getContentVelocity,
   listSamLoopSkills,
   listSamLoops,
   seedDefaultSamLoops,
@@ -53,6 +54,16 @@ function formatWhen(iso: string | null | undefined) {
   }
 }
 
+function formatMonthLabel(ym: string) {
+  const [year, month] = ym.split("-");
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 /** Read + clear agency-home mission handoff (sessionStorage). */
 function takeSelectedRunHandoff(projectId: string): string | null {
   try {
@@ -86,6 +97,11 @@ export function SamLoopsPage({ projectId }: { projectId: string }) {
   const loopsQuery = useQuery({
     queryKey: ["sam-loops", projectId],
     queryFn: () => listSamLoops({ data: { projectId } }),
+  });
+
+  const velocityQuery = useQuery({
+    queryKey: ["sam-loops-velocity", projectId],
+    queryFn: () => getContentVelocity({ data: { projectId } }),
   });
 
   const skillsQuery = useQuery({
@@ -142,6 +158,7 @@ export function SamLoopsPage({ projectId }: { projectId: string }) {
   const loops = loopsQuery.data?.loops ?? [];
   const runs = loopsQuery.data?.runs ?? [];
   const skills = skillsQuery.data ?? [];
+  const velocity = velocityQuery.data;
 
   const selectedRun = useMemo(
     () => runs.find((run) => run.id === selectedRunId) ?? null,
@@ -194,6 +211,89 @@ export function SamLoopsPage({ projectId }: { projectId: string }) {
           report and may queue fix proposals — applying stays behind the gate.
         </p>
       </header>
+
+      {/* Content velocity */}
+      <section className="space-y-3 rounded-xl bg-base-100 p-4 ring-1 ring-base-300/60">
+        <h2 className="text-lg font-semibold">Content velocity</h2>
+        {velocityQuery.isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-base-content/60">
+            <Loader2 className="size-4 animate-spin" />
+            Loading velocity…
+          </div>
+        ) : velocityQuery.isError ? (
+          <p className="text-sm text-error">
+            {velocityQuery.error instanceof Error
+              ? velocityQuery.error.message
+              : "Could not load content velocity"}
+          </p>
+        ) : velocity && velocity.loops.length === 0 ? (
+          <p className="text-sm text-base-content/60">
+            No content loops set up — enable Monthly content to start drafting.
+          </p>
+        ) : velocity ? (
+          <div className="overflow-x-auto">
+            <table className="table table-sm">
+              <thead>
+                <tr className="text-base-content/70">
+                  <th className="font-medium">Loop</th>
+                  <th className="font-medium">Cadence</th>
+                  {velocity.months.map((month) => (
+                    <th key={month} className="text-right font-medium">
+                      {formatMonthLabel(month)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {velocity.loops.map((loop) => {
+                  const muted = !loop.isEnabled;
+                  return (
+                    <tr
+                      key={loop.loopId}
+                      className={muted ? "text-base-content/50" : undefined}
+                    >
+                      <td className="font-medium">
+                        {loop.loopName}
+                        {muted ? (
+                          <span className="ml-1 text-xs font-normal">
+                            (paused)
+                          </span>
+                        ) : null}
+                      </td>
+                      <td>
+                        <span className="badge badge-ghost badge-sm">
+                          {loop.cadence}
+                        </span>
+                      </td>
+                      {velocity.months.map((month) => {
+                        const drafted = loop.drafted[month] ?? 0;
+                        const withoutDraft =
+                          loop.completedWithoutDraft[month] ?? 0;
+                        return (
+                          <td key={month} className="text-right align-top">
+                            <div>
+                              {drafted}/{loop.expectedPerMonth}
+                            </div>
+                            {withoutDraft > 0 ? (
+                              <div className="text-xs text-base-content/50">
+                                +{withoutDraft} completed without draft
+                              </div>
+                            ) : null}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        <p className="text-xs text-base-content/50">
+          Counts are completed loop runs that produced a draft; expected pace is
+          approximate (monthly=1, weekly=4, daily=30).
+        </p>
+      </section>
 
       {/* Ask Sam affordance */}
       <section className="rounded-2xl bg-gradient-to-br from-base-200 via-base-100 to-base-200 p-4 shadow-sm ring-1 ring-base-300/60 md:p-5">

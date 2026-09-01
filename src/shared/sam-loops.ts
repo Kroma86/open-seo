@@ -60,6 +60,40 @@ export const DEFAULT_SAM_LOOP_TEMPLATES = [
 
 export const SAM_LOOP_STEP_CAP = 24;
 
+/** Skills whose loops count toward content velocity (plus "Monthly content" by name). */
+export const CONTENT_LOOP_SKILL_NAMES = [
+  "content-topical-map",
+  "content-brief",
+  "content-draft",
+] as const;
+
+export function isSamContentLoop(loop: {
+  name: string;
+  skillName: string | null;
+}): boolean {
+  return (
+    loop.name === "Monthly content" ||
+    (loop.skillName !== null &&
+      (CONTENT_LOOP_SKILL_NAMES as readonly string[]).includes(loop.skillName))
+  );
+}
+
+/** Approximate drafts per month implied by cadence (labeled approximations in UI). */
+export function expectedSamLoopDraftsPerMonth(
+  cadence: SamLoopCadence,
+): number {
+  switch (cadence) {
+    case "monthly":
+      return 1;
+    case "weekly":
+      return 4;
+    case "daily":
+      return 30;
+    default:
+      return 1;
+  }
+}
+
 /**
  * Reuse rank-tracking schedule math (daily / weekly / end-of-month).
  * If the computed next time is still in the past (stale anchor / clock skew),

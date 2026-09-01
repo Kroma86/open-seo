@@ -1,8 +1,9 @@
-import { and, desc, eq, inArray, isNull, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
 import { projects, samLoopRuns, samLoops } from "@/db/schema";
 import {
+  CONTENT_LOOP_SKILL_NAMES,
   DEFAULT_SAM_LOOP_TEMPLATES,
   computeNextSamLoopRunAt,
 } from "@/shared/sam-loops";
@@ -200,6 +201,44 @@ async function getRecentRunsForProject(input: {
     .limit(input.limit ?? 30);
 }
 
+async function getContentVelocityForProject(
+  projectId: string,
+  sinceIso: string,
+) {
+  const rows = await db
+    .select({
+      loopId: samLoopRuns.loopId,
+      loopName: samLoops.name,
+      cadence: samLoops.cadence,
+      isEnabled: samLoops.isEnabled,
+      finishedAt: samLoopRuns.finishedAt,
+      report: samLoopRuns.report,
+    })
+    .from(samLoopRuns)
+    .innerJoin(samLoops, eq(samLoopRuns.loopId, samLoops.id))
+    .where(
+      and(
+        eq(samLoopRuns.projectId, projectId),
+        eq(samLoopRuns.status, "completed"),
+        isNotNull(samLoopRuns.finishedAt),
+        gte(samLoopRuns.finishedAt, sinceIso),
+        or(
+          eq(samLoops.name, "Monthly content"),
+          inArray(samLoops.skillName, [...CONTENT_LOOP_SKILL_NAMES]),
+        ),
+      ),
+    );
+
+  return rows.map((row) => ({
+    loopId: row.loopId,
+    loopName: row.loopName,
+    cadence: row.cadence,
+    isEnabled: row.isEnabled,
+    finishedAt: row.finishedAt!,
+    hasReport: row.report !== null,
+  }));
+}
+
 /**
  * Insert missing default loops for a project. Idempotent via the
  * (projectId, name) unique index — conflicts are skipped (safe under
@@ -266,6 +305,7 @@ export const SamLoopRepository = {
   getActiveRunForLoop,
   getRunsForLoop,
   getRecentRunsForProject,
+  getContentVelocityForProject,
   ensureDefaultLoops,
   seedDefaultsForAllProjects,
 };

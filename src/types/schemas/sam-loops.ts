@@ -71,3 +71,20 @@ export const getSamLoopRunSchema = z.object({
   projectId: z.string().uuid(),
   runId: z.string().uuid(),
 });
+
+export type ContentVelocityMonthCounts = Record<string, number>;
+
+export type ContentVelocityLoop = {
+  loopId: string;
+  loopName: string;
+  cadence: SamLoop["cadence"];
+  isEnabled: boolean;
+  expectedPerMonth: number;
+  drafted: ContentVelocityMonthCounts;
+  completedWithoutDraft: ContentVelocityMonthCounts;
+};
+
+export type ContentVelocity = {
+  months: string[];
+  loops: ContentVelocityLoop[];
+};
