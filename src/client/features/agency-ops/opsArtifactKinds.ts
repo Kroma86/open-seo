@@ -9,6 +9,10 @@ export type OpsKindFilter = "all" | Kind;
 const FILTER_LABELS: Record<Kind, string> = {
   "alert-cycle": "Alerts",
   "monthly-report": "Reports",
+  "monthly-export": "Monthly exports",
+  "fix-changelog": "Fix change logs",
+  "client-sync": "Client list checks",
+  "gbp-audit": "GBP audits",
   digest: "Digests",
   "index-watchdog": "Indexability checks",
   "schema-proposals": "Schema proposals",
@@ -24,6 +28,10 @@ export const KIND_FILTERS: { id: OpsKindFilter; label: string }[] = [
 const KIND_PILLS: Record<Kind, { label: string; tone: string }> = {
   "alert-cycle": { label: "alert", tone: "badge-error" },
   "monthly-report": { label: "report", tone: "badge-primary" },
+  "monthly-export": { label: "export", tone: "badge-primary" },
+  "fix-changelog": { label: "changelog", tone: "badge-ghost" },
+  "client-sync": { label: "client-sync", tone: "badge-ghost" },
+  "gbp-audit": { label: "gbp-audit", tone: "badge-ghost" },
   digest: { label: "digest", tone: "badge-ghost" },
   "index-watchdog": { label: "indexability", tone: "badge-ghost" },
   "schema-proposals": { label: "schema", tone: "badge-ghost" },
