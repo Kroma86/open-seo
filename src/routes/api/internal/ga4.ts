@@ -167,6 +167,7 @@ const postBodySchema = z.object({
     .trim()
     .regex(/^properties\/\d+$/)
     .optional(),
+  acceptDisplayNameMismatch: z.boolean().optional(),
 });
 
 type VisibleProperty = {
@@ -360,7 +361,11 @@ export async function handlePost(request: Request): Promise<Response> {
   const organizationId = resolveOrganizationId();
   if (organizationId === null) return unsupportedAuthMode();
 
-  const { projectId, propertyId: requestedPropertyId } = parsed.data;
+  const {
+    projectId,
+    propertyId: requestedPropertyId,
+    acceptDisplayNameMismatch,
+  } = parsed.data;
   const project = await findOwnedProject(organizationId, projectId);
   if (!project) {
     return Response.json(
@@ -413,6 +418,7 @@ export async function handlePost(request: Request): Promise<Response> {
   let chosen: VisibleProperty | null = null;
   let chosenUserId: string | null = null;
   let chosenCandidates: Ga4Candidate[] = [];
+  let displayNameMismatchAccepted = false;
 
   for (const holder of holders) {
     const listed = await Ga4Service.listPropertiesForUserWithGrantStatus(
@@ -437,15 +443,21 @@ export async function handlePost(request: Request): Promise<Response> {
         null;
       if (!match) continue;
       if (!ga4DisplayNameMatches(match.displayName, domain)) {
-        return Response.json(
-          {
-            error: "display_name_mismatch",
-            propertyId: match.propertyId,
-            displayName: match.displayName,
-            domain,
-          },
-          { status: 409, headers: NO_STORE },
+        if (!acceptDisplayNameMismatch) {
+          return Response.json(
+            {
+              error: "display_name_mismatch",
+              propertyId: match.propertyId,
+              displayName: match.displayName,
+              domain,
+            },
+            { status: 409, headers: NO_STORE },
+          );
+        }
+        console.warn(
+          `GA4 display_name_mismatch accepted for projectId=${projectId} propertyId=${match.propertyId} displayName=${match.displayName}`,
         );
+        displayNameMismatchAccepted = true;
       }
       chosen = match;
       chosenUserId = holder.userId;
@@ -503,6 +515,9 @@ export async function handlePost(request: Request): Promise<Response> {
         propertyId: connection.propertyId,
         displayName: connection.propertyDisplayName,
         connectedAt: connection.createdAt ?? null,
+        ...(displayNameMismatchAccepted
+          ? { displayNameMismatchAccepted: true }
+          : {}),
       },
       { headers: NO_STORE },
     );
