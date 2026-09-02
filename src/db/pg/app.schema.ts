@@ -578,6 +578,10 @@ export const agencyOpsArtifacts = pgTable(
       enum: [
         "alert-cycle",
         "monthly-report",
+        "monthly-export",
+        "fix-changelog",
+        "client-sync",
+        "gbp-audit",
         "digest",
         "index-watchdog",
         "schema-proposals",

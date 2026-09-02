@@ -41,6 +41,7 @@ import { Route as ApiInternalAgencyScoreInputsRouteImport } from './routes/api/i
 import { Route as ApiInternalAgencyOttoProposalsRouteImport } from './routes/api/internal/agency-otto-proposals'
 import { Route as ApiInternalAgencyOttoPageInputsRouteImport } from './routes/api/internal/agency-otto-page-inputs'
 import { Route as ApiInternalAgencyOpsArtifactsRouteImport } from './routes/api/internal/agency-ops-artifacts'
+import { Route as ApiInternalAgencyMonthlyExportRouteImport } from './routes/api/internal/agency-monthly-export'
 import { Route as ApiInternalAgencyLoopReportsRouteImport } from './routes/api/internal/agency-loop-reports'
 import { Route as ApiAutumnSplatRouteImport } from './routes/api/autumn/$'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -236,6 +237,12 @@ const ApiInternalAgencyOpsArtifactsRoute =
     path: '/api/internal/agency-ops-artifacts',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiInternalAgencyMonthlyExportRoute =
+  ApiInternalAgencyMonthlyExportRouteImport.update({
+    id: '/api/internal/agency-monthly-export',
+    path: '/api/internal/agency-monthly-export',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiInternalAgencyLoopReportsRoute =
   ApiInternalAgencyLoopReportsRouteImport.update({
     id: '/api/internal/agency-loop-reports',
@@ -428,6 +435,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/autumn/$': typeof ApiAutumnSplatRoute
   '/api/internal/agency-loop-reports': typeof ApiInternalAgencyLoopReportsRoute
+  '/api/internal/agency-monthly-export': typeof ApiInternalAgencyMonthlyExportRoute
   '/api/internal/agency-ops-artifacts': typeof ApiInternalAgencyOpsArtifactsRoute
   '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
@@ -487,6 +495,7 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/autumn/$': typeof ApiAutumnSplatRoute
   '/api/internal/agency-loop-reports': typeof ApiInternalAgencyLoopReportsRoute
+  '/api/internal/agency-monthly-export': typeof ApiInternalAgencyMonthlyExportRoute
   '/api/internal/agency-ops-artifacts': typeof ApiInternalAgencyOpsArtifactsRoute
   '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
@@ -549,6 +558,7 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/autumn/$': typeof ApiAutumnSplatRoute
   '/api/internal/agency-loop-reports': typeof ApiInternalAgencyLoopReportsRoute
+  '/api/internal/agency-monthly-export': typeof ApiInternalAgencyMonthlyExportRoute
   '/api/internal/agency-ops-artifacts': typeof ApiInternalAgencyOpsArtifactsRoute
   '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
   '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
@@ -611,6 +621,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/autumn/$'
     | '/api/internal/agency-loop-reports'
+    | '/api/internal/agency-monthly-export'
     | '/api/internal/agency-ops-artifacts'
     | '/api/internal/agency-otto-page-inputs'
     | '/api/internal/agency-otto-proposals'
@@ -670,6 +681,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/autumn/$'
     | '/api/internal/agency-loop-reports'
+    | '/api/internal/agency-monthly-export'
     | '/api/internal/agency-ops-artifacts'
     | '/api/internal/agency-otto-page-inputs'
     | '/api/internal/agency-otto-proposals'
@@ -731,6 +743,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/autumn/$'
     | '/api/internal/agency-loop-reports'
+    | '/api/internal/agency-monthly-export'
     | '/api/internal/agency-ops-artifacts'
     | '/api/internal/agency-otto-page-inputs'
     | '/api/internal/agency-otto-proposals'
@@ -781,6 +794,7 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiAutumnSplatRoute: typeof ApiAutumnSplatRoute
   ApiInternalAgencyLoopReportsRoute: typeof ApiInternalAgencyLoopReportsRoute
+  ApiInternalAgencyMonthlyExportRoute: typeof ApiInternalAgencyMonthlyExportRoute
   ApiInternalAgencyOpsArtifactsRoute: typeof ApiInternalAgencyOpsArtifactsRoute
   ApiInternalAgencyOttoPageInputsRoute: typeof ApiInternalAgencyOttoPageInputsRoute
   ApiInternalAgencyOttoProposalsRoute: typeof ApiInternalAgencyOttoProposalsRoute
@@ -1020,6 +1034,13 @@ declare module '@tanstack/react-router' {
       path: '/api/internal/agency-ops-artifacts'
       fullPath: '/api/internal/agency-ops-artifacts'
       preLoaderRoute: typeof ApiInternalAgencyOpsArtifactsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/agency-monthly-export': {
+      id: '/api/internal/agency-monthly-export'
+      path: '/api/internal/agency-monthly-export'
+      fullPath: '/api/internal/agency-monthly-export'
+      preLoaderRoute: typeof ApiInternalAgencyMonthlyExportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/internal/agency-loop-reports': {
@@ -1416,6 +1437,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiAutumnSplatRoute: ApiAutumnSplatRoute,
   ApiInternalAgencyLoopReportsRoute: ApiInternalAgencyLoopReportsRoute,
+  ApiInternalAgencyMonthlyExportRoute: ApiInternalAgencyMonthlyExportRoute,
   ApiInternalAgencyOpsArtifactsRoute: ApiInternalAgencyOpsArtifactsRoute,
   ApiInternalAgencyOttoPageInputsRoute: ApiInternalAgencyOttoPageInputsRoute,
   ApiInternalAgencyOttoProposalsRoute: ApiInternalAgencyOttoProposalsRoute,

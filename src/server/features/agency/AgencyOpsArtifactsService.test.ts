@@ -204,6 +204,87 @@ describe("AgencyOpsArtifactsService", () => {
     expect(row?.contentType).toBe("markdown");
   });
 
+  it("accepts a monthly-export artifact (json, per-domain)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "monthly-export",
+      domain: "example.com",
+      date: "2026-09-01",
+      contentType: "json",
+      content: JSON.stringify({ client: "example.com", score: 82 }),
+      sourceKey: "monthly-export-example.com-2026-09.json",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("monthly-export");
+    expect(row?.domain).toBe("example.com");
+    expect(row?.contentType).toBe("json");
+  });
+
+  it("accepts a monthly-export index artifact (json, fleet-wide)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "monthly-export",
+      domain: null,
+      date: "2026-09-01",
+      contentType: "json",
+      content: JSON.stringify({ clients: ["a.com", "b.com"] }),
+      sourceKey: "export-index-2026-09.json",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("monthly-export");
+    expect(row?.domain).toBeNull();
+  });
+
+  it("accepts a fix-changelog artifact (markdown, per-domain)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "fix-changelog",
+      domain: "example.com",
+      date: "2026-09-01",
+      contentType: "md",
+      content: "# Fix changelog\n\n- Updated title tags",
+      sourceKey: "fix-changelog-example.com-2026-09.md",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("fix-changelog");
+    expect(row?.contentType).toBe("markdown");
+  });
+
+  it("accepts a client-sync artifact (markdown, fleet-wide)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "client-sync",
+      domain: null,
+      date: "2026-09-01",
+      contentType: "markdown",
+      content: "# Client list check\n\nAll clients accounted for.",
+      sourceKey: "client-sync-2026-09.md",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("client-sync");
+    expect(row?.domain).toBeNull();
+  });
+
+  it("accepts a gbp-audit artifact (markdown, domain optional)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "gbp-audit",
+      domain: "example.com",
+      date: "2026-09-01",
+      contentType: "md",
+      content: "# GBP audit\n\nNAP consistent.",
+      sourceKey: "gbp-audit-example.com-2026-09.md",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("gbp-audit");
+    expect(row?.contentType).toBe("markdown");
+  });
+
   it("still rejects unknown kinds with kind_invalid", async () => {
     await expect(
       AgencyOpsArtifactsService.ingest({ ...baseInput, kind: "rank-report" }),

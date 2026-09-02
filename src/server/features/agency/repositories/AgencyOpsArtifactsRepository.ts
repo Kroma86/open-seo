@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull, like } from "drizzle-orm";
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
 import { agencyOpsArtifacts } from "@/db/schema";
@@ -89,9 +89,39 @@ async function latestByKind(kind: Row["kind"]) {
   return rows[0] ?? null;
 }
 
+async function latestByKindDomainDate(
+  kind: Row["kind"],
+  domain: string | null,
+  date: string,
+  sourceKeyPrefix?: string,
+) {
+  const conditions = [
+    eq(agencyOpsArtifacts.kind, kind),
+    eq(agencyOpsArtifacts.date, date),
+    domain === null
+      ? isNull(agencyOpsArtifacts.domain)
+      : eq(agencyOpsArtifacts.domain, domain),
+  ];
+  if (sourceKeyPrefix) {
+    conditions.push(like(agencyOpsArtifacts.sourceKey, `${sourceKeyPrefix}%`));
+  }
+
+  const rows = await db
+    .select()
+    .from(agencyOpsArtifacts)
+    .where(and(...conditions))
+    .orderBy(
+      desc(agencyOpsArtifacts.receivedAt),
+      desc(agencyOpsArtifacts.id),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 export const AgencyOpsArtifactsRepository = {
   insertIfNew,
   list,
   getById,
   latestByKind,
+  latestByKindDomainDate,
 };
