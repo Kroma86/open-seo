@@ -412,12 +412,10 @@ export default Alchemy.Stack(
       // Site audits parse and persist batches of HTML inside Workflow steps.
       // Paid Workers permit up to five minutes; keep headroom for unusually
       // link-heavy sites after bounding page bodies and bulk-writing links.
-      // Configurable CPU limits are a paid-plan feature. The plan default
-      // (30 s) is not enough to parse page-heavy sites such as Wix (audits
-      // failed with "Worker exceeded CPU time limit"), so the limit is set
-      // for every deploy; a free-plan self-host, which rejects it, opts out
-      // with WORKER_CPU_LIMIT=off.
-      ...(process.env.WORKER_CPU_LIMIT === "off"
+      // Configurable CPU limits are a paid-plan feature, and self-host
+      // deploys (cloudflare_access) may run on the free plan — which rejects
+      // them — so those get the plan default instead.
+      ...(authMode === "cloudflare_access"
         ? {}
         : { limits: { cpuMs: 300_000 } }),
       observability: {
