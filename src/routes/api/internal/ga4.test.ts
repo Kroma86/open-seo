@@ -810,6 +810,143 @@ describe("internal ga4 handlePost", () => {
     expectNoWrite();
   });
 
+  it("returns 409 display_name_mismatch for an explicit propertyId with a business-name display and no override flag", async () => {
+    listPropertiesForUserWithGrantStatus.mockResolvedValue(
+      listedAccounts([
+        {
+          accountId: "ga4_acct_early",
+          properties: [
+            {
+              propertyId: "properties/777",
+              displayName: "AP Hurley Construction",
+            },
+          ],
+        },
+      ]),
+    );
+
+    const res = await handlePost(
+      post({ projectId: PROJECT_ID, propertyId: "properties/777" }, auth),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "display_name_mismatch",
+      propertyId: "properties/777",
+      displayName: "AP Hurley Construction",
+      domain: "example.com",
+    });
+    expectNoWrite();
+  });
+
+  it("attaches an explicit mismatched-name property when acceptDisplayNameMismatch is true", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      listPropertiesForUserWithGrantStatus.mockResolvedValue(
+        listedAccounts([
+          {
+            accountId: "ga4_acct_early",
+            properties: [
+              {
+                propertyId: "properties/777",
+                displayName: "AP Hurley Construction",
+              },
+            ],
+          },
+        ]),
+      );
+      setProperty.mockResolvedValue({
+        ...CONNECTION,
+        propertyId: "properties/777",
+        propertyDisplayName: "AP Hurley Construction",
+      });
+
+      const res = await handlePost(
+        post(
+          {
+            projectId: PROJECT_ID,
+            propertyId: "properties/777",
+            acceptDisplayNameMismatch: true,
+          },
+          auth,
+        ),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        projectId: PROJECT_ID,
+        propertyId: "properties/777",
+        displayName: "AP Hurley Construction",
+        connectedAt: CONNECTION.createdAt,
+        displayNameMismatchAccepted: true,
+      });
+      expect(setProperty).toHaveBeenCalledWith({
+        projectId: PROJECT_ID,
+        organizationId: ORG_ID,
+        propertyId: "properties/777",
+        accountId: "ga4_acct_early",
+        userId: "user_early",
+      });
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(`projectId=${PROJECT_ID}`),
+      );
+      expect(warn.mock.calls[0]?.[0]).toContain("properties/777");
+      expect(warn.mock.calls[0]?.[0]).toContain("AP Hurley Construction");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("does not auto-pick a mismatched-name candidate even when acceptDisplayNameMismatch is true", async () => {
+    listPropertiesForUserWithGrantStatus.mockResolvedValue(
+      listedAccounts([
+        {
+          accountId: "ga4_acct_early",
+          properties: [
+            {
+              propertyId: "properties/777",
+              displayName: "AP Hurley Construction",
+            },
+          ],
+        },
+      ]),
+    );
+
+    const res = await handlePost(
+      post({ projectId: PROJECT_ID, acceptDisplayNameMismatch: true }, auth),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      error: "property_not_visible",
+      reason: "no_match",
+      candidates: [
+        {
+          propertyId: "properties/777",
+          displayName: "AP Hurley Construction",
+        },
+      ],
+    });
+    expectNoWrite();
+  });
+
+  it("returns 404 not_visible for an explicit id outside the visible set even when acceptDisplayNameMismatch is true", async () => {
+    const res = await handlePost(
+      post(
+        {
+          projectId: PROJECT_ID,
+          propertyId: "properties/404",
+          acceptDisplayNameMismatch: true,
+        },
+        auth,
+      ),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      error: "property_not_visible",
+      reason: "not_visible",
+      candidates: [{ propertyId: PROPERTY_ID, displayName: "example.com" }],
+    });
+    expectNoWrite();
+  });
+
   it("skips accounts flagged propertiesUnavailable", async () => {
     listPropertiesForUserWithGrantStatus.mockResolvedValue(
       listedAccounts([
