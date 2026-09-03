@@ -20,7 +20,7 @@ export const getNiceseoOpsStatusTool = {
   config: {
     title: "Get NiceSEO ops status (OTTO + pixel)",
     description:
-      "Read-only HomeGrown OTTO proposal queue counts plus NiceSEO pixel status for a domain. Uses the OpenSEO proposal KV and the agency board metrics API — no credits, no deploy. Call this before answering OTTO/pixel/\"how connected\" questions.",
+      "Read-only HomeGrown OTTO proposal queue counts plus NiceSEO pixel status for a domain. Uses the OpenSEO proposal KV and the agency board metrics API — no credits, no deploy. Call this before answering OTTO/pixel/\"how connected\" questions. The pixel section lists fixes already applied by the pixel, per path — never re-propose a fix on a path the pixel already covers.",
     inputSchema: {
       domain: z
         .string()
@@ -106,6 +106,29 @@ export const getNiceseoOpsStatusTool = {
       lines.push(
         `NiceSEO pixel: status=${pixelFetch.pixel.status ?? "unknown"} events_7d=${pixelFetch.pixel.events_7d ?? "n/a"} as_of=${pixelFetch.pixel.as_of ?? "n/a"}`,
       );
+      const servedFixKeys = pixelFetch.pixel.served_fix_keys;
+      const servedFixPaths = pixelFetch.pixel.served_fix_paths;
+      const pathEntries = Object.entries(servedFixPaths).sort(([a], [b]) =>
+        a.localeCompare(b),
+      );
+      if (pathEntries.length) {
+        if (servedFixKeys.length) {
+          lines.push(
+            `NiceSEO pixel: already applied by the pixel: ${servedFixKeys.join(", ")}`,
+          );
+        }
+        lines.push(
+          `NiceSEO pixel: already applied by the pixel per path: ${pathEntries
+            .map(([path, keys]) => `${path}: ${keys.join(", ")}`)
+            .join("; ")}`,
+        );
+      } else if (servedFixKeys.length) {
+        lines.push(
+          `NiceSEO pixel: already applied by the pixel (per-path detail unavailable): ${servedFixKeys.join(", ")} — treat as domain-wide hints, verify before re-proposing`,
+        );
+      } else {
+        lines.push("NiceSEO pixel: already applied by the pixel: none reported");
+      }
     }
     lines.push(
       "Nothing here deploys from chat — OTTO apply stays on Hermes gate.",

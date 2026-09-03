@@ -13,8 +13,27 @@ export type AgencyPixelSlice = {
   events_7d: number | null;
   as_of: string | null;
   niceseo_pixel_status: string | null;
+  served_fix_keys: string[];
+  served_fix_paths: Record<string, string[]>;
   found: boolean;
 };
+
+/** Non-empty string entries only — the hermes export drops empty keys too. */
+function cleanStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((k): k is string => typeof k === "string" && k.length > 0);
+}
+
+function cleanFixPaths(value: unknown): Record<string, string[]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, string[]> = {};
+  for (const [path, keys] of Object.entries(value as Record<string, unknown>)) {
+    if (!path) continue;
+    const clean = cleanStringList(keys);
+    if (clean.length) out[path] = clean;
+  }
+  return out;
+}
 
 /** Pure helper — pick pixel fields for a domain from agency-metrics JSON. */
 export function pickPixelFromAgencyMetrics(
@@ -27,6 +46,8 @@ export function pickPixelFromAgencyMetrics(
     events_7d: null,
     as_of: null,
     niceseo_pixel_status: null,
+    served_fix_keys: [],
+    served_fix_paths: {},
     found: false,
   };
   if (!payload || typeof payload !== "object") return empty;
@@ -56,6 +77,25 @@ export function pickPixelFromAgencyMetrics(
     const asOf =
       (pixel && typeof pixel.as_of === "string" ? pixel.as_of : null) ??
       (typeof r.as_of === "string" ? r.as_of : null);
+    const servedFixKeysRaw =
+      (pixel && Array.isArray(pixel.served_fix_keys)
+        ? pixel.served_fix_keys
+        : null) ??
+      (Array.isArray(r.served_fix_keys) ? r.served_fix_keys : null);
+    const servedFixKeys = cleanStringList(servedFixKeysRaw);
+    const servedFixPathsRaw =
+      (pixel &&
+      pixel.served_fix_paths &&
+      typeof pixel.served_fix_paths === "object" &&
+      !Array.isArray(pixel.served_fix_paths)
+        ? pixel.served_fix_paths
+        : null) ??
+      (r.served_fix_paths &&
+      typeof r.served_fix_paths === "object" &&
+      !Array.isArray(r.served_fix_paths)
+        ? (r.served_fix_paths as Record<string, unknown>)
+        : null);
+    const servedFixPaths = cleanFixPaths(servedFixPathsRaw);
     return {
       status,
       events_7d: events,
@@ -64,6 +104,8 @@ export function pickPixelFromAgencyMetrics(
         typeof r.niceseo_pixel_status === "string"
           ? r.niceseo_pixel_status
           : null,
+      served_fix_keys: servedFixKeys,
+      served_fix_paths: servedFixPaths,
       found: true,
     };
   }
@@ -94,6 +136,8 @@ export async function fetchAgencyPixelStatus(
         events_7d: null,
         as_of: null,
         niceseo_pixel_status: null,
+        served_fix_keys: [],
+        served_fix_paths: {},
         found: false,
       },
     };
@@ -123,6 +167,8 @@ export async function fetchAgencyPixelStatus(
           events_7d: null,
           as_of: null,
           niceseo_pixel_status: null,
+          served_fix_keys: [],
+          served_fix_paths: {},
           found: false,
         },
       };
@@ -142,6 +188,8 @@ export async function fetchAgencyPixelStatus(
         events_7d: null,
         as_of: null,
         niceseo_pixel_status: null,
+        served_fix_keys: [],
+        served_fix_paths: {},
         found: false,
       },
     };
