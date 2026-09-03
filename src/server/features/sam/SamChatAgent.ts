@@ -1,7 +1,9 @@
 import { Think } from "@cloudflare/think";
 import type {
   ChatErrorContext,
+  ChatRecoveryOptions,
   ChatResponseResult,
+  SaveMessagesResult,
   Session,
   StepContext,
   ToolCallResultContext,
@@ -388,6 +390,37 @@ export class SamChatAgent extends Think {
   onChatError(error: unknown, ctx?: ChatErrorContext): unknown {
     console.error("[sam] chat turn error", ctx?.stage, error);
     return error;
+  }
+
+  // Think's chat recovery re-runs an interrupted turn: after a Durable Object
+  // reset it wakes, reads the incident, and calls the model again to continue
+  // the partial reply. When the reset was a memory-limit kill (a long,
+  // tool-heavy turn under GPT-5.6 Luna at max reasoning), every re-run dies at
+  // the same point, and the bookkeeping that bounds the retry budget dies with
+  // it — one incident was observed at attempt 44 of a max of 10. Each attempt
+  // is a full OpenRouter call that never reaches onChatResponse, so none of it
+  // is metered: in early Sep 2026 these loops were ~95% of the key's spend.
+  // Keep the durable bookkeeping (partial reply persisted, terminal banner
+  // sent) but never re-run inference automatically; the user resends instead.
+  override async onChatRecovery(): Promise<ChatRecoveryOptions> {
+    return { persist: true, continue: false };
+  }
+
+  // Recovery continuations already queued as alarms before this deploy still
+  // fire, and would each make one more model call (re-arming through the
+  // alarm circuit breaker when that call OOMs too). Skip them without touching
+  // the model; Think records the incident as skipped. Every other trigger
+  // (auto-continuation, RPC, sub-agent) passes through untouched.
+  protected override async continueLastTurn(
+    ...args: Parameters<Think["continueLastTurn"]>
+  ): Promise<SaveMessagesResult> {
+    if (args[1]?.trigger === "recovery-continue") {
+      console.warn("[sam] skipped queued recovery continuation", {
+        name: this.name,
+      });
+      return { requestId: crypto.randomUUID(), status: "skipped" };
+    }
+    return super.continueLastTurn(...args);
   }
 
   // POST .../rewind {messageId}: delete that message and everything after it on
