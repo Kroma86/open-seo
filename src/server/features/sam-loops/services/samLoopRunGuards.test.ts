@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { beginSamLoopRun } from "./samLoopRunGuards";
+
+const mockEnv = vi.hoisted(
+  () =>
+    ({
+      SAM_LOOP_WORKFLOW: { get: vi.fn() } as unknown as Env["SAM_LOOP_WORKFLOW"],
+    }) as Env,
+);
 
 const mocks = vi.hoisted(() => ({
   tryCreateRun: vi.fn(),
@@ -11,14 +17,19 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("cloudflare:workers", () => ({
-  env: {
-    SAM_LOOP_WORKFLOW: { get: mocks.getWorkflow },
-  },
+  env: mockEnv,
 }));
 vi.mock(
   "@/server/features/sam-loops/repositories/SamLoopRepository",
   () => ({ SamLoopRepository: mocks }),
 );
+
+beforeEach(() => {
+  mockEnv.SAM_LOOP_WORKFLOW = {
+    get: mocks.getWorkflow,
+  } as unknown as Env["SAM_LOOP_WORKFLOW"];
+  delete mockEnv.SAM_LOOP_DAILY_RUN_CAP;
+});
 
 const input = {
   loopId: "loop_1",
@@ -28,7 +39,37 @@ const input = {
   workflowStartErrorMessage: "failed",
 };
 
+describe("getSamLoopDailyRunCap", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    delete mockEnv.SAM_LOOP_DAILY_RUN_CAP;
+  });
+
+  it.each([
+    { value: undefined, expected: 40, label: "unset" },
+    { value: "100", expected: 100, label: "100" },
+    { value: "0", expected: 40, label: "0" },
+    { value: "abc", expected: 40, label: "abc" },
+    { value: "-5", expected: 40, label: "-5" },
+    { value: "1001", expected: 40, label: "1001" },
+  ])("$label → $expected", async ({ value, expected }) => {
+    if (value !== undefined) {
+      mockEnv.SAM_LOOP_DAILY_RUN_CAP = value;
+    }
+    const { getSamLoopDailyRunCap } = await import("./samLoopRunGuards");
+    expect(getSamLoopDailyRunCap(mockEnv)).toBe(expected);
+  });
+});
+
 describe("beginSamLoopRun", () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    delete mockEnv.SAM_LOOP_DAILY_RUN_CAP;
+    const mod = await import("./samLoopRunGuards");
+    beginSamLoopRun = mod.beginSamLoopRun;
+  });
+
+  let beginSamLoopRun: typeof import("./samLoopRunGuards").beginSamLoopRun;
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.countRunsCreatedSince.mockResolvedValue(0);
@@ -97,6 +138,21 @@ describe("beginSamLoopRun", () => {
 
   it("refuses to create a run when today's count is at the cap", async () => {
     mocks.countRunsCreatedSince.mockResolvedValue(40);
+    const create = vi.fn();
+    const workflow = { create } as unknown as Env["SAM_LOOP_WORKFLOW"];
+
+    const result = await beginSamLoopRun({ ...input, workflow });
+    expect(result).toEqual({
+      ok: false,
+      reason: "daily_cap",
+    });
+    expect(mocks.tryCreateRun).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("uses SAM_LOOP_DAILY_RUN_CAP from env when set", async () => {
+    mockEnv.SAM_LOOP_DAILY_RUN_CAP = "100";
+    mocks.countRunsCreatedSince.mockResolvedValue(100);
     const create = vi.fn();
     const workflow = { create } as unknown as Env["SAM_LOOP_WORKFLOW"];
 

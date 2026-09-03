@@ -40,6 +40,8 @@ declare namespace Cloudflare {
 
     // Bearer token for GET /api/internal/agency-score-inputs (Hermes machine export).
     AGENCY_SCORE_EXPORT_TOKEN?: string;
+    // Optional override for the Sam loop daily run cap (1..1000; default 40).
+    SAM_LOOP_DAILY_RUN_CAP?: string;
     // Agency board metrics for SAM pixel/OTTO status.
     AGENCY_METRICS_URL?: string;
     AGENCY_DASH_TOKEN?: string;

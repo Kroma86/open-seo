@@ -1,13 +1,15 @@
 import { env } from "cloudflare:workers";
 import { AppError } from "@/server/lib/errors";
 import { SamLoopRepository } from "@/server/features/sam-loops/repositories/SamLoopRepository";
-import { beginSamLoopRun } from "@/server/features/sam-loops/services/samLoopRunGuards";
+import {
+  beginSamLoopRun,
+  getSamLoopDailyRunCap,
+} from "@/server/features/sam-loops/services/samLoopRunGuards";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import { getAgencyScoreInputsGlobal } from "@/server/features/agency/AgencyScoreInputsService";
 import { buildSamSkillSource } from "@/server/features/sam/samSkills";
 import {
   DOGFOOD_SAM_LOOP_TRIGGER_CAP,
-  SAM_LOOP_DAILY_RUN_CAP,
   computeNextSamLoopRunAt,
   expectedSamLoopDraftsPerMonth,
   isSamContentLoop,
@@ -350,13 +352,14 @@ export async function triggerSamLoopsForDomain(input: {
     return { ok: false, reason: "domain_not_allowed" };
   }
 
+  const dailyRunCap = getSamLoopDailyRunCap(env);
   const runsToday = await SamLoopRepository.countRunsCreatedSince(
     startOfUtcDay(),
   );
-  if (runsToday >= SAM_LOOP_DAILY_RUN_CAP) {
+  if (runsToday >= dailyRunCap) {
     return { ok: false, reason: "daily_cap" };
   }
-  const remaining = SAM_LOOP_DAILY_RUN_CAP - runsToday;
+  const remaining = dailyRunCap - runsToday;
 
   const seeded = await SamLoopRepository.ensureDefaultLoops(project.id);
   const loops = await SamLoopRepository.getLoopsForProject(project.id);

@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const mockEnv = vi.hoisted(
+  () =>
+    ({
+      SAM_LOOP_WORKFLOW: {} as Env["SAM_LOOP_WORKFLOW"],
+    }) as Env,
+);
+
 const mocks = vi.hoisted(() => ({
   getLoopById: vi.fn(),
   getLoopsForProject: vi.fn(),
@@ -14,7 +21,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("cloudflare:workers", () => ({
-  env: { SAM_LOOP_WORKFLOW: {} },
+  env: mockEnv,
 }));
 vi.mock(
   "@/server/features/sam-loops/repositories/SamLoopRepository",
@@ -29,9 +36,16 @@ vi.mock(
     },
   }),
 );
-vi.mock("@/server/features/sam-loops/services/samLoopRunGuards", () => ({
-  beginSamLoopRun: mocks.beginSamLoopRun,
-}));
+vi.mock("@/server/features/sam-loops/services/samLoopRunGuards", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/server/features/sam-loops/services/samLoopRunGuards")
+    >();
+  return {
+    ...actual,
+    beginSamLoopRun: mocks.beginSamLoopRun,
+  };
+});
 vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
   ProjectRepository: {
     getProjectById: mocks.getProjectById,
@@ -45,6 +59,7 @@ vi.mock("@/server/features/agency/AgencyScoreInputsService", () => ({
 import {
   DOGFOOD_SAM_LOOP_TRIGGER_CAP,
   SAM_LOOP_DAILY_RUN_CAP,
+  SAM_LOOP_DAILY_RUN_CAP_DEFAULT,
 } from "@/shared/sam-loops";
 import {
   seedDefaultSamLoopsForProject,
@@ -55,6 +70,7 @@ import {
 describe("triggerSamLoop", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete mockEnv.SAM_LOOP_DAILY_RUN_CAP;
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-31T15:00:00.000Z"));
     mocks.beginSamLoopRun.mockResolvedValue({ ok: true, runId: "run_1" });
@@ -272,6 +288,7 @@ describe("seedDefaultSamLoopsForProject", () => {
 describe("triggerSamLoopsForDomain", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete mockEnv.SAM_LOOP_DAILY_RUN_CAP;
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-01T15:00:00.000Z"));
     mocks.beginSamLoopRun.mockResolvedValue({ ok: true, runId: "run_1" });
@@ -496,6 +513,37 @@ describe("triggerSamLoopsForDomain", () => {
     expect(result.capped).toBe(true);
     expect(result.results).toHaveLength(1);
     expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(1);
+  });
+
+  describe("SAM_LOOP_DAILY_RUN_CAP", () => {
+    it.each([
+      { value: undefined, cap: SAM_LOOP_DAILY_RUN_CAP_DEFAULT, label: "unset" },
+      { value: "100", cap: 100, label: "100" },
+      { value: "0", cap: SAM_LOOP_DAILY_RUN_CAP_DEFAULT, label: "0" },
+      { value: "abc", cap: SAM_LOOP_DAILY_RUN_CAP_DEFAULT, label: "abc" },
+      { value: "-5", cap: SAM_LOOP_DAILY_RUN_CAP_DEFAULT, label: "-5" },
+      { value: "1001", cap: SAM_LOOP_DAILY_RUN_CAP_DEFAULT, label: "1001" },
+    ])("$label returns daily_cap at configured limit", async ({ value, cap }) => {
+      if (value !== undefined) {
+        mockEnv.SAM_LOOP_DAILY_RUN_CAP = value;
+      }
+      mocks.countRunsCreatedSince.mockResolvedValue(cap);
+      await expect(
+        triggerSamLoopsForDomain({ domain: "niceseo.ai" }),
+      ).resolves.toEqual({ ok: false, reason: "daily_cap" });
+      expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
+    });
+
+    it("caps started loops to remaining budget when cap is raised", async () => {
+      mockEnv.SAM_LOOP_DAILY_RUN_CAP = "100";
+      mocks.countRunsCreatedSince.mockResolvedValue(99);
+      const result = await triggerSamLoopsForDomain({ domain: "niceseo.ai" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.capped).toBe(true);
+      expect(result.results).toHaveLength(1);
+      expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("returns domain_not_allowed when a house domain has zero matching rows", async () => {

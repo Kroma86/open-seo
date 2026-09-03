@@ -1,7 +1,9 @@
 import { SamLoopRepository } from "@/server/features/sam-loops/repositories/SamLoopRepository";
-import { beginSamLoopRun } from "@/server/features/sam-loops/services/samLoopRunGuards";
 import {
-  SAM_LOOP_DAILY_RUN_CAP,
+  beginSamLoopRun,
+  getSamLoopDailyRunCap,
+} from "@/server/features/sam-loops/services/samLoopRunGuards";
+import {
   computeNextSamLoopRunAt,
   isSamLoopProjectAllowed,
   startOfUtcDay,
@@ -12,18 +14,19 @@ const ALREADY_RUNNING_IDS_CAP = 20;
 
 /** Cron body: claim due enabled loops and start SamLoopWorkflow for each. */
 export async function runScheduledSamLoops(env: Env) {
+  const dailyRunCap = getSamLoopDailyRunCap(env);
   const runsToday = await SamLoopRepository.countRunsCreatedSince(
     startOfUtcDay(),
   );
-  if (runsToday >= SAM_LOOP_DAILY_RUN_CAP) {
+  if (runsToday >= dailyRunCap) {
     console.error({
       event: "sam_loops_daily_cap_hit",
-      cap: SAM_LOOP_DAILY_RUN_CAP,
+      cap: dailyRunCap,
       runsToday,
     });
     return;
   }
-  let budget = SAM_LOOP_DAILY_RUN_CAP - runsToday;
+  let budget = dailyRunCap - runsToday;
 
   const nowIso = new Date().toISOString();
   const dueLoops =

@@ -84,8 +84,11 @@ export const SAM_LOOP_ALLOWED_DOMAINS = [
   "niceapp.ai",
 ] as const;
 
-/** Hard ceiling on Sam loop runs created per UTC day (scheduled + manual). */
-export const SAM_LOOP_DAILY_RUN_CAP = 40;
+/** Default ceiling on Sam loop runs created per UTC day (scheduled + manual). */
+export const SAM_LOOP_DAILY_RUN_CAP_DEFAULT = 40;
+
+/** Client-safe alias; server code should call getSamLoopDailyRunCap(env). */
+export const SAM_LOOP_DAILY_RUN_CAP = SAM_LOOP_DAILY_RUN_CAP_DEFAULT;
 
 export function isSamLoopDomainAllowed(
   domain: string | null | undefined,

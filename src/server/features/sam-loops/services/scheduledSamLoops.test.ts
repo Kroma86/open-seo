@@ -45,11 +45,26 @@ vi.mock(
     },
   }),
 );
-vi.mock("@/server/features/sam-loops/services/samLoopRunGuards", () => ({
-  beginSamLoopRun: mocks.beginSamLoopRun,
-}));
+vi.mock("@/server/features/sam-loops/services/samLoopRunGuards", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/server/features/sam-loops/services/samLoopRunGuards")
+    >();
+  return {
+    ...actual,
+    beginSamLoopRun: mocks.beginSamLoopRun,
+  };
+});
 
 const testEnv = { SAM_LOOP_WORKFLOW: {} } as unknown as Env;
+
+function capEnv(value?: string): Env {
+  const env = { SAM_LOOP_WORKFLOW: {} } as unknown as Env;
+  if (value !== undefined) {
+    (env as { SAM_LOOP_DAILY_RUN_CAP?: string }).SAM_LOOP_DAILY_RUN_CAP = value;
+  }
+  return env;
+}
 
 function dueLoop(overrides: Partial<DueLoopRow> = {}): DueLoopRow {
   return {
@@ -68,9 +83,9 @@ function dueLoop(overrides: Partial<DueLoopRow> = {}): DueLoopRow {
   };
 }
 
-async function runTick() {
+async function runTick(env: Env = testEnv) {
   const { runScheduledSamLoops } = await import("./scheduledSamLoops");
-  await runScheduledSamLoops(testEnv);
+  await runScheduledSamLoops(env);
 }
 
 describe("runScheduledSamLoops", () => {
@@ -181,5 +196,37 @@ describe("runScheduledSamLoops", () => {
         trigger: "scheduled",
       }),
     );
+  });
+
+  describe("SAM_LOOP_DAILY_RUN_CAP", () => {
+    it.each([
+      { value: undefined, cap: 40, label: "unset" },
+      { value: "100", cap: 100, label: "100" },
+      { value: "0", cap: 40, label: "0" },
+      { value: "abc", cap: 40, label: "abc" },
+      { value: "-5", cap: 40, label: "-5" },
+      { value: "1001", cap: 40, label: "1001" },
+    ])("$label uses cap $cap", async ({ value, cap }) => {
+      mocks.countRunsCreatedSince.mockResolvedValue(cap);
+
+      await runTick(capEnv(value));
+
+      expect(mocks.getDueLoopsWithOrganization).not.toHaveBeenCalled();
+      expect(mocks.claimDueLoop).not.toHaveBeenCalled();
+    });
+
+    it("stops claiming once the remaining budget is used with a raised cap", async () => {
+      mocks.countRunsCreatedSince.mockResolvedValue(99);
+      mocks.getDueLoopsWithOrganization.mockResolvedValue([
+        dueLoop({ id: "loop_1" }),
+        dueLoop({ id: "loop_2" }),
+      ]);
+      mocks.claimDueLoop.mockResolvedValue(true);
+      mocks.beginSamLoopRun.mockResolvedValue({ ok: true, runId: "run_1" });
+
+      await runTick(capEnv("100"));
+
+      expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(1);
+    });
   });
 });

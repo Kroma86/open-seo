@@ -1,9 +1,35 @@
 import { env } from "cloudflare:workers";
 import { SamLoopRepository } from "@/server/features/sam-loops/repositories/SamLoopRepository";
 import {
-  SAM_LOOP_DAILY_RUN_CAP,
+  SAM_LOOP_DAILY_RUN_CAP_DEFAULT,
   startOfUtcDay,
 } from "@/shared/sam-loops";
+
+const warnedInvalidSamLoopDailyRunCaps = new Set<string>();
+
+export function getSamLoopDailyRunCap(env: {
+  SAM_LOOP_DAILY_RUN_CAP?: string;
+}): number {
+  const raw = env.SAM_LOOP_DAILY_RUN_CAP?.trim();
+  if (!raw) return SAM_LOOP_DAILY_RUN_CAP_DEFAULT;
+
+  const parsed = Number.parseInt(raw, 10);
+  if (
+    !Number.isInteger(parsed) ||
+    parsed < 1 ||
+    parsed > 1000 ||
+    String(parsed) !== raw
+  ) {
+    if (!warnedInvalidSamLoopDailyRunCaps.has(raw)) {
+      warnedInvalidSamLoopDailyRunCaps.add(raw);
+      console.error(
+        `Invalid SAM_LOOP_DAILY_RUN_CAP "${raw}" — falling back to ${SAM_LOOP_DAILY_RUN_CAP_DEFAULT}. Valid range: 1..1000.`,
+      );
+    }
+    return SAM_LOOP_DAILY_RUN_CAP_DEFAULT;
+  }
+  return parsed;
+}
 import type { SamLoopTriggerResult } from "@/types/schemas/sam-loops";
 
 type RunRow = Awaited<ReturnType<typeof SamLoopRepository.getRunById>>;
@@ -129,7 +155,7 @@ export async function beginSamLoopRun(input: {
     const runsToday = await SamLoopRepository.countRunsCreatedSince(
       startOfUtcDay(),
     );
-    if (runsToday >= SAM_LOOP_DAILY_RUN_CAP) {
+    if (runsToday >= getSamLoopDailyRunCap(env)) {
       return { ok: false, reason: "daily_cap" };
     }
     const created = await SamLoopRepository.tryCreateRun({
