@@ -10,7 +10,7 @@ import {
   getAuditScratchpad,
   type ClaimedUrl,
   type FrontierStats,
-  type ScratchpadLinkRow,
+  type ScratchpadPageLinksRow,
 } from "@/server/features/audit/AuditScratchpad";
 import { AuditProgressKV } from "@/server/lib/audit/progress-kv";
 import {
@@ -54,7 +54,8 @@ const MAX_QUEUED_PERSIST_BATCHES = 2;
 
 /**
  * Mega-menu/footer-heavy sites can carry 1000+ links per page; cap what we
- * record so a 10k-page crawl can't produce tens of millions of link rows.
+ * record so a 10k-page crawl can't produce tens of millions of link targets
+ * to scan at finalize.
  */
 const MAX_STORED_LINKS_PER_PAGE = 500;
 /**
@@ -302,24 +303,17 @@ async function persistCrawledPages(input: {
   const issues = pages.flatMap((page) => runPageReporters(page));
   await AuditRepository.insertCrawledBatch(auditId, pages, issues);
 
-  const links: ScratchpadLinkRow[] = [];
+  const links: ScratchpadPageLinksRow[] = [];
   const discovered = new Map<string, number | null>();
   for (const page of pages) {
     const pageDepth = depthByUrl.get(page.url) ?? null;
     const childDepth = pageDepth === null ? null : pageDepth + 1;
 
-    let storedForPage = 0;
+    const targets: string[] = [];
     for (const link of page.links) {
       if (!link.isInternal) continue;
-      if (storedForPage < MAX_STORED_LINKS_PER_PAGE) {
-        storedForPage += 1;
-        links.push({
-          sourcePageId: page.id,
-          sourceUrl: page.url,
-          targetUrl: link.targetUrl,
-          anchor: link.anchor,
-          isNofollow: link.isNofollow,
-        });
+      if (targets.length < MAX_STORED_LINKS_PER_PAGE) {
+        targets.push(link.targetUrl);
       }
       if (
         discovered.size < MAX_DISCOVERED_PER_BATCH &&
@@ -328,6 +322,9 @@ async function persistCrawledPages(input: {
       ) {
         discovered.set(link.targetUrl, childDepth);
       }
+    }
+    if (targets.length > 0) {
+      links.push({ pageId: page.id, url: page.url, targets });
     }
 
     // Redirect targets continue the same navigation path: same depth.
