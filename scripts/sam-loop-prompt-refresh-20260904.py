@@ -49,6 +49,10 @@ OLD_PREFIX = (
 )
 LOOP_NAMES = ("On-page priorities", "Keyword portfolio")
 # SQLite SUBSTR is 1-indexed: the new text starts one character past the prefix.
+# The offset math assumes pure ASCII (Python len == SQLite character count) —
+# guard it: a future edit adding a non-ASCII character (the templates contain
+# em/en dashes elsewhere) must fail loudly here, never corrupt a prompt.
+assert OLD_PREFIX.isascii(), "OLD_PREFIX must stay pure ASCII (SUBSTR offset math)"
 STRIP_OFFSET = len(OLD_PREFIX) + 1
 
 
@@ -101,6 +105,10 @@ UPDATE_SQL = (
 REMAINING_SQL = f"SELECT COUNT(*) AS n FROM sam_loops WHERE {MATCH_WHERE}"
 # Informational: loops of these names that match NEITHER the old prefix NOR
 # the new openings — user-edited or otherwise customized; untouched by design.
+# NOTE: these two literals must byte-match the current template openings in
+# src/shared/sam-loops.ts (DEFAULT_SAM_LOOP_TEMPLATES). If a template opening
+# changes, update them here — otherwise this query silently reclassifies
+# seeded loops as "customized" (informational output only, but misleading).
 CUSTOMIZED_SQL = (
     f"SELECT name, COUNT(*) AS n FROM sam_loops WHERE name IN {NAMES_IN} "
     f"AND custom_prompt NOT LIKE {sql_quote(OLD_PREFIX + '%')} "

@@ -69,12 +69,18 @@ export const requireAllowedEmails = (remedy: string) =>
  * auth for them.
  *
  * When `mcpServiceAuth` is set, also provisions a Service Auth (non_identity)
- * policy bound to a named service token on both the hostname-wide gate (so
- * OAuth discovery paths like `/.well-known/oauth-*` accept Grok Bot headers)
- * and a more-specific `/mcp` application (whose AUD tag becomes
- * `MCP_POLICY_AUD`). Grok Bot and other MCP clients pass
- * `CF-Access-Client-Id` / `CF-Access-Client-Secret` to get past Access; the
- * Worker still requires OpenSEO OAuth on MCP routes.
+ * policy bound to a named service token on a more-specific `/mcp` application
+ * ONLY (whose AUD tag becomes `MCP_POLICY_AUD`). The service-token policy
+ * must never attach to the hostname-wide app: there it would mint
+ * user-audience JWTs for service tokens and open the user door. Grok Bot and
+ * other MCP clients pass `CF-Access-Client-Id` / `CF-Access-Client-Secret`
+ * to get past Access; the Worker still requires OpenSEO OAuth on MCP routes.
+ *
+ * When `mcpDiscoveryBypass` is set, also provisions a Bypass (everyone)
+ * application for the OAuth discovery paths (`/.well-known/oauth-*`):
+ * discovery metadata is public by design (RFC 8414) and both machine clients
+ * and user agents must reach it — the hostname-wide email gate would
+ * otherwise 302 them. The Worker serves metadata only on those paths.
  */
 export const emailAccessGate = (options: {
   policyId: string;
@@ -97,6 +103,13 @@ export const emailAccessGate = (options: {
   mcpServiceAuth?: {
     serviceTokenId: string;
     serviceTokenName: string;
+    policyId: string;
+    applicationId: string;
+    policyName: string;
+    applicationName: string;
+  };
+  /** OAuth discovery-path bypass (self-host only; metadata is public). */
+  mcpDiscoveryBypass?: {
     policyId: string;
     applicationId: string;
     policyName: string;
@@ -145,6 +158,38 @@ export const emailAccessGate = (options: {
         },
       );
       mcpPolicyAud = mcpApplication.aud;
+    }
+
+    if (options.mcpDiscoveryBypass) {
+      const discoveryBypass = yield* Cloudflare.Access.Policy(
+        options.mcpDiscoveryBypass.policyId,
+        {
+          name: options.mcpDiscoveryBypass.policyName,
+          decision: "bypass",
+          include: [{ everyone: {} }],
+        },
+      );
+      // OAuth discovery metadata is public (RFC 8414) and must be reachable
+      // by machine clients AND user agents — the hostname-wide email gate
+      // would otherwise 302 them. Path-scoped apps beat the hostname-wide
+      // gate for /.well-known/oauth-*; the Worker serves metadata only there.
+      const discoveryPaths = hostnames.flatMap((hostname) => [
+        `${hostname}/.well-known/oauth-authorization-server`,
+        `${hostname}/.well-known/oauth-protected-resource`,
+      ]);
+      yield* Cloudflare.Access.Application(
+        options.mcpDiscoveryBypass.applicationId,
+        {
+          type: "self_hosted",
+          name: options.mcpDiscoveryBypass.applicationName,
+          domain: discoveryPaths[0],
+          destinations: discoveryPaths.map((uri) => ({
+            type: "public" as const,
+            uri,
+          })),
+          policies: [discoveryBypass.policyId],
+        },
+      );
     }
 
     const allow = yield* Cloudflare.Access.Policy(options.policyId, {

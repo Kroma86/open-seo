@@ -177,7 +177,7 @@ const resolveSelfHostAccess = (
   Effect.gen(function* () {
     let teamDomain = yield* optionalVar("TEAM_DOMAIN");
     let policyAud: Alchemy.Input<string> = yield* optionalVar("POLICY_AUD");
-    let mcpPolicyAud: Alchemy.Input<string> = yield* optionalVar(
+    let mcpPolicyAud: Alchemy.Input<string> | undefined = yield* optionalVar(
       "MCP_POLICY_AUD",
     );
     if (!provision || (teamDomain && policyAud)) {
@@ -280,10 +280,21 @@ const resolveSelfHostAccess = (
             ? `open-seo ${stage} mcp (${customDomain})`
             : `open-seo ${stage} mcp`,
         },
+        mcpDiscoveryBypass: {
+          policyId: "SelfHostMcpDiscoveryBypass",
+          applicationId: "SelfHostMcpDiscoveryAccess",
+          policyName: `open-seo ${stage} MCP discovery bypass`,
+          applicationName: customDomain
+            ? `open-seo ${stage} mcp discovery (${customDomain})`
+            : `open-seo ${stage} mcp discovery`,
+        },
       });
       policyAud = gate.application.aud;
       if (!mcpPolicyAud) {
-        mcpPolicyAud = gate.mcpPolicyAud ?? "";
+        // Leave undefined when the gate did not provision one: the Worker
+        // binding stays absent and the service-token branch is visibly off,
+        // never silently degraded to an empty-string AUD.
+        mcpPolicyAud = gate.mcpPolicyAud;
       }
     }
 
@@ -456,7 +467,11 @@ export default Alchemy.Stack(
         BETTER_AUTH_URL: authUrl,
         TEAM_DOMAIN: access.teamDomain,
         POLICY_AUD: access.policyAud,
-        MCP_POLICY_AUD: access.mcpPolicyAud,
+        // Absent entirely when no MCP app was provisioned — the Worker's
+        // service-token branch is visibly off, never an empty-string AUD.
+        ...(access.mcpPolicyAud
+          ? { MCP_POLICY_AUD: access.mcpPolicyAud }
+          : {}),
 
         // Prod-only: pooled Postgres via the existing Hyperdrive config.
         ...(prod ? { HYPERDRIVE: makeHyperdrive() } : {}),

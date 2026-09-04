@@ -1,0 +1,209 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  appFetch: vi.fn(),
+  providerFetch: vi.fn(),
+  transport: vi.fn(),
+  gate: vi.fn(),
+}));
+
+vi.mock("cloudflare:workers", () => ({
+  env: {},
+  WorkflowEntrypoint: class {},
+  DurableObject: class {},
+  WorkerEntrypoint: class {},
+  waitUntil: (promise: Promise<unknown>) => void promise,
+}));
+vi.mock("cloudflare:workflows", () => ({
+  WorkflowEntrypoint: class {},
+}));
+vi.mock("@tanstack/react-start/server", () => ({
+  createStartHandler: () => mocks.appFetch,
+  defaultStreamHandler: vi.fn(),
+}));
+vi.mock("agents", () => ({
+  routeAgentRequest: vi.fn(async () => undefined),
+  Agent: class {},
+}));
+vi.mock("@/middleware/ensure-user/cloudflareAccess", () => ({
+  resolveCloudflareAccessMcpGate: mocks.gate,
+}));
+vi.mock("@/server/mcp/oauth-provider", () => ({
+  createOpenSeoOAuthProvider: () => ({
+    fetch: mocks.providerFetch,
+    purgeExpiredData: vi.fn(async () => ({ done: true })),
+  }),
+}));
+vi.mock("@/server/mcp/transport", () => ({
+  handleSelfHostedOpenSeoMcpRequest: mocks.transport,
+}));
+vi.mock("@/db", () => ({
+  withPgClient: (fn: () => unknown) => fn(),
+}));
+vi.mock("@/server/lib/self-host-telemetry", () => ({
+  maybeSendSelfHostHeartbeat: vi.fn(async () => {}),
+}));
+
+// The routing under test never touches the workflow/DO leaves, but server.ts
+// re-exports them and their import chains (agents, @cloudflare/ai-chat)
+// import cloudflare:* specifiers from node_modules, which vitest externalizes
+// and node cannot load. Stub the leaves.
+vi.mock("@/server/workflows/SiteAuditWorkflow", () => ({
+  SiteAuditWorkflow: class {},
+}));
+vi.mock("@/server/workflows/RankCheckWorkflow", () => ({
+  RankCheckWorkflow: class {},
+}));
+vi.mock("@/server/workflows/SamLoopWorkflow", () => ({
+  SamLoopWorkflow: class {},
+}));
+vi.mock("@/server/features/onboarding/OnboardingChatAgent", () => ({
+  OnboardingChatAgent: class {},
+}));
+vi.mock("@/server/features/sam/SamChatAgent", () => ({
+  SamChatAgent: class {},
+}));
+vi.mock("@/server/features/audit/AuditScratchpad", () => ({
+  AuditScratchpad: class {},
+}));
+
+import handler from "./server";
+// Type-only import: resolves to the REAL module's types even though the
+// runtime is mocked above.
+import type { OpenSeoOAuthEnv } from "@/server/mcp/oauth-provider";
+
+// Compile-time proof that the self-host Env structurally carries the binding
+// the OAuth provider needs — the `env as OpenSeoOAuthEnv` casts in server.ts
+// rest on this. If the binding is ever removed from Env, tsc fails HERE, not
+// in production. (OpenSeoOAuthEnv = Env & { OAUTH_KV: KVNamespace; ... }.)
+type Assert<T extends true> = T;
+export type EnvCarriesOAuthKv =
+  Assert<Env extends Pick<OpenSeoOAuthEnv, "OAUTH_KV"> ? true : never>;
+
+const ctx = { waitUntil: () => {} } as unknown as ExecutionContext;
+const env = { AUTH_MODE: "cloudflare_access" } as unknown as Env;
+const userContext = {
+  userId: "u1",
+  userEmail: "person@example.com",
+  organizationId: "org1",
+} as never;
+
+function mcpRequest(method = "POST", path = "/mcp") {
+  return new Request(`https://open-seo.test${path}`, { method });
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.appFetch.mockResolvedValue(new Response("app"));
+  mocks.providerFetch.mockResolvedValue(
+    new Response("missing bearer", { status: 401 }),
+  );
+  mocks.transport.mockResolvedValue(new Response("mcp user handler"));
+});
+
+describe("server /mcp routing under cloudflare_access", () => {
+  it("hands a service token to the OAuth provider (never the user handler) — the provider's answer, including 401, is what the client gets", async () => {
+    mocks.gate.mockResolvedValue({ kind: "service_token" });
+
+    const response = await handler.fetch(mcpRequest(), env, ctx);
+
+    expect(mocks.gate).toHaveBeenCalledTimes(1);
+    expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
+    const [routedRequest] = mocks.providerFetch.mock.calls[0] as [Request];
+    expect(new URL(routedRequest.url).pathname).toBe("/mcp");
+    // The load-bearing claim: a service token only ever reaches the OAuth
+    // provider, which requires a bearer token on its apiRoute (/mcp) — a
+    // request without one comes back 401 (mocked here; the 401-on-missing-
+    // bearer behavior is the workers-oauth-provider library's contract on
+    // `apiRoute`, doubled in tests because the library cannot run under
+    // vitest — see oauth-provider.test.ts's module double).
+    expect(response.status).toBe(401);
+    expect(mocks.transport).not.toHaveBeenCalled();
+    expect(mocks.appFetch).not.toHaveBeenCalled();
+  });
+
+  it("hands a user gate result to the user MCP handler with the resolved context", async () => {
+    mocks.gate.mockResolvedValue({ kind: "user", context: userContext });
+
+    const response = await handler.fetch(mcpRequest(), env, ctx);
+
+    expect(mocks.transport).toHaveBeenCalledTimes(1);
+    expect(mocks.transport).toHaveBeenCalledWith(
+      expect.any(Request),
+      "cloudflare_access",
+      env,
+      ctx,
+      userContext,
+    );
+    expect(await response.text()).toBe("mcp user handler");
+    expect(mocks.providerFetch).not.toHaveBeenCalled();
+  });
+
+  it("passes OPTIONS preflight to the user handler with an explicit null context, without calling the gate", async () => {
+    const response = await handler.fetch(
+      mcpRequest("OPTIONS"),
+      env,
+      ctx,
+    );
+
+    expect(mocks.gate).not.toHaveBeenCalled();
+    expect(mocks.transport).toHaveBeenCalledWith(
+      expect.any(Request),
+      "cloudflare_access",
+      env,
+      ctx,
+      null,
+    );
+    expect(response.status).toBe(200);
+  });
+});
+
+describe("server OAuth discovery routing under cloudflare_access", () => {
+  it("routes the bare authorization-server discovery path to the OAuth provider without the Access gate", async () => {
+    mocks.providerFetch.mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const response = await handler.fetch(
+      mcpRequest("GET", "/.well-known/oauth-authorization-server"),
+      env,
+      ctx,
+    );
+
+    expect(mocks.gate).not.toHaveBeenCalled();
+    expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(200);
+  });
+
+  it("rewrites the /mcp-suffixed discovery path before handing it to the provider", async () => {
+    await handler.fetch(
+      mcpRequest("GET", "/.well-known/oauth-authorization-server/mcp"),
+      env,
+      ctx,
+    );
+
+    expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
+    const [routedRequest] = mocks.providerFetch.mock.calls[0] as [Request];
+    expect(new URL(routedRequest.url).pathname).toBe(
+      "/.well-known/oauth-authorization-server",
+    );
+  });
+});
+
+describe("server fallthrough", () => {
+  it("passes unrelated paths to the app handler", async () => {
+    const response = await handler.fetch(
+      mcpRequest("GET", "/keywords"),
+      env,
+      ctx,
+    );
+
+    expect(mocks.appFetch).toHaveBeenCalledTimes(1);
+    expect(await response.text()).toBe("app");
+    expect(mocks.gate).not.toHaveBeenCalled();
+    expect(mocks.providerFetch).not.toHaveBeenCalled();
+  });
+});

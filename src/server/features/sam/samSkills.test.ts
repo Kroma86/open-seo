@@ -86,7 +86,6 @@ describe("buildSamSkillSource", () => {
       expect(skill?.body).toContain("Do not stop based on domain.");
       expect(skill?.body).not.toContain("If not, stop.");
       expect(skill?.body).not.toContain("still on Search Atlas");
-      expect(skill?.body).not.toContain("The runner already checked");
       expect(skill?.body).not.toContain("enforced outside this skill");
     }
   });

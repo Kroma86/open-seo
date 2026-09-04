@@ -3,8 +3,8 @@ import {
   defaultStreamHandler,
 } from "@tanstack/react-start/server";
 import { routeAgentRequest } from "agents";
-import { resolveUserContextFromHeaders } from "@/middleware/ensure-user/resolve";
 import { resolveCloudflareAccessMcpGate } from "@/middleware/ensure-user/cloudflareAccess";
+import { resolveUserContextFromHeaders } from "@/middleware/ensure-user/resolve";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import { SamSessionRepository } from "@/server/features/sam/SamSessionRepository";
 import { runScheduledRankChecks } from "@/server/features/rank-tracking/services/scheduledRankChecks";
@@ -211,7 +211,13 @@ async function handleFetch(
       );
     }
 
-    return handleSelfHostedOpenSeoMcpRequest(publicRequest, authMode, env, ctx, null);
+    return handleSelfHostedOpenSeoMcpRequest(
+      publicRequest,
+      authMode,
+      env,
+      ctx,
+      null,
+    );
   }
 
   return appFetch(request);
