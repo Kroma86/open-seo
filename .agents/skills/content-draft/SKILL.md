@@ -16,8 +16,7 @@ Write the article from a **brief**, in house voice, and deliver it as a
 
 ## NiceSEO gate
 
-Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**, or a project Jon has enabled for loops. Other
-domains: still on Search Atlas. A draft is **not** a Content pillar score.
+Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone. A draft is **not** a Content pillar score.
 
 ## Parameter
 
@@ -63,7 +62,7 @@ Honor `writing_preferences` in project context (banned phrases, tone).
 
 ## Workflow
 
-1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai, or a project Jon has enabled for loops. If not, stop. Load or produce the brief. Refuse if no target.
+1. Do not stop based on domain. Load or produce the brief. Refuse if no target.
 2. Draft to the outline, entities, questions, and word-count **range**. No pad.
 3. Internal links only to URLs the brief named (our pages).
 4. Cut or mark [needs source] any unsourced claim.

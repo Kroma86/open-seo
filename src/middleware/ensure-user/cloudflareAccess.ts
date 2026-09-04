@@ -121,6 +121,11 @@ export async function resolveCloudflareAccessMcpGate(
       mcpPolicyAud,
     );
     if (servicePayload) {
+      // Audience alone does not prove kind — assert the claim shape too:
+      // service-token JWTs carry common_name; user JWTs never do.
+      if (typeof servicePayload.common_name !== "string") {
+        throw new AppError("UNAUTHENTICATED");
+      }
       return { kind: "service_token" };
     }
   }
@@ -137,6 +142,13 @@ export async function resolveCloudflareAccessMcpGate(
         ? "Cloudflare Access token rejected: audience mismatch. POLICY_AUD and MCP_POLICY_AUD do not match the Access applications that issued this token — copy each application's AUD tag from Zero Trust -> Access controls -> Applications -> Configure -> Additional settings."
         : "Cloudflare Access token rejected: audience mismatch. POLICY_AUD does not match your Access application's AUD tag — copy it from Zero Trust -> Access controls -> Applications -> Configure -> Additional settings.",
     );
+  }
+
+  // A service token presented at the user door (e.g. a hostname-wide Access
+  // app misconfigured to also accept service tokens) is NOT a user, whatever
+  // its audience says: service-token JWTs carry common_name.
+  if (typeof userPayload.common_name === "string") {
+    throw new AppError("UNAUTHENTICATED");
   }
 
   const userId = typeof userPayload.sub === "string" ? userPayload.sub : null;

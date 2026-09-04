@@ -111,13 +111,15 @@ export const emailAccessGate = (options: {
       (hostname, index, all) => hostname && all.indexOf(hostname) === index,
     );
 
-    let mcpServicePolicyId: Alchemy.Input<string> | undefined;
-    let mcpPolicyAud;
+    let mcpPolicyAud: Alchemy.Input<string> | undefined;
     if (options.mcpServiceAuth) {
       const token = yield* Cloudflare.Access.ServiceToken(
         options.mcpServiceAuth.serviceTokenId,
         { name: options.mcpServiceAuth.serviceTokenName },
       );
+      // The service-token policy attaches ONLY to the path-scoped /mcp app
+      // below — never to the hostname-wide app: there it would let a service
+      // token mint a JWT with the user app's audience and walk the user door.
       const mcpPolicy = yield* Cloudflare.Access.Policy(
         options.mcpServiceAuth.policyId,
         {
@@ -126,7 +128,6 @@ export const emailAccessGate = (options: {
           include: [{ serviceToken: { tokenId: token.serviceTokenId } }],
         },
       );
-      mcpServicePolicyId = mcpPolicy.policyId;
       // Path-scoped apps beat the hostname-wide gate for /mcp/* and issue
       // MCP_POLICY_AUD for service-token JWT verification in the Worker.
       const mcpPaths = hostnames.map((hostname) => `${hostname}/mcp`);
@@ -169,10 +170,7 @@ export const emailAccessGate = (options: {
           type: "public" as const,
           uri,
         })),
-        policies: [
-          allow.policyId,
-          ...(mcpServicePolicyId ? [mcpServicePolicyId] : []),
-        ],
+        policies: [allow.policyId],
       },
     );
 

@@ -15,7 +15,7 @@ A dated plan to earn mentions and links from real sites. Plan only. No spend.
 
 ## NiceSEO gate
 
-Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**, or a project Jon has enabled for loops. Other domains: still on Search Atlas.
+Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone.
 
 Follow `niceseo-pillars` for the Authority bar. HomeGrown OTTO is unrelated. Do not launch Cloud Stacks, Digital PR, or guest-post campaigns. Those are `not-in-openseo`.
 
@@ -28,7 +28,7 @@ Follow `niceseo-pillars` for the Authority bar. HomeGrown OTTO is unrelated. Do 
 
 ## Workflow
 
-1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai, or a project Jon has enabled for loops. If not, stop.
+1. Do not stop based on domain.
 2. Read referring domains. Speak the raw count. Authority bar = `round(min(99, 20 × log10(rd+1) × 1.5), 1)` only when the snapshot is ≤ 7 days old. Else Not measured.
 3. Name 3 linkable pages we already have (or the homepage if that is all).
 4. Write a 30-day plan (default) or 90-day if asked: partners, directories we actually belong in, one piece of useful content, one ask-for-a-link email draft. No paid placements.

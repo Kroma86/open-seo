@@ -134,6 +134,7 @@ describe("handleSelfHostedOpenSeoMcpRequest", () => {
       "local_noauth",
       {},
       ctx,
+      null,
     );
 
     expect(response.status).toBe(200);
@@ -184,6 +185,7 @@ describe("handleSelfHostedOpenSeoMcpRequest", () => {
       "cloudflare_access",
       {},
       ctx,
+      null,
     );
 
     expect(response.status).toBe(200);

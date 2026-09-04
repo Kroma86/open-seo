@@ -23,7 +23,7 @@ const LOOP_REPORT_INSTRUCTION = [
   "The only allowed write is propose_homegrown_otto_fixes (queues proposals).",
   "If you spend paid credits, say so in the report. End with the report as",
   "your final message — no tool calls after the synthesis.",
-  "This project is allowed to run. Do the loop work. Do not stop just because the domain is not niceseo.ai, twa.studio, or niceapp.ai.",
+  "This project passed the loop gate and is allowed to run. Do the loop work for this project's own domain.",
 ].join(" ");
 
 export type HeadlessSamLoopInput = {

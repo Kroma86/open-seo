@@ -181,7 +181,10 @@ export async function handleSelfHostedOpenSeoMcpRequest(
   authMode: "cloudflare_access" | "local_noauth",
   env: unknown,
   ctx: ExecutionContext,
-  accessContext?: EnsuredUserContext,
+  // Explicitly nullable: cloudflare_access callers must pass the resolved
+  // gate context; local_noauth / OPTIONS callers pass null (identity is
+  // resolved or unused inside). Forgetting the argument is a type error.
+  accessContext: EnsuredUserContext | null,
 ): Promise<Response> {
   // Preflight does not carry an authenticated application context.
   if (request.method === "OPTIONS") {

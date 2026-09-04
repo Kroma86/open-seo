@@ -211,7 +211,7 @@ async function handleFetch(
       );
     }
 
-    return handleSelfHostedOpenSeoMcpRequest(publicRequest, authMode, env, ctx);
+    return handleSelfHostedOpenSeoMcpRequest(publicRequest, authMode, env, ctx, null);
   }
 
   return appFetch(request);

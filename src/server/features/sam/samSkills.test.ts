@@ -44,8 +44,9 @@ describe("buildSamSkillSource", () => {
 
     const pageGrowth = await source.load("page-growth");
     expect(pageGrowth?.body).toContain("niceseo.ai");
-    expect(pageGrowth?.body).toContain("twa.studio");
-    expect(pageGrowth?.body).toContain("dogfooding");
+    expect(pageGrowth?.body).toContain(
+      "Domain allowlisting is enforced outside this skill",
+    );
     const refuse = await source.load("not-in-openseo");
     expect(refuse?.body).toContain("Cloud Stacks");
     expect(refuse?.body).toContain("Google Ads");
@@ -59,7 +60,7 @@ describe("buildSamSkillSource", () => {
     expect(pillars?.body).toContain("lighthouse_seo_checklist");
   });
 
-  it("pins the house-domain preamble and loop-enable clause on the 11 gated skills", async () => {
+  it("pins that gated skills do not refuse enabled client domains", async () => {
     const source = buildSamSkillSource();
     const gated = [
       "ai-visibility",
@@ -80,12 +81,12 @@ describe("buildSamSkillSource", () => {
       const skill = await source.load(name);
       expect(skill, name).toBeDefined();
       expect(skill?.body).toContain(
-        "the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**",
+        "Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone.",
       );
-      expect(skill?.body).toContain("or a project Jon has enabled for loops");
-      expect(skill?.body).toContain(
-        "Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai, or a project Jon has enabled for loops. If not, stop.",
-      );
+      expect(skill?.body).toContain("Do not stop based on domain.");
+      expect(skill?.body).not.toContain("If not, stop.");
+      expect(skill?.body).not.toContain("still on Search Atlas");
+      expect(skill?.body).not.toContain("The runner already checked");
     }
   });
 

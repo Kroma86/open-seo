@@ -15,7 +15,7 @@ Say what the latest OpenSEO crawl found, in plain English. Compare to the last c
 
 ## NiceSEO gate
 
-Until Jon names another cutover, run this only for the house domains **niceseo.ai**, **twa.studio**, and **niceapp.ai**, or a project Jon has enabled for loops. Other domains: still on Search Atlas.
+Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone.
 
 Follow `niceseo-pillars`. A 1-page crawl is not Technical 100. `lighthouseSeoAvg` on 1 page is a checklist, not the ring.
 
@@ -29,7 +29,7 @@ Follow `niceseo-pillars`. A 1-page crawl is not Technical 100. `lighthouseSeoAvg
 
 ## Workflow
 
-1. Confirm the project domain is niceseo.ai, twa.studio, or niceapp.ai, or a project Jon has enabled for loops. If not, stop.
+1. Do not stop based on domain.
 2. Read the latest completed audit. If none, say so. Do not start a crawl unless asked.
 3. List issues by type. Verify any issue you will act on against the live page.
 4. If pages crawled is 1, say the crawler only saw the homepage (JavaScript site). Do not score Technical from that.
