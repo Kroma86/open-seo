@@ -29,6 +29,7 @@ const MINIMAX_M3 = "minimax/minimax-m3";
 export function buildChatAgentModel(
   apiKey: string,
   modelId?: string,
+  reasoningEffort: "max" | "low" = "max",
 ): LanguageModelV3 {
   const model = modelId ?? DEFAULT_CHAT_AGENT_MODEL;
   const openrouter = createOpenRouter({ apiKey });
@@ -44,7 +45,7 @@ export function buildChatAgentModel(
   if (model === MINIMAX_M3) {
     return openrouter(model, {
       usage: { include: true },
-      reasoning: { effort: "medium" },
+      reasoning: { effort: reasoningEffort === "low" ? "low" : "medium" },
       provider: {
         order: ["together", "atlas-cloud/fp8"],
         zdr: true,
@@ -55,6 +56,6 @@ export function buildChatAgentModel(
 
   return openrouter(model, {
     usage: { include: true },
-    extraBody: { reasoning: { effort: "max" } },
+    extraBody: { reasoning: { effort: reasoningEffort } },
   });
 }

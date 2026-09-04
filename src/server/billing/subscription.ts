@@ -234,12 +234,12 @@ export async function trackUsageCreditSpend(args: {
   costUsd: number;
   monthlyRemaining: number;
   properties?: Record<string, unknown>;
-}): Promise<void> {
+}): Promise<{ monthlyCredits: number; topupCredits: number }> {
   const totalCostUsd = roundUsdForBilling(args.costUsd * SEO_DATA_COST_MARKUP);
   const totalCostCredits = Math.ceil(
     totalCostUsd * AUTUMN_SEO_DATA_CREDITS_PER_USD,
   );
-  if (totalCostCredits <= 0) return;
+  if (totalCostCredits <= 0) return { monthlyCredits: 0, topupCredits: 0 };
 
   // Clamp at 0: Autumn balances can read negative after an overdraft, and a
   // negative monthly reading here would inflate the topup deduction.
@@ -300,4 +300,5 @@ export async function trackUsageCreditSpend(args: {
       cost_usd: totalCostUsd,
     },
   });
+  return { monthlyCredits: monthlyDeduct, topupCredits: topupDeduct };
 }

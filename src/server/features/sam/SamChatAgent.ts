@@ -1,6 +1,7 @@
 import { Think } from "@cloudflare/think";
 import type {
   ChatErrorContext,
+  ChatRecoveryContext,
   ChatRecoveryOptions,
   ChatResponseResult,
   SaveMessagesResult,
@@ -11,6 +12,8 @@ import type {
   TurnContext,
 } from "@cloudflare/think";
 import { clearChatTerminal } from "agents/chat";
+import { createCompactFunction } from "agents/experimental/memory/utils";
+import { generateText } from "ai";
 import type { UIMessage } from "ai";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
@@ -47,6 +50,26 @@ import type { ToolAuthContext } from "@/server/mcp/context";
 const PROJECT_CONTEXT_BLOCK = "project_context";
 
 const PUBLIC_ORIGIN_KEY = "sam-public-origin";
+
+// Batching threshold for metering, not a charge: the user pays the turn's
+// actual OpenRouter cost (times the usual markup) whatever this is set to.
+// Spend accumulates step by step and is sent to Autumn once the unbilled
+// total reaches this much, with the remainder flushed when the turn ends —
+// so a $0.50 turn is ~10 Autumn calls rather than one per step, and a turn
+// the isolate kills mid-way has at most this much unbilled. Each call rounds
+// up to a whole credit (a tenth of a cent).
+const SAM_BILLING_CHUNK_USD = 0.05;
+
+// Long tool-heavy turns are what outgrow the Durable Object memory limit; the
+// model's 1M-token window never gets a say. Compact between turns past this
+// estimated token count, and mid-turn once a step's input passes 90% of the
+// proactive ceiling — both far below the window, because the constraint is DO
+// memory, not the provider.
+const SAM_COMPACT_AFTER_TOKENS = 120_000;
+const SAM_MAX_INPUT_TOKENS = 160_000;
+
+const INTERRUPTED_TURN_NOTICE =
+  "That reply was cut off before it finished — the work got too big to complete in one go. Everything above is saved. Ask again for a narrower slice (fewer keywords, competitors, or pages), or tell me where to pick up.";
 
 // Derive a short session title from the first user message.
 function deriveTitle(text: string): string {
@@ -101,10 +124,27 @@ export class SamChatAgent extends Think {
   private samContext: SamContext | null = null;
 
   // Per-turn billing state: beforeTurn arms it (non-null = hosted mode, meter
-  // this turn), onStepFinish accumulates the OpenRouter cost, onChatResponse
-  // meters the spend.
-  private turnCostUsd = 0;
+  // this turn), onStepFinish accumulates OpenRouter cost and meters it in
+  // chunks as the turn runs, onChatResponse/onChatError flush the remainder.
+  // Chunked per step rather than once per turn so a turn the Durable Object
+  // memory limit kills mid-way still bills what it spent — the Sep 2026
+  // recovery loop burned ~$160/day of OpenRouter spend that never reached
+  // onChatResponse. Deductions run off the inference loop, serialized so they
+  // land in order; the end-of-turn flush awaits the chain.
+  private turnUnbilledUsd = 0;
   private turnMonthlyRemaining: number | null = null;
+  private billing: Promise<void> = Promise.resolve();
+
+  // Mid-turn context guard, using the compaction configured in
+  // configureSession (see SAM_MAX_INPUT_TOKENS). The reactive backstop is
+  // deliberately off: it re-runs the whole turn from compacted history, which
+  // would re-issue every tool call — a second site audit, a second DataForSEO
+  // charge for the same research — on a classifier that is a regex over the
+  // provider's error text. A turn that still overflows ends as an error the
+  // user can retry.
+  override contextOverflow = {
+    proactive: { maxInputTokens: SAM_MAX_INPUT_TOKENS },
+  };
 
   /** Permanently remove this session's transcript for an account erasure. */
   async destroyForErasure(): Promise<void> {
@@ -129,6 +169,10 @@ export class SamChatAgent extends Think {
   }
 
   getModel() {
+    return this.buildModel("max");
+  }
+
+  private buildModel(reasoningEffort: "max" | "low") {
     const apiKey = getEnvValueSync(this.env, "OPENROUTER_API_KEY");
     if (!apiKey) {
       throw new Error("OPENROUTER_API_KEY is required for the SAM agent");
@@ -136,6 +180,7 @@ export class SamChatAgent extends Think {
     return buildChatAgentModel(
       apiKey,
       getEnvValueSync(this.env, "OPENROUTER_MODEL"),
+      reasoningEffort,
     );
   }
 
@@ -184,7 +229,24 @@ export class SamChatAgent extends Think {
         description:
           "This project's shared memory — sections, competitors, key pages and research log, the same records the user sees in the app. Change it with update_project_context.",
         provider: { get: () => this.renderProjectContext() },
-      });
+      })
+      .onCompaction(
+        createCompactFunction({
+          summarize: (prompt) => this.summarizeForCompaction(prompt),
+        }),
+      )
+      .compactAfter(SAM_COMPACT_AFTER_TOKENS);
+  }
+
+  // Compaction summaries run outside the step loop (so outside onStepFinish),
+  // on the same model at low reasoning; their cost joins the turn's total.
+  private async summarizeForCompaction(prompt: string): Promise<string> {
+    const result = await generateText({
+      model: this.buildModel("low"),
+      prompt,
+    });
+    this.recordSpend(openRouterCostUsd(result.providerMetadata));
+    return result.text;
   }
 
   private async loadSamContext(): Promise<SamContext | null> {
@@ -253,7 +315,9 @@ export class SamChatAgent extends Think {
   }
 
   async beforeTurn(_ctx: TurnContext): Promise<TurnConfig> {
-    this.turnCostUsd = 0;
+    // turnUnbilledUsd deliberately carries over: a between-turn compaction
+    // summary can land after the previous flush, and it is the same org's
+    // spend either way.
     this.turnMonthlyRemaining = null;
     return withPgClient(async (): Promise<TurnConfig> => {
       const ctx = await this.loadSamContext();
@@ -321,44 +385,74 @@ export class SamChatAgent extends Think {
           id: ctx.project.id,
           domain: ctx.project.domain,
         }),
-        // SAM is meant to run complex multi-step work in one turn (site-read
-        // intake plus a full research chain, multi-competitor sweeps), so give
-        // it generous headroom — cost is bounded by per-step metering and the
-        // model stopping on its own, not by this cap. The per-step budget is
-        // shared by max-effort reasoning + visible output; a tight cap risks
-        // reasoning eating the reply (the issue #161 failure mode), so it's
-        // deliberately roomy — ~10x measured reasoning use — while keeping the
-        // worst-case turn (48 steps at the full cap) under ~$2.
-        maxSteps: 48,
-        maxOutputTokens: 32_000,
+        // SAM runs complex multi-step work in one turn (site-read intake plus
+        // a full research chain, multi-competitor sweeps), so the step budget
+        // is generous; cost is bounded by per-step metering and the model
+        // stopping on its own. The per-step token budget is shared by
+        // max-effort reasoning and the visible reply, so it stays well above
+        // measured reasoning use (~3k tokens — a tight cap lets reasoning eat
+        // the reply, issue #161) but below the 32k that, with 48 steps, let a
+        // single turn outgrow the Durable Object memory limit.
+        maxSteps: 40,
+        maxOutputTokens: 16_000,
       };
     });
   }
 
   onStepFinish(ctx: StepContext): void {
-    this.turnCostUsd += openRouterCostUsd(ctx.providerMetadata);
+    this.recordSpend(openRouterCostUsd(ctx.providerMetadata));
+  }
+
+  // Add spend to the turn's unbilled total and meter it once a chunk has
+  // accumulated, or on `flush` at the end of the turn. Self-hosted turns (no
+  // armed balance) are never metered.
+  private recordSpend(costUsd: number, { flush = false } = {}): void {
+    this.turnUnbilledUsd += costUsd;
+    const armed = this.turnMonthlyRemaining;
+    if (armed === null) return;
+    if (!flush && this.turnUnbilledUsd < SAM_BILLING_CHUNK_USD) return;
+    const chunkUsd = this.turnUnbilledUsd;
+    this.turnUnbilledUsd = 0;
+    this.billing = this.billing
+      .then(() => this.meterSpend(chunkUsd, armed))
+      .catch((error: unknown) => {
+        console.error("[sam] credit metering failed", error);
+      });
+  }
+
+  private async meterSpend(
+    costUsd: number,
+    armedMonthlyRemaining: number,
+  ): Promise<void> {
+    const ctx = await withPgClient(() => this.loadSamContext());
+    if (!ctx) return;
+    // Earlier chunks in the chain have already drawn the monthly balance
+    // down; the value captured at enqueue time only covers a flush that
+    // outlives its turn (onChatError), where the field has been re-armed.
+    const { monthlyCredits } = await trackUsageCreditSpend({
+      customer: {
+        userId: ctx.row.userId,
+        userEmail: ctx.userEmail,
+        organizationId: ctx.project.organizationId,
+        projectId: ctx.project.id,
+      },
+      customerId: ctx.project.organizationId,
+      creditFeature: "agent",
+      costUsd,
+      monthlyRemaining: this.turnMonthlyRemaining ?? armedMonthlyRemaining,
+      properties: { provider: "openrouter" },
+    });
+    if (this.turnMonthlyRemaining !== null) {
+      this.turnMonthlyRemaining -= monthlyCredits;
+    }
   }
 
   async onChatResponse(result: ChatResponseResult): Promise<void> {
+    this.flushSpend();
+
     await withPgClient(async () => {
       const ctx = await this.loadSamContext();
       if (!ctx) return;
-
-      if (this.turnMonthlyRemaining !== null) {
-        await trackUsageCreditSpend({
-          customer: {
-            userId: ctx.row.userId,
-            userEmail: ctx.userEmail,
-            organizationId: ctx.project.organizationId,
-            projectId: ctx.project.id,
-          },
-          customerId: ctx.project.organizationId,
-          creditFeature: "agent",
-          costUsd: this.turnCostUsd,
-          monthlyRemaining: this.turnMonthlyRemaining,
-          properties: { provider: "openrouter" },
-        });
-      }
 
       // Name the session from its first message so the side-panel is readable.
       if (ctx.row.title === "New chat") {
@@ -389,7 +483,18 @@ export class SamChatAgent extends Think {
   // clients replay — returning nothing would make it the string "undefined".
   onChatError(error: unknown, ctx?: ChatErrorContext): unknown {
     console.error("[sam] chat turn error", ctx?.stage, error);
+    // A stopped or failed turn still consumed what it consumed.
+    this.flushSpend();
     return error;
+  }
+
+  // Meter the turn's remainder without holding the turn (and the queue
+  // behind it) on Autumn: the DO stays alive for the chain via waitUntil,
+  // which also covers the error stages Think never follows with a response
+  // hook.
+  private flushSpend(): void {
+    this.recordSpend(0, { flush: true });
+    this.ctx.waitUntil(this.billing);
   }
 
   // Think's chat recovery re-runs an interrupted turn: after a Durable Object
@@ -400,10 +505,30 @@ export class SamChatAgent extends Think {
   // it — one incident was observed at attempt 44 of a max of 10. Each attempt
   // is a full OpenRouter call that never reaches onChatResponse, so none of it
   // is metered: in early Sep 2026 these loops were ~95% of the key's spend.
-  // Keep the durable bookkeeping (partial reply persisted, terminal banner
-  // sent) but never re-run inference automatically; the user resends instead.
-  override async onChatRecovery(): Promise<ChatRecoveryOptions> {
+  // Keep the durable bookkeeping (partial reply persisted) but never re-run
+  // inference automatically; the user resends instead. Skipped recoveries
+  // get no framework banner (that only fires when a retry budget is
+  // exhausted), so schedule our own notice — delivered from inside this hook
+  // it would land before the partial reply in the transcript.
+  override async onChatRecovery(
+    ctx: ChatRecoveryContext,
+  ): Promise<ChatRecoveryOptions> {
+    console.warn("[sam] interrupted turn not re-run", {
+      name: this.name,
+      incidentId: ctx.incidentId,
+      recoveryKind: ctx.recoveryKind,
+    });
+    // Recovery runs from the DO's startup path, and a hook that fails or
+    // times out is re-run on the next wake; idempotent so the notice is
+    // scheduled once per incident, not once per restart.
+    await this.schedule(1, "notifyInterruptedTurn", ctx.incidentId, {
+      idempotent: true,
+    });
     return { persist: true, continue: false };
+  }
+
+  async notifyInterruptedTurn(): Promise<void> {
+    await this.deliverNotice(INTERRUPTED_TURN_NOTICE);
   }
 
   // Recovery continuations already queued as alarms before this deploy still

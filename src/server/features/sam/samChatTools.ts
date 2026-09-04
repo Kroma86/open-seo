@@ -58,6 +58,7 @@ import {
 } from "@/server/mcp/tools/search-console-tools";
 import { whoamiTool } from "@/server/mcp/tools/whoami";
 import { discoverSiteUrls, readPages, readSite } from "@/server/lib/scrape";
+import { capToolOutput } from "@/server/features/sam/samToolOutput";
 import openSeoFactSheet from "@/server/features/sam/openseo-fact-sheet.md?raw";
 
 // Enough pages for SAM to work out what a business does, sells, and positions
@@ -77,18 +78,35 @@ type McpToolDefinition<Shape extends ZodRawShape> = {
   ) => Promise<CallToolResult>;
 };
 
-// Flatten an MCP CallToolResult into a plain value for the model: the handler's
-// human-readable text summary plus the structured data it returned.
-function toModelOutput(result: CallToolResult): unknown {
-  const summary = (result.content ?? [])
+// Flatten an MCP CallToolResult into a plain value for the model. The text
+// block renders the same rows the structured data carries (see
+// tool-text-output.test.ts), so when both exist only the head of the text
+// survives — the title line and any caveat, not a second copy of every row.
+// A tool result is re-sent on every step of its turn and persisted in the
+// transcript, so the duplicate would cost twice everywhere.
+const SUMMARY_HEAD_CHARS = 300;
+
+export function toModelOutput(result: CallToolResult): {
+  summary: string;
+  data?: CallToolResult["structuredContent"];
+} {
+  const text = (result.content ?? [])
     .filter(
       (part): part is { type: "text"; text: string } => part.type === "text",
     )
     .map((part) => part.text)
     .join("\n");
-  return result.structuredContent
-    ? { summary, data: result.structuredContent }
-    : { summary };
+  const data = result.structuredContent;
+  // A text-only response still gets a `{ meta }` structuredContent when it
+  // carries a deep link; that is not a second copy of the text.
+  const dataHasRows =
+    data != null && Object.keys(data).some((key) => key !== "meta");
+  if (!dataHasRows) return data ? { summary: text, data } : { summary: text };
+  const summary =
+    text.length > SUMMARY_HEAD_CHARS
+      ? `${text.slice(0, SUMMARY_HEAD_CHARS)}… (full rows in data)`
+      : text;
+  return { summary, data };
 }
 
 // Adapt one OpenSEO tool into an AI SDK tool. The shared handler receives the
@@ -124,8 +142,8 @@ function adaptMcpTool<Shape extends ZodRawShape>(
         // Tool calls run inside Think's inference loop, outside any ambient
         // request scope, so each execution scopes its own Postgres client
         // (no-op in D1 mode) — same rule as the DO's other DB-touching seams.
-        return toModelOutput(
-          await withPgClient(() => handler(fullArgs, context)),
+        return capToolOutput(
+          toModelOutput(await withPgClient(() => handler(fullArgs, context))),
         );
       } catch (error) {
         // Surface the failure to the model so it can recover or report it,
@@ -272,7 +290,7 @@ function scrapeTools(projectDomain: string | null): ToolSet {
             note: "Could not read the requested page(s). Ask the user to describe the site instead, and say you couldn't read it.",
           };
         }
-        return { blocked: false, pages: site.pages };
+        return capToolOutput({ blocked: false, pages: site.pages });
       },
     }),
   };

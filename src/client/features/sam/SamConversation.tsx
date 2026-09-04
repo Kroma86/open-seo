@@ -3,6 +3,8 @@ import { useAgent } from "agents/react";
 // variant skips the client->server transcript sync Think doesn't support.
 import { useAgentChat } from "@cloudflare/think/react";
 import { useEffect, useRef } from "react";
+import { RotateCcw } from "lucide-react";
+import { findLast } from "remeda";
 import { ChatComposer } from "@/client/features/sam/ChatComposer";
 import { invalidateSamSessions } from "@/client/features/sam/samQueries";
 import {
@@ -32,10 +34,20 @@ export function SamConversation({
   const agent = useAgent({ agent: "sam-chat", name: sessionId });
   // SAM streams dense tool-input deltas; unthrottled per-chunk store fanout
   // re-renders the transcript per delta and trips React #185 (cloudflare/agents#1361).
-  const { messages, sendMessage, setMessages, clearHistory, status } =
-    useAgentChat({ agent, experimental_throttle: 50 });
+  const {
+    messages,
+    sendMessage,
+    setMessages,
+    clearHistory,
+    status,
+    stop,
+    isRecovering,
+  } = useAgentChat({ agent, experimental_throttle: 50 });
 
-  const isBusy = status === "submitted" || status === "streaming";
+  // isRecovering: the DO is settling a turn a reset interrupted (persisting
+  // the partial reply). Nothing can be sent into it until that lands.
+  const isBusy =
+    status === "submitted" || status === "streaming" || isRecovering;
   const { scrollRef, onScroll, pinToBottom } = useStickToBottom(
     messages,
     status,
@@ -67,6 +79,19 @@ export function SamConversation({
   const undoFrom = (messageId: string) => void rewindTo(messageId);
   const editAndResend = async (messageId: string, newText: string) => {
     if (await rewindTo(messageId)) sendText(newText);
+  };
+  // Retry after a failed turn goes through the same rewind-then-resend path
+  // as edit, so the failed partial reply is deleted server-side before the
+  // new one streams in. Each click is one human-gated turn, metered per step;
+  // the DO never re-runs a turn on its own (see onChatRecovery).
+  const lastUserMessage = findLast(messages, (m) => m.role === "user");
+  const retryLast = () => {
+    if (!lastUserMessage) return;
+    const text = lastUserMessage.parts
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n");
+    void editAndResend(lastUserMessage.id, text);
   };
 
   // The DO names the session from its first message during the turn, so refresh
@@ -158,10 +183,27 @@ export function SamConversation({
             </div>
           ) : null}
 
-          {status === "error" ? (
-            <p className="text-sm text-error">
-              Something went wrong. Please try again.
+          {isRecovering ? (
+            <p className="text-xs text-base-content/50">
+              Saving the reply that got cut off…
             </p>
+          ) : null}
+
+          {status === "error" ? (
+            <div className="flex flex-wrap items-center gap-3 text-sm text-error">
+              <span>SAM stopped before finishing this reply.</span>
+              {lastUserMessage ? (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-error btn-xs gap-1"
+                  disabled={isBusy}
+                  onClick={retryLast}
+                >
+                  <RotateCcw className="size-3" />
+                  Retry
+                </button>
+              ) : null}
+            </div>
           ) : null}
 
           {showSuggestions ? (
@@ -186,6 +228,7 @@ export function SamConversation({
           <ChatComposer
             busy={isBusy}
             onSend={sendText}
+            onStop={() => void stop()}
             placeholder="Ask SAM to research, analyze, or track anything…"
           />
         </div>

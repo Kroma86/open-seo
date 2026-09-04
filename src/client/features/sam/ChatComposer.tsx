@@ -5,15 +5,18 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { ArrowUp, Loader2 } from "lucide-react";
+import { ArrowUp, Loader2, Square } from "lucide-react";
 
 export function ChatComposer({
   busy,
   onSend,
+  onStop,
   placeholder = "Ask Sam about your strategy or OpenSEO…",
 }: {
   busy: boolean;
   onSend: (text: string) => void;
+  /** Cancels the running turn; while busy the send button becomes Stop. */
+  onStop?: () => void;
   placeholder?: string;
 }) {
   const [value, setValue] = useState("");
@@ -61,18 +64,29 @@ export function ChatComposer({
         placeholder={placeholder}
         className="max-h-40 flex-1 resize-none border-0 bg-transparent px-1 py-1 text-sm leading-relaxed outline-none placeholder:text-base-content/50 focus:outline-none"
       />
-      <button
-        type="submit"
-        aria-label="Send message"
-        disabled={busy || !value.trim()}
-        className="btn btn-primary btn-circle btn-sm"
-      >
-        {busy ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <ArrowUp className="size-4" />
-        )}
-      </button>
+      {busy && onStop ? (
+        <button
+          type="button"
+          aria-label="Stop"
+          onClick={onStop}
+          className="btn btn-neutral btn-circle btn-sm"
+        >
+          <Square className="size-3.5 fill-current" />
+        </button>
+      ) : (
+        <button
+          type="submit"
+          aria-label="Send message"
+          disabled={busy || !value.trim()}
+          className="btn btn-primary btn-circle btn-sm"
+        >
+          {busy ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <ArrowUp className="size-4" />
+          )}
+        </button>
+      )}
     </form>
   );
 }
