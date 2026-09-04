@@ -225,6 +225,17 @@ export function computeNextSamLoopRunAt(
   previousNextRunAt?: string | null,
   spreadSeed?: string,
 ): string {
+  // A stored anchor that does not parse is corrupt state — fail loud (before
+  // computeNextCheckAt can die with a bare RangeError on it) rather than
+  // silently rescheduling around it.
+  const anchorMs = previousNextRunAt
+    ? new Date(previousNextRunAt).getTime()
+    : null;
+  if (anchorMs != null && !Number.isFinite(anchorMs)) {
+    throw new Error(
+      `computeNextSamLoopRunAt (${cadence}): unparseable anchor ${previousNextRunAt}`,
+    );
+  }
   const next = computeNextCheckAt(cadence, previousNextRunAt);
   const resolved =
     new Date(next).getTime() > Date.now() ? next : computeNextCheckAt(cadence);
@@ -239,6 +250,17 @@ export function computeNextSamLoopRunAt(
     time.getUTCMilliseconds(),
   ] as const;
 
+  // One predicate shared by the seeded roll loops and their post-loop
+  // re-checks so the two cannot drift: within the seeded monthly/weekly
+  // branches a candidate must land strictly after both now and the previous
+  // anchor — an early candidate would double-fire the loop within one cycle.
+  // The unseeded early-return path above (daily, or callers with no
+  // spreadSeed) compares against now only; there is no per-loop anchor
+  // contract there, and this predicate does not cover it.
+  const needsRoll = (c: Date): boolean =>
+    c.getTime() <= now.getTime() ||
+    (anchorMs != null && c.getTime() <= anchorMs);
+
   if (cadence === "monthly") {
     const assignedDay = 1 + samLoopSpreadOffsetDays(spreadSeed, "monthly");
     let candidate = new Date(
@@ -249,14 +271,22 @@ export function computeNextSamLoopRunAt(
         ...timeParts,
       ),
     );
-    if (candidate.getTime() <= now.getTime()) {
+    // Strict forward progress, bounded: month arithmetic is irregular, so a
+    // corrupt far-future anchor must not spin here.
+    let guard = 0;
+    while (needsRoll(candidate) && guard < 36) {
+      const d = new Date(candidate);
       candidate = new Date(
-        Date.UTC(
-          now.getUTCFullYear(),
-          now.getUTCMonth() + 1,
-          assignedDay,
-          ...timeParts,
-        ),
+        Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, assignedDay, ...timeParts),
+      );
+      guard += 1;
+    }
+    if (needsRoll(candidate)) {
+      // Guard exhausted: the anchor is >36 months past the initial candidate
+      // — corrupt state. Fail loud instead of returning an unrolled value
+      // that would double-fire.
+      throw new Error(
+        `computeNextSamLoopRunAt: monthly spread cannot advance past anchor ${previousNextRunAt} within 36 rolls`,
       );
     }
     return candidate.toISOString();
@@ -274,8 +304,20 @@ export function computeNextSamLoopRunAt(
       ...timeParts,
     ),
   );
-  if (candidate.getTime() <= now.getTime()) {
+  // Strict forward progress, bounded like the monthly branch: a corrupt
+  // far-future anchor must throw, not spin hundreds of thousands of times in
+  // a request path. 520 rolls ≈ 10 years of missed cycles.
+  let guard = 0;
+  while (needsRoll(candidate) && guard < 520) {
     candidate = new Date(candidate.getTime() + 7 * 86_400_000);
+    guard += 1;
+  }
+  if (!Number.isFinite(candidate.getTime()) || needsRoll(candidate)) {
+    // Guard exhausted, or the roll overflowed the Date range (Invalid Date) —
+    // fail loud here instead of a bare RangeError from toISOString.
+    throw new Error(
+      `computeNextSamLoopRunAt: weekly spread cannot advance past anchor ${previousNextRunAt} within 520 rolls (~10 years)`,
+    );
   }
   return candidate.toISOString();
 }

@@ -28,6 +28,7 @@ describe("sam-loops shared helpers", () => {
     expect(SAM_LOOP_STEP_CAP).toBe(24);
     expect(DEFAULT_SAM_LOOP_TEMPLATES).toHaveLength(13);
     expect(DOGFOOD_SAM_LOOP_TRIGGER_CAP).toBe(13);
+    expect(DOGFOOD_SAM_LOOP_TRIGGER_CAP).toBe(DEFAULT_SAM_LOOP_TEMPLATES.length);
     expect(
       DEFAULT_SAM_LOOP_TEMPLATES.filter(
         (t) => t.sourceType === "skill",
@@ -314,10 +315,55 @@ describe("sam-loops shared helpers", () => {
     expect(new Date(spread).getTime()).toBeGreaterThan(Date.now());
   });
 
+  it("computeNextSamLoopRunAt rolls a routine monthly advance exactly once past the anchor", () => {
+    // Anchor is last cycle's scheduled run (the 12th at 05:30); fake now is
+    // just past it. The advance must roll exactly one month and land on the
+    // same assigned day — no skipped cycles, no re-spread.
+    const anchor = "2026-03-12T05:30:00.000Z";
+    const seed = "project_1:Site health"; // assigned month-day 12
+    const next = computeNextSamLoopRunAt("monthly", anchor, seed);
+    expect(next).toBe("2026-04-12T05:30:00.000Z");
+    expect(new Date(next).getTime()).toBeGreaterThan(
+      new Date(anchor).getTime(),
+    );
+  });
+
   it("computeNextSamLoopRunAt ignores the seed for daily cadence", () => {
     const anchor = "2026-03-14T05:30:00.000Z";
     expect(
       computeNextSamLoopRunAt("daily", anchor, "project_1:Rank slippage"),
     ).toBe(computeNextSamLoopRunAt("daily", anchor));
+  });
+
+  it("computeNextSamLoopRunAt throws when a monthly anchor is beyond the 36-roll guard", () => {
+    // Anchor ~30 years out (corrupt state): the guard can never roll past it
+    // — fail loud, never double-fire. The huge margin makes the guard
+    // exercise independent of computeNextCheckAt's future-anchor behavior
+    // (the initial candidate starts from now's date either way).
+    const anchor = new Date(Date.now() + 11000 * 86_400_000).toISOString();
+    const seed = "project_1:Site health";
+    expect(() => computeNextSamLoopRunAt("monthly", anchor, seed)).toThrow(
+      /cannot advance past anchor/,
+    );
+  });
+
+  it("computeNextSamLoopRunAt throws when a weekly anchor is beyond the 520-roll guard", () => {
+    // Anchor ~30 years out: 520 weekly rolls (~10 years) cannot reach it —
+    // the same loud failure as the monthly branch, never an unbounded loop.
+    const anchor = new Date(Date.now() + 11000 * 86_400_000).toISOString();
+    const seed = "project_1:Site health";
+    expect(() => computeNextSamLoopRunAt("weekly", anchor, seed)).toThrow(
+      /cannot advance past anchor/,
+    );
+  });
+
+  it("computeNextSamLoopRunAt throws on an unparseable anchor instead of treating it as none", () => {
+    const seed = "project_1:Site health";
+    expect(() =>
+      computeNextSamLoopRunAt("weekly", "not-a-date", seed),
+    ).toThrow(/unparseable anchor/);
+    expect(() =>
+      computeNextSamLoopRunAt("monthly", "not-a-date", seed),
+    ).toThrow(/unparseable anchor/);
   });
 });

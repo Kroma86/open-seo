@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getLoopsForProject: vi.fn(),
   claimDueLoop: vi.fn(),
   updateLoop: vi.fn(),
+  createLoop: vi.fn(),
   beginSamLoopRun: vi.fn(),
   ensureDefaultLoops: vi.fn(),
   countRunsCreatedSince: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock(
       getLoopsForProject: mocks.getLoopsForProject,
       claimDueLoop: mocks.claimDueLoop,
       updateLoop: mocks.updateLoop,
+      createLoop: mocks.createLoop,
       ensureDefaultLoops: mocks.ensureDefaultLoops,
       countRunsCreatedSince: mocks.countRunsCreatedSince,
     },
@@ -56,16 +58,196 @@ vi.mock("@/server/features/agency/AgencyScoreInputsService", () => ({
   getAgencyScoreInputsGlobal: mocks.getAgencyScoreInputsGlobal,
 }));
 
+import * as rankTracking from "@/shared/rank-tracking";
 import {
+  DEFAULT_SAM_LOOP_TEMPLATES,
   DOGFOOD_SAM_LOOP_TRIGGER_CAP,
   SAM_LOOP_DAILY_RUN_CAP,
   SAM_LOOP_DAILY_RUN_CAP_DEFAULT,
+  computeNextSamLoopRunAt,
 } from "@/shared/sam-loops";
 import {
+  createSamLoop,
   seedDefaultSamLoopsForProject,
   triggerSamLoop,
   triggerSamLoopsForDomain,
+  updateSamLoop,
 } from "./SamLoopService";
+
+describe("createSamLoop", () => {
+  it("rejects a custom loop carrying an approved template prompt verbatim", async () => {
+    const templatePrompt = DEFAULT_SAM_LOOP_TEMPLATES.find(
+      (t) => t.sourceType === "custom",
+    )?.customPrompt;
+    expect(templatePrompt).toBeTruthy();
+    await expect(
+      createSamLoop({
+        projectId: "project_1",
+        name: "CTR opportunities",
+        sourceType: "custom",
+        customPrompt: templatePrompt,
+        cadence: "monthly",
+      } as never),
+    ).rejects.toThrow(/approved template/);
+    expect(mocks.createLoop).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateSamLoop", () => {
+  const ownPromptLoop = {
+    id: "loop_1",
+    projectId: "project_1",
+    name: "My loop",
+    sourceType: "custom",
+    customPrompt: "my own benign prompt",
+    cadence: "weekly",
+    isEnabled: true,
+    nextRunAt: "2026-09-01T05:00:00.000Z",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-31T15:00:00.000Z"));
+    // Deterministic base time-of-day for schedule seeds (random otherwise).
+    vi.spyOn(rankTracking, "computeNextCheckAt").mockReturnValue(
+      "2026-09-20T05:00:00.000Z",
+    );
+    mocks.updateLoop.mockResolvedValue({ id: "loop_1" });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("rejects a prompt CHANGE onto an approved template prompt verbatim", async () => {
+    const templatePrompt = DEFAULT_SAM_LOOP_TEMPLATES.find(
+      (t) => t.sourceType === "custom",
+    )?.customPrompt;
+    expect(templatePrompt).toBeTruthy();
+    mocks.getLoopById.mockResolvedValue({ ...ownPromptLoop });
+
+    await expect(
+      updateSamLoop({
+        projectId: "project_1",
+        loopId: "loop_1",
+        customPrompt: templatePrompt,
+      } as never),
+    ).rejects.toThrow(/approved template/);
+    await expect(
+      updateSamLoop({
+        projectId: "project_1",
+        loopId: "loop_1",
+        customPrompt: templatePrompt,
+      } as never),
+    ).rejects.toThrow(/starter loops/);
+    expect(mocks.updateLoop).not.toHaveBeenCalled();
+  });
+
+  it("lets a template-family loop swap to another approved template prompt", async () => {
+    // The loop already lives in the template family: swapping among approved
+    // template prompts grants nothing the starter-loops button doesn't, and
+    // keeps a seeded loop repairable.
+    const reviewWatch = DEFAULT_SAM_LOOP_TEMPLATES.find(
+      (t) => t.name === "Review watch",
+    )?.customPrompt as string;
+    const ctr = DEFAULT_SAM_LOOP_TEMPLATES.find(
+      (t) => t.name === "CTR opportunities",
+    )?.customPrompt as string;
+    mocks.getLoopById.mockResolvedValue({
+      ...ownPromptLoop,
+      name: "Review watch",
+      customPrompt: reviewWatch,
+    });
+
+    await expect(
+      updateSamLoop({
+        projectId: "project_1",
+        loopId: "loop_1",
+        customPrompt: ctr,
+      } as never),
+    ).resolves.toBeDefined();
+    expect(mocks.updateLoop).toHaveBeenCalledWith(
+      "loop_1",
+      "project_1",
+      expect.objectContaining({ customPrompt: ctr }),
+    );
+  });
+
+  it("lets a seeded loop round-trip its own template prompt unchanged", async () => {
+    // Seeded loops legitimately HOLD a template prompt; updating an unrelated
+    // field while the client re-submits the same prompt must not trip the rule.
+    const templatePrompt = DEFAULT_SAM_LOOP_TEMPLATES.find(
+      (t) => t.sourceType === "custom",
+    )?.customPrompt as string;
+    mocks.getLoopById.mockResolvedValue({
+      ...ownPromptLoop,
+      name: "CTR opportunities",
+      customPrompt: templatePrompt,
+      cadence: "monthly",
+    });
+
+    await expect(
+      updateSamLoop({
+        projectId: "project_1",
+        loopId: "loop_1",
+        isEnabled: false,
+        customPrompt: templatePrompt,
+      } as never),
+    ).resolves.toBeDefined();
+    expect(mocks.updateLoop).toHaveBeenCalled();
+  });
+
+  it("seeds the cadence re-anchor with the FINAL name on a simultaneous rename", async () => {
+    mocks.getLoopById.mockResolvedValue({
+      ...ownPromptLoop,
+      name: "Old name",
+    });
+
+    await updateSamLoop({
+      projectId: "project_1",
+      loopId: "loop_1",
+      cadence: "monthly",
+      name: "New name",
+    } as never);
+
+    const scheduled = mocks.updateLoop.mock.calls[0]?.[2].nextRunAt as string;
+    const finalNameSeed = computeNextSamLoopRunAt(
+      "monthly",
+      undefined,
+      "project_1:New name",
+    );
+    const oldNameSeed = computeNextSamLoopRunAt(
+      "monthly",
+      undefined,
+      "project_1:Old name",
+    );
+    // Precondition: the two seeds must land on different dates, else this
+    // test cannot tell them apart — pick different names if it ever fails.
+    expect(finalNameSeed).not.toBe(oldNameSeed);
+    expect(scheduled).toBe(finalNameSeed);
+  });
+
+  it("seeds with projectId:name when enabling an unscheduled loop", async () => {
+    mocks.getLoopById.mockResolvedValue({
+      ...ownPromptLoop,
+      name: "Review watch",
+      isEnabled: false,
+      nextRunAt: null,
+    });
+
+    await updateSamLoop({
+      projectId: "project_1",
+      loopId: "loop_1",
+      isEnabled: true,
+    } as never);
+
+    const scheduled = mocks.updateLoop.mock.calls[0]?.[2].nextRunAt as string;
+    expect(scheduled).toBe(
+      computeNextSamLoopRunAt("weekly", undefined, "project_1:Review watch"),
+    );
+  });
+});
 
 describe("triggerSamLoop", () => {
   beforeEach(() => {

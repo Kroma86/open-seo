@@ -6,7 +6,7 @@ import { buildSamSkillSource } from "@/server/features/sam/samSkills";
 import { buildSamSystemPrompt } from "@/server/features/sam/samSystemPrompt";
 import { ProjectContextService } from "@/server/features/project-context/services/ProjectContextService";
 import type { ToolAuthContext } from "@/server/mcp/context";
-import { capLoopToolCalls, filterLoopTools } from "@/server/features/sam-loops/services/loopToolFilter";
+import { buildScopedLoopTools } from "@/server/features/sam-loops/services/loopToolFilter";
 import { countProposalsQueued } from "@/server/features/sam-loops/services/countProposalsQueued";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import {
@@ -110,13 +110,16 @@ export async function runHeadlessSamLoop(
     .filter(Boolean)
     .join("\n\n");
 
-  const tools = capLoopToolCalls(
-    filterLoopTools(
-      buildSamMcpTools(input.authContext, {
-        id: input.project.id,
-        domain: input.project.domain,
-      }),
-    ),
+  const tools = buildScopedLoopTools(
+    buildSamMcpTools(input.authContext, {
+      id: input.project.id,
+      domain: input.project.domain,
+    }),
+    {
+      sourceType: input.sourceType,
+      customPrompt: input.customPrompt,
+      loopName: input.loopName,
+    },
   );
 
   // Headless loops ship a unique skill dump + ~30 tool schemas. Anthropic

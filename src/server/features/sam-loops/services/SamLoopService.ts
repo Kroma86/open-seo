@@ -9,6 +9,7 @@ import { ProjectRepository } from "@/server/features/projects/repositories/Proje
 import { getAgencyScoreInputsGlobal } from "@/server/features/agency/AgencyScoreInputsService";
 import { buildSamSkillSource } from "@/server/features/sam/samSkills";
 import {
+  DEFAULT_SAM_LOOP_TEMPLATES,
   DOGFOOD_SAM_LOOP_TRIGGER_CAP,
   computeNextSamLoopRunAt,
   expectedSamLoopDraftsPerMonth,
@@ -107,6 +108,16 @@ export async function listAvailableSamLoopSkills() {
   return skills;
 }
 
+/** Approved template prompts are reserved for seeded loops. */
+function isReservedTemplatePrompt(prompt: string | null | undefined): boolean {
+  return (
+    prompt != null &&
+    DEFAULT_SAM_LOOP_TEMPLATES.some(
+      (t) => t.sourceType === "custom" && t.customPrompt === prompt,
+    )
+  );
+}
+
 export async function createSamLoop(
   input: z.infer<typeof createSamLoopSchema>,
 ) {
@@ -114,6 +125,18 @@ export async function createSamLoop(
     const skill = await buildSamSkillSource().load(input.skillName);
     if (!skill) {
       throw new AppError("VALIDATION_ERROR", `Unknown skill: ${input.skillName}`);
+    }
+  }
+
+  // Approved template prompts are reserved: a user-created custom loop may not
+  // carry one verbatim (the prompt text is in the client bundle, so byte-matching
+  // is otherwise spoofable). Seeded loops bypass this path via the repository.
+  if (input.sourceType === "custom" && input.customPrompt) {
+    if (isReservedTemplatePrompt(input.customPrompt)) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "This prompt matches an approved template. Use the starter-loops button to add it instead of creating a custom loop.",
+      );
     }
   }
 
@@ -146,6 +169,29 @@ export async function updateSamLoop(
     throw new AppError("NOT_FOUND", "Loop not found");
   }
 
+  // Same reserved-prompt rule as createSamLoop, on the update path: reject a
+  // prompt CHANGE that lands on an approved template verbatim — unless the
+  // loop already lives in the template family (it holds a template prompt
+  // today). The carve-out keeps template loops repairable and grants no
+  // CAPABILITY the starter-loops button doesn't grant. Cadence is
+  // independently user-editable on every loop, so a swap can compose a
+  // template's capabilities with a schedule the seeded template doesn't ship
+  // (e.g. daily) — accepted: the per-run tool call caps, not the seeded
+  // cadence, are the cost control. A loop whose prompt was edited AWAY from
+  // its template has left the family; the repair path then is delete + re-add
+  // from the starter loops.
+  if (
+    input.customPrompt !== undefined &&
+    input.customPrompt !== existing.customPrompt &&
+    isReservedTemplatePrompt(input.customPrompt) &&
+    !isReservedTemplatePrompt(existing.customPrompt)
+  ) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "This prompt matches an approved template. A custom loop cannot take a template's prompt. If this loop started from a template and you want it back, delete it and re-add it from the starter loops.",
+    );
+  }
+
   const cadence = input.cadence ?? existing.cadence;
   const patch: Parameters<typeof SamLoopRepository.updateLoop>[2] = {
     ...(input.name !== undefined ? { name: input.name } : {}),
@@ -157,17 +203,22 @@ export async function updateSamLoop(
 
   if (input.cadence !== undefined && input.cadence !== existing.cadence) {
     patch.cadence = input.cadence;
-    // Re-anchor schedule when cadence changes.
+    // Re-anchor schedule when cadence changes. The seed follows the FINAL
+    // name so future advances (which use the stored name) stay on one date.
     patch.nextRunAt = computeNextSamLoopRunAt(
       cadence,
       undefined,
-      `${input.projectId}:${existing.name}`,
+      `${existing.projectId}:${input.name ?? existing.name}`,
     );
   }
 
   // Enabling a loop that has no nextRunAt (or was never scheduled) schedules it.
   if (input.isEnabled === true && !existing.nextRunAt) {
-    patch.nextRunAt = computeNextSamLoopRunAt(cadence);
+    patch.nextRunAt = computeNextSamLoopRunAt(
+      cadence,
+      undefined,
+      `${existing.projectId}:${input.name ?? existing.name}`,
+    );
   }
 
   const updated = await SamLoopRepository.updateLoop(
