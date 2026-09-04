@@ -29,6 +29,10 @@ import { ProjectRepository } from "@/server/features/projects/repositories/Proje
 import { buildSamMcpTools } from "@/server/features/sam/samChatTools";
 import { buildSamSkillSource } from "@/server/features/sam/samSkills";
 import { buildSamSystemPrompt } from "@/server/features/sam/samSystemPrompt";
+import {
+  SamTelemetry,
+  type SamTurnStats,
+} from "@/server/features/sam/samTurnTelemetry";
 import { buildChatAgentModel } from "@/server/lib/openrouter";
 import {
   getEnvValueSync,
@@ -38,7 +42,6 @@ import {
   checkUsageCreditsDepleted,
   trackUsageCreditSpend,
 } from "@/server/billing/subscription";
-import { captureServerEvent } from "@/server/lib/posthog";
 import { getPublicOrigin } from "@/server/mcp/public-origin";
 import { MCP_SCOPE } from "@/lib/oauth-resource";
 import { AuthRepository } from "@/server/auth/repositories/AuthRepository";
@@ -65,6 +68,16 @@ const SAM_BILLING_CHUNK_USD = 0.05;
 // estimated token count, and mid-turn once a step's input passes 90% of the
 // proactive ceiling — both far below the window, because the constraint is DO
 // memory, not the provider.
+//
+// The between-turn threshold is compared against the Session's built-in
+// estimate (~4 chars/token over the full stored transcript). That runs high
+// relative to what the model receives, because Think clips tool outputs
+// older than the last four messages to 500 chars on every call, so it fires
+// early — the safe side. Don't pass a tokenCounter built on the model's
+// reported usage: the Session also calls the counter per single message when
+// choosing what to protect, and a whole-prompt number collapses the protected
+// tail to two messages. A real per-message counter means a tokenizer in the
+// bundle, which costs the same heap we're protecting.
 const SAM_COMPACT_AFTER_TOKENS = 120_000;
 const SAM_MAX_INPUT_TOKENS = 160_000;
 
@@ -130,10 +143,19 @@ export class SamChatAgent extends Think {
   // memory limit kills mid-way still bills what it spent — the Sep 2026
   // recovery loop burned ~$160/day of OpenRouter spend that never reached
   // onChatResponse. Deductions run off the inference loop, serialized so they
-  // land in order; the end-of-turn flush awaits the chain.
+  // land in order; waitUntil keeps the final flush alive in the background.
   private turnUnbilledUsd = 0;
   private turnMonthlyRemaining: number | null = null;
   private billing: Promise<void> = Promise.resolve();
+
+  // Turn telemetry: armed in beforeTurn, fed by the step and tool hooks,
+  // reported once as `sam:turn` when the turn ends by any route (response,
+  // error, or a memory-limit kill surfacing as recovery).
+  private readonly telemetry = new SamTelemetry(
+    () => this.name,
+    () => withPgClient(() => this.loadSamContext()),
+    (promise) => this.ctx.waitUntil(promise),
+  );
 
   // Mid-turn context guard, using the compaction configured in
   // configureSession (see SAM_MAX_INPUT_TOKENS). The reactive backstop is
@@ -188,36 +210,8 @@ export class SamChatAgent extends Think {
     return [buildSamSkillSource()];
   }
 
-  // Skill activations are Think-internal tools (activate_skill), so they never
-  // pass through the MCP instrumentation that reports every other SAM tool
-  // call; mirror its event shape so both land in the same dashboards.
   override afterToolCall(ctx: ToolCallResultContext) {
-    if (ctx.toolName !== "activate_skill" || !this.samContext) return;
-    const input: unknown = ctx.input;
-    const skill =
-      typeof input === "object" &&
-      input !== null &&
-      "name" in input &&
-      typeof input.name === "string"
-        ? input.name
-        : undefined;
-    // ctx.waitUntil, not a bare void: the PostHog client flushes on shutdown,
-    // and a fire-and-forget promise on a turn's last step can be cancelled
-    // before that flush happens.
-    this.ctx.waitUntil(
-      captureServerEvent({
-        distinctId: this.samContext.row.userId,
-        event: "sam:skill_activated",
-        organizationId: this.samContext.project.organizationId,
-        properties: {
-          skill,
-          success: ctx.success,
-          duration_ms: ctx.durationMs,
-          project_id: this.samContext.project.id,
-          source: "in_app_agent",
-        },
-      }),
-    );
+    this.telemetry.toolCall(ctx);
   }
 
   configureSession(session: Session): Session {
@@ -246,6 +240,7 @@ export class SamChatAgent extends Think {
       prompt,
     });
     this.recordSpend(openRouterCostUsd(result.providerMetadata));
+    this.telemetry.compaction();
     return result.text;
   }
 
@@ -314,14 +309,16 @@ export class SamChatAgent extends Think {
     return { model: staticAssistantModel(text) };
   }
 
-  async beforeTurn(_ctx: TurnContext): Promise<TurnConfig> {
+  async beforeTurn(turnCtx: TurnContext): Promise<TurnConfig> {
     // turnUnbilledUsd deliberately carries over: a between-turn compaction
     // summary can land after the previous flush, and it is the same org's
     // spend either way.
     this.turnMonthlyRemaining = null;
+    const turn = this.telemetry.beginTurn(turnCtx.continuation);
     return withPgClient(async (): Promise<TurnConfig> => {
       const ctx = await this.loadSamContext();
       if (!ctx) {
+        turn.refusal = "no_session";
         return this.refusalTurn(
           "I couldn't find this chat session. Please start a new one.",
         );
@@ -343,6 +340,7 @@ export class SamChatAgent extends Think {
           projectId: ctx.project.id,
         });
         if (depleted) {
+          turn.refusal = "credits";
           return this.refusalTurn(
             "You're out of credits. Top up to keep using SAM.",
           );
@@ -363,6 +361,7 @@ export class SamChatAgent extends Think {
         organizationId,
       );
       if (hosted && !membership) {
+        turn.refusal = "no_access";
         return this.refusalTurn(
           "You no longer have access to this organization, so I can't continue this chat.",
         );
@@ -381,10 +380,7 @@ export class SamChatAgent extends Think {
       };
 
       return {
-        tools: buildSamMcpTools(authContext, {
-          id: ctx.project.id,
-          domain: ctx.project.domain,
-        }),
+        tools: buildSamMcpTools(authContext, ctx.project, turn.turnId),
         // SAM runs complex multi-step work in one turn (site-read intake plus
         // a full research chain, multi-competitor sweeps), so the step budget
         // is generous; cost is bounded by per-step metering and the model
@@ -400,7 +396,9 @@ export class SamChatAgent extends Think {
   }
 
   onStepFinish(ctx: StepContext): void {
-    this.recordSpend(openRouterCostUsd(ctx.providerMetadata));
+    const costUsd = openRouterCostUsd(ctx.providerMetadata);
+    this.recordSpend(costUsd);
+    this.telemetry.step(ctx, costUsd);
   }
 
   // Add spend to the turn's unbilled total and meter it once a chunk has
@@ -408,28 +406,32 @@ export class SamChatAgent extends Think {
   // armed balance) are never metered.
   private recordSpend(costUsd: number, { flush = false } = {}): void {
     this.turnUnbilledUsd += costUsd;
+    this.telemetry.spend(costUsd);
     const armed = this.turnMonthlyRemaining;
     if (armed === null) return;
     if (!flush && this.turnUnbilledUsd < SAM_BILLING_CHUNK_USD) return;
     const chunkUsd = this.turnUnbilledUsd;
     this.turnUnbilledUsd = 0;
+    const turn = this.telemetry.turn;
     this.billing = this.billing
-      .then(() => this.meterSpend(chunkUsd, armed))
+      .then(() => this.meterSpend(chunkUsd, armed, turn))
       .catch((error: unknown) => {
         console.error("[sam] credit metering failed", error);
+        this.telemetry.captureError(error, { stage: "metering" });
       });
   }
 
   private async meterSpend(
     costUsd: number,
     armedMonthlyRemaining: number,
+    turn: SamTurnStats | null,
   ): Promise<void> {
     const ctx = await withPgClient(() => this.loadSamContext());
     if (!ctx) return;
     // Earlier chunks in the chain have already drawn the monthly balance
     // down; the value captured at enqueue time only covers a flush that
     // outlives its turn (onChatError), where the field has been re-armed.
-    const { monthlyCredits } = await trackUsageCreditSpend({
+    const { monthlyCredits, topupCredits } = await trackUsageCreditSpend({
       customer: {
         userId: ctx.row.userId,
         userEmail: ctx.userEmail,
@@ -440,15 +442,23 @@ export class SamChatAgent extends Think {
       creditFeature: "agent",
       costUsd,
       monthlyRemaining: this.turnMonthlyRemaining ?? armedMonthlyRemaining,
-      properties: { provider: "openrouter" },
+      properties: { provider: "openrouter", turn_id: turn?.turnId },
     });
-    if (this.turnMonthlyRemaining !== null) {
+    if (turn) turn.credits += monthlyCredits + topupCredits;
+    if (this.turnMonthlyRemaining !== null)
       this.turnMonthlyRemaining -= monthlyCredits;
-    }
   }
 
   async onChatResponse(result: ChatResponseResult): Promise<void> {
     this.flushSpend();
+    this.ctx.waitUntil(
+      this.telemetry.report(
+        result.status,
+        { request_id: result.requestId, error_message: result.error },
+        this.messages,
+        { billing: this.billing },
+      ),
+    );
 
     await withPgClient(async () => {
       const ctx = await this.loadSamContext();
@@ -485,6 +495,7 @@ export class SamChatAgent extends Think {
     console.error("[sam] chat turn error", ctx?.stage, error);
     // A stopped or failed turn still consumed what it consumed.
     this.flushSpend();
+    this.telemetry.error(error, ctx, this.messages, this.billing);
     return error;
   }
 
@@ -518,6 +529,14 @@ export class SamChatAgent extends Think {
       incidentId: ctx.incidentId,
       recoveryKind: ctx.recoveryKind,
     });
+    // The DO that ran the turn is gone with its stats; this is the only
+    // signal that a turn was killed, so count it as its own status.
+    await this.telemetry.report(
+      "interrupted",
+      { incident_id: ctx.incidentId, recovery_kind: ctx.recoveryKind },
+      this.messages,
+      { synthesize: true },
+    );
     // Recovery runs from the DO's startup path, and a hook that fails or
     // times out is re-run on the next wake; idempotent so the notice is
     // scheduled once per incident, not once per restart.

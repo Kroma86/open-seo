@@ -7,6 +7,7 @@ import { RotateCcw } from "lucide-react";
 import { findLast } from "remeda";
 import { ChatComposer } from "@/client/features/sam/ChatComposer";
 import { invalidateSamSessions } from "@/client/features/sam/samQueries";
+import { captureClientEvent } from "@/client/lib/posthog";
 import {
   ChatMessage,
   humanizeToolLabel,
@@ -42,6 +43,7 @@ export function SamConversation({
     status,
     stop,
     isRecovering,
+    connectionError,
   } = useAgentChat({ agent, experimental_throttle: 50 });
 
   // isRecovering: the DO is settling a turn a reset interrupted (persisting
@@ -52,10 +54,35 @@ export function SamConversation({
     messages,
     status,
   );
-  const sendText = (text: string) => {
+  // Client-side send counts, to set against the server's sam:turn events: a
+  // send with no matching turn is a message that never reached the DO.
+  const sendText = (
+    text: string,
+    source: "composer" | "suggestion" | "edit" | "retry" = "composer",
+  ) => {
     pinToBottom();
+    captureClientEvent("sam:message_send", {
+      session_id: sessionId,
+      project_id: projectId,
+      source,
+      chars: text.length,
+    });
     void sendMessage({ text });
   };
+
+  // What the user sees as a failure: the turn-level error banner below, or
+  // the socket dropping (code/reason from the close frame). The server side
+  // of the same failure is the sam:turn event with status "error".
+  useEffect(() => {
+    if (status !== "error" && !connectionError) return;
+    captureClientEvent("sam:client_error", {
+      session_id: sessionId,
+      project_id: projectId,
+      kind: connectionError ? "connection" : "turn",
+      code: connectionError?.code,
+      reason: connectionError?.reason,
+    });
+  }, [status, connectionError, sessionId, projectId]);
 
   // Rewind the server-side conversation to before `messageId`: the DO aborts
   // any in-flight turn, then deletes the message and everything after it. Sync
@@ -77,8 +104,12 @@ export function SamConversation({
   };
 
   const undoFrom = (messageId: string) => void rewindTo(messageId);
-  const editAndResend = async (messageId: string, newText: string) => {
-    if (await rewindTo(messageId)) sendText(newText);
+  const editAndResend = async (
+    messageId: string,
+    newText: string,
+    source: "edit" | "retry" = "edit",
+  ) => {
+    if (await rewindTo(messageId)) sendText(newText, source);
   };
   // Retry after a failed turn goes through the same rewind-then-resend path
   // as edit, so the failed partial reply is deleted server-side before the
@@ -91,7 +122,7 @@ export function SamConversation({
       .filter((part) => part.type === "text")
       .map((part) => part.text)
       .join("\n");
-    void editAndResend(lastUserMessage.id, text);
+    void editAndResend(lastUserMessage.id, text, "retry");
   };
 
   // The DO names the session from its first message during the turn, so refresh
@@ -213,7 +244,7 @@ export function SamConversation({
                   key={question}
                   type="button"
                   className="rounded-full border border-base-300 bg-base-100 px-3 py-1.5 text-xs font-medium text-base-content/70 transition-colors hover:border-primary/50 hover:text-base-content"
-                  onClick={() => sendText(question)}
+                  onClick={() => sendText(question, "suggestion")}
                 >
                   {question}
                 </button>

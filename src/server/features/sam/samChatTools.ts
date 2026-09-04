@@ -312,9 +312,10 @@ function scrapeTools(projectDomain: string | null): ToolSet {
 export function buildSamMcpTools(
   authContext: ToolAuthContext,
   project: { id: string; domain: string | null },
+  turnId?: string,
 ): ToolSet {
   const projectId = project.id;
-  const toolContext: ToolContext = { auth: authContext };
+  const toolContext: ToolContext = { auth: authContext, turnId };
   const adaptTool = <Shape extends ZodRawShape>(
     definition: McpToolDefinition<Shape>,
   ) => adaptMcpTool(definition, toolContext, projectId);
