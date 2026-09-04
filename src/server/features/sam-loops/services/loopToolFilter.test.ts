@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ToolSet } from "ai";
-import { LOOP_ALLOWED_TOOLS, filterLoopTools } from "./loopToolFilter";
+import {
+  LOOP_ALLOWED_TOOLS,
+  capLoopToolCalls,
+  filterLoopTools,
+} from "./loopToolFilter";
 
 describe("filterLoopTools", () => {
   const stub = { execute: async () => null };
@@ -71,5 +75,55 @@ describe("filterLoopTools", () => {
 
     const filtered = filterLoopTools(tools);
     expect(Object.keys(filtered)).toEqual(["get_audit_issues"]);
+  });
+
+  it("keeps the bounded GBP readers while other paid tools stay blocked", () => {
+    const tools = {
+      get_business_profile: stub,
+      get_business_reviews: stub,
+      get_audit_issues: stub,
+      research_keywords: stub,
+      get_domain_overview: stub,
+    } as unknown as ToolSet;
+
+    const filtered = filterLoopTools(tools);
+    expect(Object.keys(filtered).sort()).toEqual([
+      "get_audit_issues",
+      "get_business_profile",
+      "get_business_reviews",
+    ]);
+  });
+
+  it("capLoopToolCalls enforces the per-run cap and throws past it", async () => {
+    let calls = 0;
+    const tools = {
+      get_business_reviews: {
+        execute: async () => {
+          calls += 1;
+          return { ok: true };
+        },
+      },
+      get_audit_issues: {
+        execute: async () => ({ ok: true }),
+      },
+    } as unknown as ToolSet;
+
+    const capped = capLoopToolCalls(tools);
+    const run = capped.get_business_reviews as unknown as {
+      execute: (a: unknown, o: unknown) => Promise<unknown>;
+    };
+    for (let i = 0; i < 5; i += 1) {
+      await run.execute({}, {});
+    }
+    expect(calls).toBe(5);
+    await expect(run.execute({}, {})).rejects.toThrow(/call cap reached/);
+    expect(calls).toBe(5);
+
+    const uncapped = capped.get_audit_issues as unknown as {
+      execute: (a: unknown, o: unknown) => Promise<unknown>;
+    };
+    for (let i = 0; i < 7; i += 1) {
+      await uncapped.execute({}, {});
+    }
   });
 });
