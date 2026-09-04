@@ -56,6 +56,7 @@ export async function runScheduledSamLoops(env: Env) {
       const nextRunAt = computeNextSamLoopRunAt(
         loop.cadence,
         observedNextRunAt,
+        `${loop.projectId}:${loop.name}`,
       );
 
       if (

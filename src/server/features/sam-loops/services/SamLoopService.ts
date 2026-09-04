@@ -127,7 +127,11 @@ export async function createSamLoop(
       input.sourceType === "custom" ? (input.customPrompt ?? null) : null,
     cadence: input.cadence,
     isEnabled: input.isEnabled ?? true,
-    nextRunAt: computeNextSamLoopRunAt(input.cadence),
+    nextRunAt: computeNextSamLoopRunAt(
+      input.cadence,
+      undefined,
+      `${input.projectId}:${input.name}`,
+    ),
   });
 }
 
@@ -154,7 +158,11 @@ export async function updateSamLoop(
   if (input.cadence !== undefined && input.cadence !== existing.cadence) {
     patch.cadence = input.cadence;
     // Re-anchor schedule when cadence changes.
-    patch.nextRunAt = computeNextSamLoopRunAt(cadence);
+    patch.nextRunAt = computeNextSamLoopRunAt(
+      cadence,
+      undefined,
+      `${input.projectId}:${existing.name}`,
+    );
   }
 
   // Enabling a loop that has no nextRunAt (or was never scheduled) schedules it.

@@ -281,7 +281,11 @@ async function ensureDefaultLoops(projectId: string) {
           template.sourceType === "custom" ? template.customPrompt : null,
         cadence: template.cadence,
         isEnabled: true,
-        nextRunAt: computeNextSamLoopRunAt(template.cadence),
+        nextRunAt: computeNextSamLoopRunAt(
+          template.cadence,
+          undefined,
+          `${projectId}:${template.name}`,
+        ),
       })
       .onConflictDoNothing()
       .returning();

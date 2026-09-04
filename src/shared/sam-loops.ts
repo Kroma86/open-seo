@@ -72,6 +72,30 @@ export const DEFAULT_SAM_LOOP_TEMPLATES = [
     cadence: "monthly" as const,
     skillName: null as string | null,
   },
+  {
+    name: "Review watch",
+    sourceType: "custom" as const,
+    customPrompt:
+      "You run weekly for every client. Read-only: never queue fixes, never post anything anywhere, never buy paid research beyond the single review collection described here.\n1. get_niceseo_ops_status for context.\n2. get_business_reviews for this project's business. If a collection is already running, wait for the taskId to finish instead of starting a second one. If reviews cannot be fetched, say \"not measured\" and stop.\n3. List reviews from the last 7 days: author, star rating, date, whether the owner replied.\n4. Flag any review at 3 stars or lower without an owner reply as NEEDS A REPLY, with a one-sentence suggested reply the owner can edit (never post it).\n5. If there are no new reviews, say so plainly and stop — a quiet week is a good report, keep it to two sentences.\nReport: new reviews count, average rating this week, the NEEDS A REPLY list, and one praise-worthy quote when one exists. Plain English the owner can read in Slack.",
+    cadence: "weekly" as const,
+    skillName: null as string | null,
+  },
+  {
+    name: "GBP drift",
+    sourceType: "custom" as const,
+    customPrompt:
+      "You run monthly for every client. Read-only: never queue fixes, never post anywhere.\n1. get_business_profile for this project's business. If it cannot be fetched, say \"not measured\" and stop.\n2. Compare against the values from your last completed run (call get_sam_loop_runs for this project and read your previous report). First run: record the current values and say \"baseline recorded\".\n3. Report only CHANGES: business hours, phone number, categories, description, website link. For each change: old value → new value, and whether it looks intentional (e.g. holiday hours) or suspicious (e.g. phone number changed with no other edit).\n4. If nothing changed, one line: \"Profile unchanged since <date>.\"\nNever invent a previous value. When unsure, say not measured.",
+    cadence: "monthly" as const,
+    skillName: null as string | null,
+  },
+  {
+    name: "CTR opportunities",
+    sourceType: "custom" as const,
+    customPrompt:
+      "You run monthly for every client. You may only propose title and description fixes (pending only, never published). Never propose H1, schema, og tags, canonicals, or content. Never buy paid research.\n1. get_search_console_performance for this project (query+page rows, high rowLimit). If Search Console is not connected, say \"not measured\" and stop.\n2. From the last 28 days, find up to 3 queries with: position 5–20, impressions ≥ 30, and CTR ≤ 1%. Rank them by impressions.\n3. For each: identify the ranking page, read its current title and description (get_agency_otto_page_inputs), and draft a replacement title (≤60 chars) and description (≤155 chars) that matches the query's intent using only facts from the page. No invented claims, no clickbait.\n4. Call propose_homegrown_otto_fixes with status pending for title and description only, copying before_* from the page inputs. List the proposal ids.\n5. If nothing qualifies, say so in one sentence — that is a good report.\nReport: the query, its position/impressions/CTR, the page, and the proposed new title/description. Never claim a fix is live.",
+    cadence: "monthly" as const,
+    skillName: null as string | null,
+  },
 ] as const;
 
 /** Soak trigger may fire at most this many loops per POST (matches default set). */
@@ -153,16 +177,105 @@ export function expectedSamLoopDraftsPerMonth(
   }
 }
 
+/** FNV-1a 32-bit hash of `seed` (UTF-8) — deterministic across engines. */
+function fnv1a32(seed: string): number {
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(seed)) {
+    hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
+/**
+ * Deterministic per-loop schedule spread: stable day offset for a seed
+ * (conventionally `${projectId}:${loopName}`) so loops of a cadence do not
+ * all land on the same day. 0–6 for weekly, 0–27 for monthly.
+ */
+export function samLoopSpreadOffsetDays(
+  seed: string,
+  cadence: "weekly" | "monthly",
+): number {
+  return fnv1a32(seed) % (cadence === "weekly" ? 7 : 28);
+}
+
 /**
  * Reuse rank-tracking schedule math (daily / weekly / end-of-month).
  * If the computed next time is still in the past (stale anchor / clock skew),
  * re-anchor one full interval from now so downtime cannot stampede catch-up.
+ *
+ * `spreadSeed` (conventionally `${projectId}:${loopName}`) spreads loops of a
+ * cadence across days with ONE rule shared with the D1 stagger migration
+ * (scripts/sam-loop-stagger-20260903.py), so the app advance and the
+ * migration never fight over a loop's date:
+ * - monthly (seed AND advance): the assigned month-day 1 + hash%28 of the
+ *   current month at the computeNextCheckAt result's time-of-day, rolling
+ *   to the following month when that moment has passed. Offset 0 lands on
+ *   day 1 — never a bare end-of-month cliff.
+ * - weekly (seed AND advance): the next occurrence of the assigned weekday
+ *   (hash%7, 0 = Monday) from today at the computeNextCheckAt result's
+ *   time-of-day, adding one interval when that moment has passed. For an
+ *   anchor already carrying the assigned weekday this equals the plain
+ *   +7-day advance — a fixed point, so the weekday never walks. For a
+ *   stale or pre-spread anchor (missed cycles, cliff loops) it re-spreads
+ *   the loop onto its assigned weekday.
+ * - daily always ignores the seed (the scheduler already spaces dailies).
  */
 export function computeNextSamLoopRunAt(
   cadence: SamLoopCadence,
   previousNextRunAt?: string | null,
+  spreadSeed?: string,
 ): string {
   const next = computeNextCheckAt(cadence, previousNextRunAt);
-  if (new Date(next).getTime() > Date.now()) return next;
-  return computeNextCheckAt(cadence);
+  const resolved =
+    new Date(next).getTime() > Date.now() ? next : computeNextCheckAt(cadence);
+  if (spreadSeed == null || cadence === "daily") return resolved;
+
+  const now = new Date();
+  const time = new Date(resolved);
+  const timeParts = [
+    time.getUTCHours(),
+    time.getUTCMinutes(),
+    time.getUTCSeconds(),
+    time.getUTCMilliseconds(),
+  ] as const;
+
+  if (cadence === "monthly") {
+    const assignedDay = 1 + samLoopSpreadOffsetDays(spreadSeed, "monthly");
+    let candidate = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        assignedDay,
+        ...timeParts,
+      ),
+    );
+    if (candidate.getTime() <= now.getTime()) {
+      candidate = new Date(
+        Date.UTC(
+          now.getUTCFullYear(),
+          now.getUTCMonth() + 1,
+          assignedDay,
+          ...timeParts,
+        ),
+      );
+    }
+    return candidate.toISOString();
+  }
+
+  // weekly — assigned weekday (0 = Monday) next occurring from today.
+  const assigned = samLoopSpreadOffsetDays(spreadSeed, "weekly");
+  const nowDow = (now.getUTCDay() + 6) % 7; // JS Sun=0..Sat=6 → Mon=0..Sun=6
+  const daysAhead = (assigned - nowDow + 7) % 7;
+  let candidate = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + daysAhead,
+      ...timeParts,
+    ),
+  );
+  if (candidate.getTime() <= now.getTime()) {
+    candidate = new Date(candidate.getTime() + 7 * 86_400_000);
+  }
+  return candidate.toISOString();
 }

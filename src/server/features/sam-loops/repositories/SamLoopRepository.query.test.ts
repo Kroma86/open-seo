@@ -134,6 +134,37 @@ describe("ensureDefaultLoops", () => {
     const loops = await SamLoopRepository.getLoopsForProject("project_1");
     expect(loops).toHaveLength(DEFAULT_SAM_LOOP_TEMPLATES.length);
   });
+
+  it("spreads the same template to different dates for different projects", async () => {
+    await client.execute({
+      sql: "INSERT INTO projects (id, organization_id, name) VALUES (?, ?, ?)",
+      args: ["project_1", "org_1", "Acme"],
+    });
+    await client.execute({
+      sql: "INSERT INTO projects (id, organization_id, name) VALUES (?, ?, ?)",
+      args: ["project_2", "org_1", "Beta"],
+    });
+
+    await SamLoopRepository.ensureDefaultLoops("project_1");
+    await SamLoopRepository.ensureDefaultLoops("project_2");
+
+    const loops1 = await SamLoopRepository.getLoopsForProject("project_1");
+    const loops2 = await SamLoopRepository.getLoopsForProject("project_2");
+    const byName = (
+      loops: Awaited<ReturnType<typeof SamLoopRepository.getLoopsForProject>>,
+      name: string,
+    ) => loops.find((loop) => loop.name === name)?.nextRunAt?.slice(0, 10);
+
+    // Assigned days differ by seed: Site health weekly lands Friday for
+    // project_1 (hash%7 = 4) vs Tuesday for project_2 (hash%7 = 1); GBP
+    // drift monthly lands on month-day 24 vs 9 (1 + hash%28).
+    expect(byName(loops1, "Site health")).toBeDefined();
+    expect(byName(loops1, "Site health")).not.toBe(
+      byName(loops2, "Site health"),
+    );
+    expect(byName(loops1, "GBP drift")).toBeDefined();
+    expect(byName(loops1, "GBP drift")).not.toBe(byName(loops2, "GBP drift"));
+  });
 });
 
 describe("getContentVelocityForProject", () => {
