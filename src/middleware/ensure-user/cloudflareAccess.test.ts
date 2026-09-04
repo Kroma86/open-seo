@@ -107,7 +107,7 @@ describe("resolveCloudflareAccessMcpGate", () => {
     expect(gate.kind).toBe("service_token");
   });
 
-  it("falls back to the user audience for a user JWT", async () => {
+  it("falls back to the user audience for a user JWT, returning the verified identity only (context resolution is the caller's DB-scoped job)", async () => {
     joseMocks.jwtVerify.mockImplementation(
       async (_t: unknown, _k: unknown, opts: { audience: string }) => {
         if (opts.audience === "user-app-aud") {
@@ -118,12 +118,16 @@ describe("resolveCloudflareAccessMcpGate", () => {
     );
 
     const gate = await resolveCloudflareAccessMcpGate(WITH_TOKEN);
-    expect(gate.kind).toBe("user");
-    if (gate.kind !== "user") throw new Error("unreachable");
-    expect(gate.context).toBe(WORKSPACE);
+    expect(gate).toEqual({
+      kind: "user",
+      userId: "u1",
+      userEmail: "person@example.com",
+    });
+    // The gate must not touch the database — keeping the remote JWKS verify
+    // out of any pooled-client scope depends on it.
     expect(
       delegatedMocks.resolveSharedWorkspaceContext,
-    ).toHaveBeenCalledWith("u1", "person@example.com");
+    ).not.toHaveBeenCalled();
   });
 
   it("rejects a service-token-shaped JWT at the USER audience (the C1 hole: kind must not follow audience alone)", async () => {

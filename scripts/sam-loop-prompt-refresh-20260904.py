@@ -34,8 +34,8 @@ import os
 import sys
 import urllib.request
 
-ACCOUNT_ID = "9e03005588cee6cae23a89b800c2beb3"
-DATABASE_ID = "1edd209b-d21c-4c2a-a948-932c3f6b75de"
+ACCOUNT_ID = os.environ.get("CF_ACCOUNT_ID", "9e03005588cee6cae23a89b800c2beb3")
+DATABASE_ID = os.environ.get("D1_DATABASE_ID", "1edd209b-d21c-4c2a-a948-932c3f6b75de")
 API_URL = (
     f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}"
     f"/d1/database/{DATABASE_ID}/query"
@@ -121,7 +121,7 @@ CUSTOMIZED_SQL = (
 def report(title: str, rows) -> None:
     print(title)
     if not rows:
-        print("  (none)")
+        print("  (no rows returned — zero matches for every named loop)")
     for row in rows:
         print(f"  {row.get('name')}: {row.get('n')}")
 
@@ -138,8 +138,20 @@ def main() -> None:
     args = parser.parse_args()
 
     total_stale = sum(r.get("n", 0) for r in d1_query(COUNT_STALE_SQL))
+    print(
+        f"Target: account {ACCOUNT_ID} / database {DATABASE_ID} "
+        "(override with CF_ACCOUNT_ID / D1_DATABASE_ID)"
+    )
 
     if args.verify:
+        total_loops = sum(r.get("n", 0) for r in d1_query(COUNT_ALL_SQL))
+        if total_loops == 0:
+            print(
+                "VERIFY FAILED: no loops named 'On-page priorities' or "
+                "'Keyword portfolio' exist on this database at all — wrong "
+                "target? An empty match is not 'already migrated'."
+            )
+            sys.exit(1)
         if total_stale != 0:
             print(f"VERIFY FAILED: {total_stale} loop(s) still carry the old prompt prefix.")
             sys.exit(1)

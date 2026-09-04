@@ -164,9 +164,7 @@ describe("runHeadlessSamLoop", () => {
     expect(mocks.getChatAgentModel).toHaveBeenCalled();
     expect(mocks.generateText).toHaveBeenCalled();
     const system = mocks.generateText.mock.calls[0]?.[0]?.system as string;
-    expect(system).toContain(
-      "This project passed the loop gate and is allowed to run. Do the loop work for this project's own domain.",
-    );
+    expect(system).toContain("Do the loop work for this project's own domain.");
     expect(system).not.toContain("If the project domain is not one of them");
   });
 

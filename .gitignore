@@ -48,4 +48,5 @@ dist-sourcemaps/
 # Python bytecode (one-off migration scripts)
 __pycache__/
 
+# Service-token secret file produced during alchemy deploy — never commit
 .openseo-access-service-token.env

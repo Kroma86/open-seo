@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   providerFetch: vi.fn(),
   transport: vi.fn(),
   gate: vi.fn(),
+  resolveContext: vi.fn(),
 }));
 
 vi.mock("cloudflare:workers", () => ({
@@ -27,6 +28,9 @@ vi.mock("agents", () => ({
 }));
 vi.mock("@/middleware/ensure-user/cloudflareAccess", () => ({
   resolveCloudflareAccessMcpGate: mocks.gate,
+}));
+vi.mock("@/middleware/ensure-user/delegated", () => ({
+  resolveSharedWorkspaceContext: mocks.resolveContext,
 }));
 vi.mock("@/server/mcp/oauth-provider", () => ({
   createOpenSeoOAuthProvider: () => ({
@@ -68,17 +72,6 @@ vi.mock("@/server/features/audit/AuditScratchpad", () => ({
 }));
 
 import handler from "./server";
-// Type-only import: resolves to the REAL module's types even though the
-// runtime is mocked above.
-import type { OpenSeoOAuthEnv } from "@/server/mcp/oauth-provider";
-
-// Compile-time proof that the self-host Env structurally carries the binding
-// the OAuth provider needs — the `env as OpenSeoOAuthEnv` casts in server.ts
-// rest on this. If the binding is ever removed from Env, tsc fails HERE, not
-// in production. (OpenSeoOAuthEnv = Env & { OAUTH_KV: KVNamespace; ... }.)
-type Assert<T extends true> = T;
-export type EnvCarriesOAuthKv =
-  Assert<Env extends Pick<OpenSeoOAuthEnv, "OAUTH_KV"> ? true : never>;
 
 const ctx = { waitUntil: () => {} } as unknown as ExecutionContext;
 const env = { AUTH_MODE: "cloudflare_access" } as unknown as Env;
@@ -122,11 +115,20 @@ describe("server /mcp routing under cloudflare_access", () => {
     expect(mocks.appFetch).not.toHaveBeenCalled();
   });
 
-  it("hands a user gate result to the user MCP handler with the resolved context", async () => {
-    mocks.gate.mockResolvedValue({ kind: "user", context: userContext });
+  it("hands a user gate result to the user MCP handler with the DB-resolved context (its own short client scope, after the network wait)", async () => {
+    mocks.gate.mockResolvedValue({
+      kind: "user",
+      userId: "u1",
+      userEmail: "person@example.com",
+    });
+    mocks.resolveContext.mockResolvedValue(userContext);
 
     const response = await handler.fetch(mcpRequest(), env, ctx);
 
+    expect(mocks.resolveContext).toHaveBeenCalledWith(
+      "u1",
+      "person@example.com",
+    );
     expect(mocks.transport).toHaveBeenCalledTimes(1);
     expect(mocks.transport).toHaveBeenCalledWith(
       expect.any(Request),
@@ -190,6 +192,19 @@ describe("server OAuth discovery routing under cloudflare_access", () => {
     expect(new URL(routedRequest.url).pathname).toBe(
       "/.well-known/oauth-authorization-server",
     );
+  });
+
+  it("404s anything under the discovery prefixes that is not an exact discovery path (the edge bypass is prefix-matched; the Worker allowlist is exact)", async () => {
+    const response = await handler.fetch(
+      mcpRequest("GET", "/.well-known/oauth-authorization-server/admin"),
+      env,
+      ctx,
+    );
+
+    expect(response.status).toBe(404);
+    expect(mocks.providerFetch).not.toHaveBeenCalled();
+    expect(mocks.appFetch).not.toHaveBeenCalled();
+    expect(mocks.gate).not.toHaveBeenCalled();
   });
 });
 

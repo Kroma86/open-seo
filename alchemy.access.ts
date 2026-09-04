@@ -12,6 +12,7 @@ import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
+import { SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES } from "./src/shared/mcp-discovery-paths";
 
 const WORKER_PREFIX = "open-seo";
 
@@ -173,10 +174,11 @@ export const emailAccessGate = (options: {
       // by machine clients AND user agents — the hostname-wide email gate
       // would otherwise 302 them. Path-scoped apps beat the hostname-wide
       // gate for /.well-known/oauth-*; the Worker serves metadata only there.
-      const discoveryPaths = hostnames.flatMap((hostname) => [
-        `${hostname}/.well-known/oauth-authorization-server`,
-        `${hostname}/.well-known/oauth-protected-resource`,
-      ]);
+      const discoveryPaths = hostnames.flatMap((hostname) =>
+        SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES.map(
+          (prefix) => `${hostname}${prefix}`,
+        ),
+      );
       yield* Cloudflare.Access.Application(
         options.mcpDiscoveryBypass.applicationId,
         {

@@ -91,7 +91,10 @@ async function verifyAccessTokenForAudience(
 
 export type CloudflareAccessMcpGate =
   | { kind: "service_token" }
-  | { kind: "user"; context: EnsuredUserContext };
+  // Verified identity ONLY — the workspace context (DB work) is resolved by
+  // the caller inside its own client scope. Keeping DB out of this function
+  // keeps the remote JWKS verification out of any pooled-client scope.
+  | { kind: "user"; userId: string; userEmail: string };
 
 export async function resolveCloudflareAccessMcpGate(
   headers: Headers,
@@ -159,10 +162,7 @@ export async function resolveCloudflareAccessMcpGate(
     throw new AppError("UNAUTHENTICATED");
   }
 
-  return {
-    kind: "user",
-    context: await resolveSharedWorkspaceContext(userId, userEmail),
-  };
+  return { kind: "user", userId, userEmail };
 }
 
 export async function resolveCloudflareAccessContext(
@@ -173,5 +173,5 @@ export async function resolveCloudflareAccessContext(
     throw new AppError("UNAUTHENTICATED");
   }
 
-  return gate.context;
+  return resolveSharedWorkspaceContext(gate.userId, gate.userEmail);
 }
