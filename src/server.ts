@@ -4,6 +4,7 @@ import {
 } from "@tanstack/react-start/server";
 import { routeAgentRequest } from "agents";
 import { resolveUserContextFromHeaders } from "@/middleware/ensure-user/resolve";
+import { resolveCloudflareAccessMcpGate } from "@/middleware/ensure-user/cloudflareAccess";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import { SamSessionRepository } from "@/server/features/sam/SamSessionRepository";
 import { runScheduledRankChecks } from "@/server/features/rank-tracking/services/scheduledRankChecks";
@@ -14,6 +15,7 @@ import { reconcileStaleAiVisibilityRuns } from "@/server/features/ai-visibility/
 import { getOrCreateOrganizationCustomer } from "@/server/billing/subscription";
 import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
 import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
+import { isSelfHostedMcpOAuthDiscoveryPath } from "@/lib/oauth-resource";
 import {
   createOpenSeoOAuthProvider,
   type OpenSeoOAuthEnv,
@@ -139,11 +141,11 @@ function fetch(
   return withPgClient(() => Promise.resolve(handleFetch(request, env, ctx)));
 }
 
-function handleFetch(
+async function handleFetch(
   request: Request,
   env: Env,
   ctx: ExecutionContext,
-): Response | Promise<Response> {
+): Promise<Response> {
   ctx.waitUntil(maybeSendSelfHostHeartbeat());
 
   const authMode = getAuthMode(env.AUTH_MODE);
@@ -171,9 +173,44 @@ function handleFetch(
   }
 
   if (
+    authMode === "cloudflare_access" &&
+    isSelfHostedMcpOAuthDiscoveryPath(pathname)
+  ) {
+    let oauthRequest = publicRequest;
+    if (pathname === "/.well-known/oauth-authorization-server/mcp") {
+      const rewritten = new URL(publicRequest.url);
+      rewritten.pathname = "/.well-known/oauth-authorization-server";
+      oauthRequest = new Request(rewritten, publicRequest);
+    }
+    return openSeoOAuthProvider.fetch(
+      oauthRequest,
+      env as OpenSeoOAuthEnv,
+      ctx,
+    );
+  }
+
+  if (
     (authMode === "cloudflare_access" || authMode === "local_noauth") &&
     pathname === MCP_ROUTE
   ) {
+    if (authMode === "cloudflare_access" && publicRequest.method !== "OPTIONS") {
+      const gate = await resolveCloudflareAccessMcpGate(publicRequest.headers);
+      if (gate.kind === "service_token") {
+        return openSeoOAuthProvider.fetch(
+          publicRequest,
+          env as OpenSeoOAuthEnv,
+          ctx,
+        );
+      }
+      return handleSelfHostedOpenSeoMcpRequest(
+        publicRequest,
+        authMode,
+        env,
+        ctx,
+        gate.context,
+      );
+    }
+
     return handleSelfHostedOpenSeoMcpRequest(publicRequest, authMode, env, ctx);
   }
 

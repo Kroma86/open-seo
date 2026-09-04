@@ -54,8 +54,7 @@ describe("sam-loops shared helpers", () => {
     expect(onPage.name).toBe("On-page priorities");
     expect(onPage.sourceType).toBe("custom");
     expect(onPage.cadence).toBe("weekly");
-    expect(onPage.customPrompt).toContain("niceseo.ai");
-    expect(onPage.customPrompt).toContain("twa.studio");
+    expect(onPage.customPrompt).not.toContain("house-domains-only");
     expect(onPage.customPrompt).toContain("too soon — skip");
     expect(onPage.customPrompt).toContain("propose_homegrown_otto_fixes");
     expect(onPage.customPrompt).toContain("Pending only");
@@ -65,8 +64,7 @@ describe("sam-loops shared helpers", () => {
     expect(keywords.name).toBe("Keyword portfolio");
     expect(keywords.sourceType).toBe("custom");
     expect(keywords.cadence).toBe("monthly");
-    expect(keywords.customPrompt).toContain("niceseo.ai");
-    expect(keywords.customPrompt).toContain("twa.studio");
+    expect(keywords.customPrompt).not.toContain("house-domains-only");
     expect(keywords.customPrompt).toContain("Do not buy keyword research");
     expect(keywords.customPrompt).toContain("research_keywords");
     expect(keywords.customPrompt).toContain("save_keywords");

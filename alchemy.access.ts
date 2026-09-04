@@ -66,6 +66,14 @@ export const requireAllowedEmails = (remedy: string) =>
  * stays email-gated while Hermes can reach machine exports. The Worker still
  * requires `AGENCY_SCORE_EXPORT_TOKEN` on those routes — Access is not the
  * auth for them.
+ *
+ * When `mcpServiceAuth` is set, also provisions a Service Auth (non_identity)
+ * policy bound to a named service token on both the hostname-wide gate (so
+ * OAuth discovery paths like `/.well-known/oauth-*` accept Grok Bot headers)
+ * and a more-specific `/mcp` application (whose AUD tag becomes
+ * `MCP_POLICY_AUD`). Grok Bot and other MCP clients pass
+ * `CF-Access-Client-Id` / `CF-Access-Client-Secret` to get past Access; the
+ * Worker still requires OpenSEO OAuth on MCP routes.
  */
 export const emailAccessGate = (options: {
   policyId: string;
@@ -84,19 +92,64 @@ export const emailAccessGate = (options: {
     policyName: string;
     applicationName: string;
   };
+  /** MCP path service-token gate (self-host only; leave unset for previews). */
+  mcpServiceAuth?: {
+    serviceTokenId: string;
+    serviceTokenName: string;
+    policyId: string;
+    applicationId: string;
+    policyName: string;
+    applicationName: string;
+  };
 }) =>
   Effect.gen(function* () {
-    const allow = yield* Cloudflare.Access.Policy(options.policyId, {
-      name: options.policyName,
-      decision: "allow",
-      include: options.emails.map((email) => ({ email: { email } })),
-    });
     const hostnames = [
       options.domain,
       ...(options.extraDomains ?? []),
     ].filter(
       (hostname, index, all) => hostname && all.indexOf(hostname) === index,
     );
+
+    let mcpServicePolicyId: string | undefined;
+    let mcpPolicyAud;
+    if (options.mcpServiceAuth) {
+      const token = yield* Cloudflare.Access.ServiceToken(
+        options.mcpServiceAuth.serviceTokenId,
+        { name: options.mcpServiceAuth.serviceTokenName },
+      );
+      const mcpPolicy = yield* Cloudflare.Access.Policy(
+        options.mcpServiceAuth.policyId,
+        {
+          name: options.mcpServiceAuth.policyName,
+          decision: "non_identity",
+          include: [{ serviceToken: { tokenId: token.serviceTokenId } }],
+        },
+      );
+      mcpServicePolicyId = mcpPolicy.policyId;
+      // Path-scoped apps beat the hostname-wide gate for /mcp/* and issue
+      // MCP_POLICY_AUD for service-token JWT verification in the Worker.
+      const mcpPaths = hostnames.map((hostname) => `${hostname}/mcp`);
+      const mcpApplication = yield* Cloudflare.Access.Application(
+        options.mcpServiceAuth.applicationId,
+        {
+          type: "self_hosted",
+          name: options.mcpServiceAuth.applicationName,
+          domain: mcpPaths[0],
+          destinations: mcpPaths.map((uri) => ({
+            type: "public" as const,
+            uri,
+          })),
+          policies: [mcpPolicy.policyId],
+        },
+      );
+      mcpPolicyAud = mcpApplication.aud;
+    }
+
+    const allow = yield* Cloudflare.Access.Policy(options.policyId, {
+      name: options.policyName,
+      decision: "allow",
+      include: options.emails.map((email) => ({ email: { email } })),
+    });
     const application = yield* Cloudflare.Access.Application(
       options.applicationId,
       {
@@ -115,7 +168,10 @@ export const emailAccessGate = (options: {
           type: "public" as const,
           uri,
         })),
-        policies: [allow.policyId],
+        policies: [
+          allow.policyId,
+          ...(mcpServicePolicyId ? [mcpServicePolicyId] : []),
+        ],
       },
     );
 
@@ -147,5 +203,5 @@ export const emailAccessGate = (options: {
       );
     }
 
-    return application;
+    return { application, mcpPolicyAud };
   });
