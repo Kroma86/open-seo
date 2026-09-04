@@ -224,7 +224,7 @@ export async function assertUsageCreditsAvailable(
  * Deducts a USD provider cost from the org's shared usage-credit pool: applies
  * the platform markup, converts to credits, spends monthly `usage_credits`
  * first then `topup_credits`, and emits the usage:credits_consume event. Both
- * DataForSEO and onboarding-LLM spend route through here, so they draw from the
+ * DataForSEO and agent-LLM spend route through here, so they draw from the
  * one pool. Pass `monthlyRemaining` from the balance check that gated the call.
  */
 export async function trackUsageCreditSpend(args: {

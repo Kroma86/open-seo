@@ -7,7 +7,7 @@
 
 import { normalizeAndValidateStartUrl } from "@/server/lib/audit/url-policy";
 
-export const MAX_PAGES = 5;
+const MAX_PAGES = 5;
 const PER_PAGE_CHAR_LIMIT = 4000;
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 2_000_000;

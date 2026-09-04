@@ -313,7 +313,6 @@ async function buildInventory(db: Db, user: UserRow) {
 
   return {
     organizations,
-    projectIds,
     samSessionIds: samSessions.map((row) => row.id),
     auditIds: audits.map((row) => row.id),
     r2Keys,
@@ -581,7 +580,6 @@ async function main() {
       organizations: inventory.organizations,
       databaseCounts: inventory.databaseCounts,
       cloudflare: {
-        onboardingChats: inventory.projectIds.length,
         samChats: inventory.samSessionIds.length,
         auditScratchpads: inventory.auditIds.length,
         r2Objects: inventory.r2Keys.length,
@@ -624,7 +622,6 @@ async function main() {
       userId: user.id,
       email: user.email,
       organizationIds,
-      projectIds: inventory.projectIds,
       samSessionIds: inventory.samSessionIds,
       auditIds: inventory.auditIds,
       activeAuditWorkflowIds: inventory.activeAuditWorkflowIds,

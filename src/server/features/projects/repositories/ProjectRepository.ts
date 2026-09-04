@@ -46,8 +46,8 @@ async function getProjectForOrganization(
 
 // Look up a project by id alone (no org scoping). Only for trusted server
 // contexts that have already authorized access another way — e.g. the
-// onboarding chat Durable Object, whose connections are authorized in the
-// Worker before they reach the DO, and which derives its org from the project.
+// SAM chat Durable Object, whose connections are authorized in the Worker
+// before they reach the DO, and which derives its org from the project.
 async function getProjectById(projectId: string) {
   const [project] = await db
     .select()

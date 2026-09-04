@@ -3,7 +3,7 @@ import { useAgent } from "agents/react";
 // variant skips the client->server transcript sync Think doesn't support.
 import { useAgentChat } from "@cloudflare/think/react";
 import { useEffect, useRef } from "react";
-import { ChatComposer } from "@/client/features/onboarding/OnboardingChatParts";
+import { ChatComposer } from "@/client/features/sam/ChatComposer";
 import { invalidateSamSessions } from "@/client/features/sam/samQueries";
 import {
   ChatMessage,

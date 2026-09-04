@@ -58,10 +58,10 @@ import {
 } from "@/server/mcp/tools/search-console-tools";
 import { whoamiTool } from "@/server/mcp/tools/whoami";
 import { discoverSiteUrls, readPages, readSite } from "@/server/lib/scrape";
-import openSeoFactSheet from "@/server/features/onboarding/openseo-fact-sheet.md?raw";
+import openSeoFactSheet from "@/server/features/sam/openseo-fact-sheet.md?raw";
 
-// SAM reads more of a site than the onboarding preview: enough pages to work
-// out what a business does, sells, and positions against on its own.
+// Enough pages for SAM to work out what a business does, sells, and positions
+// against on its own.
 const SAM_MAX_SCRAPE_PAGES = 10;
 const SAM_MAX_MAPPED_URLS = 60;
 
@@ -213,9 +213,9 @@ export function waitingAuditStatusTool(
   };
 }
 
-// Free (credit-less) site-reading tools, mirroring the onboarding agent's
-// read_website but split into discovery + reading so the model can pick which
-// pages to read instead of blindly taking the first N sitemap entries.
+// Free (credit-less) site-reading tools, split into discovery + reading so the
+// model can pick which pages to read instead of blindly taking the first N
+// sitemap entries.
 function scrapeTools(projectDomain: string | null): ToolSet {
   return {
     map_links: tool({
