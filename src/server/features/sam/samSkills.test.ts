@@ -45,7 +45,7 @@ describe("buildSamSkillSource", () => {
     const pageGrowth = await source.load("page-growth");
     expect(pageGrowth?.body).toContain("niceseo.ai");
     expect(pageGrowth?.body).toContain(
-      "Domain allowlisting is enforced outside this skill",
+      "Do not refuse or stop based on the project domain.",
     );
     const refuse = await source.load("not-in-openseo");
     expect(refuse?.body).toContain("Cloud Stacks");
@@ -81,12 +81,13 @@ describe("buildSamSkillSource", () => {
       const skill = await source.load(name);
       expect(skill, name).toBeDefined();
       expect(skill?.body).toContain(
-        "Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone.",
+        "Do not refuse or stop based on the project domain.",
       );
       expect(skill?.body).toContain("Do not stop based on domain.");
       expect(skill?.body).not.toContain("If not, stop.");
       expect(skill?.body).not.toContain("still on Search Atlas");
       expect(skill?.body).not.toContain("The runner already checked");
+      expect(skill?.body).not.toContain("enforced outside this skill");
     }
   });
 

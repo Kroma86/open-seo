@@ -18,7 +18,7 @@ not publish.
 
 ## NiceSEO gate
 
-Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone.
+Do not refuse or stop based on the project domain.
 
 Follow `niceseo-pillars` / `PILLAR-RULES.md` if scores come up. Content ring stays
 **Not measured** — a brief is not a Content pillar score. Do not invent NAP,

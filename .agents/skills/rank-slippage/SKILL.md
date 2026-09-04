@@ -15,7 +15,7 @@ Compare the latest rank-tracker snapshot to the previous one. Alert only when a 
 
 ## NiceSEO gate
 
-Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone.
+Do not refuse or stop based on the project domain.
 
 Follow `niceseo-pillars` for Visibility. Do not run a live rank check unless Jon approved `estimate_rank_tracker_cost` this turn.
 

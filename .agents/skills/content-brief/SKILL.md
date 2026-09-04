@@ -17,7 +17,7 @@ Sources labeled. **not measured** where absent.
 
 ## NiceSEO gate
 
-Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone.
+Do not refuse or stop based on the project domain.
 
 Follow `niceseo-pillars` / `PILLAR-RULES.md` if a ring comes up. A brief is
 **not** a Content pillar score. Do not invent stats or difficulty scores.

@@ -16,7 +16,7 @@ Write the article from a **brief**, in house voice, and deliver it as a
 
 ## NiceSEO gate
 
-Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone. A draft is **not** a Content pillar score.
+Do not refuse or stop based on the project domain. A draft is **not** a Content pillar score.
 
 ## Parameter
 

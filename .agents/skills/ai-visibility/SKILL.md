@@ -15,7 +15,7 @@ Say whether AI tools mention this site, and what topic to write next. Measure fi
 
 ## NiceSEO gate
 
-Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone. Do not invent mention counts.
+Do not refuse or stop based on the project domain. Do not invent mention counts.
 
 Follow `niceseo-pillars`. Do not call paid DataForSEO LLM indexes unless Jon asked this turn. If he did not, report only what OpenSEO already has, or **Not measured**.
 

@@ -20,7 +20,7 @@ on-demand only.
 
 ## NiceSEO gate
 
-Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone. Do not invent volume, KD, or ranks.
+Do not refuse or stop based on the project domain. Do not invent volume, KD, or ranks.
 
 Follow `niceseo-pillars` / `PILLAR-RULES.md` if a NiceSEO ring comes up. A map
 is **not** a Content pillar score. `position: null` is not #0.

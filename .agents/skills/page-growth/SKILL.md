@@ -14,7 +14,7 @@ Name a short list of **our own pages** that can earn more Google clicks this mon
 
 ## NiceSEO gate
 
-Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone. Do not invent numbers. Do not pull Search Atlas.
+Do not refuse or stop based on the project domain. Do not invent numbers. Do not pull Search Atlas.
 
 Follow `niceseo-pillars` if you mention a NiceSEO ring. HomeGrown OTTO is propose-only. Do not apply fixes. Do not call paid DataForSEO unless Jon asked this turn.
 

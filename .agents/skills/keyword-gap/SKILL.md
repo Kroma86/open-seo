@@ -17,7 +17,7 @@ target-keyword list that can seed topical maps. Evidence first. No fake scores.
 
 ## NiceSEO gate
 
-Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone. Do not invent volume, KD, or ranks.
+Do not refuse or stop based on the project domain. Do not invent volume, KD, or ranks.
 
 Follow `niceseo-pillars` / `PILLAR-RULES.md` if you mention a NiceSEO ring.
 Keyword-gap numbers are **not** a pillar bar. Per pillar law: competitor

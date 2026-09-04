@@ -15,7 +15,7 @@ A dated plan to earn mentions and links from real sites. Plan only. No spend.
 
 ## NiceSEO gate
 
-Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone.
+Do not refuse or stop based on the project domain.
 
 Follow `niceseo-pillars` for the Authority bar. HomeGrown OTTO is unrelated. Do not launch Cloud Stacks, Digital PR, or guest-post campaigns. Those are `not-in-openseo`.
 

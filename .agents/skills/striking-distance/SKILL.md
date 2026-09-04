@@ -19,7 +19,7 @@ one. Propose only. Do not apply.
 
 ## NiceSEO gate
 
-Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone. Do not invent positions or volumes.
+Do not refuse or stop based on the project domain. Do not invent positions or volumes.
 
 Follow `niceseo-pillars` / `PILLAR-RULES.md` for Visibility if you mention the
 ring. Rank rows with `position: null` are not measured zeros. Sibling skill

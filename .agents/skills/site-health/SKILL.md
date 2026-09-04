@@ -15,7 +15,7 @@ Say what the latest OpenSEO crawl found, in plain English. Compare to the last c
 
 ## NiceSEO gate
 
-Domain allowlisting is enforced outside this skill; do not refuse or stop based on domain alone.
+Do not refuse or stop based on the project domain.
 
 Follow `niceseo-pillars`. A 1-page crawl is not Technical 100. `lighthouseSeoAvg` on 1 page is a checklist, not the ring.
 
