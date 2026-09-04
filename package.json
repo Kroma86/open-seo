@@ -66,6 +66,9 @@
       "POLICY_AUD": {
         "description": "Cloudflare Access Application Audience (AUD) tag for this Worker route/domain."
       },
+      "MCP_POLICY_AUD": {
+        "description": "Cloudflare Access Application Audience (AUD) tag for the /mcp service-token gate. Set automatically when alchemy provisions MCP service auth."
+      },
       "DATAFORSEO_API_KEY": {
         "description": "Base64-encoded `login:password` for DataForSEO API access."
       },

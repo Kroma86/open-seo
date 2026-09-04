@@ -177,8 +177,11 @@ const resolveSelfHostAccess = (
   Effect.gen(function* () {
     let teamDomain = yield* optionalVar("TEAM_DOMAIN");
     let policyAud: Alchemy.Input<string> = yield* optionalVar("POLICY_AUD");
+    let mcpPolicyAud: Alchemy.Input<string> = yield* optionalVar(
+      "MCP_POLICY_AUD",
+    );
     if (!provision || (teamDomain && policyAud)) {
-      return { teamDomain, policyAud };
+      return { teamDomain, policyAud, mcpPolicyAud };
     }
     const { accountId } = yield* yield* Cloudflare.CloudflareEnvironment;
 
@@ -247,7 +250,9 @@ const resolveSelfHostAccess = (
       // and keep workers.dev protected too so old bookmarks stay gated.
       // Path bypass on /api/internal lets Hermes through Access; the Worker
       // still requires AGENCY_SCORE_EXPORT_TOKEN on those routes.
-      const application = yield* emailAccessGate({
+      // Service Auth on /mcp lets Grok Bot through Access; the Worker still
+      // requires OpenSEO OAuth on MCP routes.
+      const gate = yield* emailAccessGate({
         policyId: "SelfHostAllowUsers",
         applicationId: "SelfHostAccess",
         policyName: `open-seo ${stage} self-host users`,
@@ -265,11 +270,24 @@ const resolveSelfHostAccess = (
             ? `open-seo ${stage} internal (${customDomain})`
             : `open-seo ${stage} internal`,
         },
+        mcpServiceAuth: {
+          serviceTokenId: "GrokBotMcpServiceToken",
+          serviceTokenName: "grok-bot-openseo-mcp",
+          policyId: "SelfHostMcpServiceAuth",
+          applicationId: "SelfHostMcpAccess",
+          policyName: `open-seo ${stage} MCP service auth`,
+          applicationName: customDomain
+            ? `open-seo ${stage} mcp (${customDomain})`
+            : `open-seo ${stage} mcp`,
+        },
       });
-      policyAud = application.aud;
+      policyAud = gate.application.aud;
+      if (!mcpPolicyAud) {
+        mcpPolicyAud = gate.mcpPolicyAud ?? "";
+      }
     }
 
-    return { teamDomain, policyAud };
+    return { teamDomain, policyAud, mcpPolicyAud };
   });
 
 // Secrets/vars resolve from the env file passed to `alchemy deploy`
@@ -438,6 +456,7 @@ export default Alchemy.Stack(
         BETTER_AUTH_URL: authUrl,
         TEAM_DOMAIN: access.teamDomain,
         POLICY_AUD: access.policyAud,
+        MCP_POLICY_AUD: access.mcpPolicyAud,
 
         // Prod-only: pooled Postgres via the existing Hyperdrive config.
         ...(prod ? { HYPERDRIVE: makeHyperdrive() } : {}),
