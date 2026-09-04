@@ -260,6 +260,10 @@ export const rankTrackingKeywords = pgTable(
       .notNull()
       .references(() => rankTrackingConfigs.id, { onDelete: "cascade" }),
     keyword: text("keyword").notNull(),
+    // Keywords are lowercased on add unless this is set, in which case the
+    // keyword is stored and searched exactly as typed. Google can return a
+    // different SERP for "Nodex" than for "nodex".
+    matchCase: boolean("match_case").notNull().default(false),
     searchVolume: integer("search_volume"),
     keywordDifficulty: integer("keyword_difficulty"),
     cpc: real("cpc"),
