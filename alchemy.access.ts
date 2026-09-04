@@ -8,6 +8,7 @@
 // `open-seo-<stage>` naming stays comment-synced (and is backstopped by the
 // workflow's Access verify step).
 
+import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
@@ -110,7 +111,7 @@ export const emailAccessGate = (options: {
       (hostname, index, all) => hostname && all.indexOf(hostname) === index,
     );
 
-    let mcpServicePolicyId: string | undefined;
+    let mcpServicePolicyId: Alchemy.Input<string> | undefined;
     let mcpPolicyAud;
     if (options.mcpServiceAuth) {
       const token = yield* Cloudflare.Access.ServiceToken(
