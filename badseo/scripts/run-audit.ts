@@ -9,8 +9,9 @@
  * crawl localhost (the production frontier's SSRF policy blocks private hosts).
  * Every actual detection call below is imported straight from ../src.
  *
- *   pnpm --filter badseo audit                 # against http://localhost:8787
- *   tsx scripts/run-audit.ts http://host:port  # against any origin
+ * From the repository root, with the BadSEO dev server running:
+ *   pnpm --dir badseo run audit http://localhost:8787
+ *   pnpm --dir badseo run audit http://host:port
  */
 import { crawlPage } from "../../src/server/workflows/site-audit-workflow-helpers";
 import {
