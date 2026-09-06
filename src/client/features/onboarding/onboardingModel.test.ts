@@ -20,7 +20,7 @@ describe("historical onboarding values", () => {
     const answers = restoreOnboardingAnswers({ ...saved, foundVia: "Google" });
     expect(answers.source).toBe("Google");
     expect(answers.sourceOther).toBe("");
-    expect(buildOnboardingPayload(answers, 3).foundVia).toBe("Google");
+    expect(buildOnboardingPayload(answers, 4).foundVia).toBe("Google");
   });
 
   it.each(["My own startup or business", "My employer's website"])(
@@ -29,7 +29,7 @@ describe("historical onboarding values", () => {
       const answers = restoreOnboardingAnswers({ ...saved, workFor });
       expect(answers.workFor).toBe(workFor);
       expect(answers.workForOther).toBe("");
-      expect(buildOnboardingPayload(answers, 3).workFor).toBe(workFor);
+      expect(buildOnboardingPayload(answers, 4).workFor).toBe(workFor);
     },
   );
 
@@ -38,7 +38,7 @@ describe("historical onboarding values", () => {
     const answers = restoreOnboardingAnswers({ ...saved, interestedFeatures });
     expect(answers.selectedInterests).toEqual(interestedFeatures);
     expect(answers.interestOther).toBe("");
-    expect(buildOnboardingPayload(answers, 3).interestedFeatures).toEqual(
+    expect(buildOnboardingPayload(answers, 4).interestedFeatures).toEqual(
       interestedFeatures,
     );
   });
@@ -50,20 +50,20 @@ describe("signup agent setup", () => {
       ...restoreOnboardingAnswers(saved),
       mcpSetupIntent: "yes" as const,
     };
-    expect(buildOnboardingPayload(answers, 2)).not.toHaveProperty(
+    expect(buildOnboardingPayload(answers, 3)).not.toHaveProperty(
       "mcpSetupIntent",
     );
     expect(
-      buildOnboardingPayload(answers, 3, { completed: true }),
+      buildOnboardingPayload(answers, 4, { completed: true }),
     ).toMatchObject({ mcpSetupIntent: "yes", completed: true });
   });
   it("lets users finish without an agent or without making a choice", () => {
     const answers = restoreOnboardingAnswers(saved);
     expect(
-      buildOnboardingPayload(answers, 3, { completed: true }),
+      buildOnboardingPayload(answers, 4, { completed: true }),
     ).toMatchObject({ completed: true });
     expect(
-      buildOnboardingPayload({ ...answers, mcpSetupIntent: "no" }, 3, {
+      buildOnboardingPayload({ ...answers, mcpSetupIntent: "no" }, 4, {
         completed: true,
       }),
     ).toMatchObject({ mcpSetupIntent: "no", completed: true });
@@ -74,7 +74,7 @@ describe("signup agent setup", () => {
       mcpSetupIntent: "yes" as const,
     };
     expect(
-      buildOnboardingPayload(answers, 3, {
+      buildOnboardingPayload(answers, 4, {
         completed: true,
         mcpSetupIntent: "no",
       }),

@@ -13,6 +13,7 @@ import {
   WORK_FOR_OPTIONS,
 } from "@/client/features/onboarding/onboardingModel";
 import { AgentSetup } from "@/client/features/ai-mcp/AgentSetup";
+import { SearchConsoleOnboardingStep } from "@/client/features/onboarding/SearchConsoleOnboardingStep";
 
 type PostSignupOnboardingProps = {
   step: number;
@@ -100,6 +101,8 @@ export function PostSignupOnboarding({
               otherValue={answers.sourceOther}
               onOtherChange={(sourceOther) => updateAnswers({ sourceOther })}
             />
+          ) : step === 3 ? (
+            <SearchConsoleOnboardingStep />
           ) : (
             <AgentSetup
               initialIntent={answers.mcpSetupIntent}

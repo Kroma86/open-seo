@@ -1,7 +1,8 @@
 import { queryOptions } from "@tanstack/react-query";
 import { getOnboardingAnswers } from "@/serverFunctions/onboarding";
 
-export const ONBOARDING_LAST_STEP = 3;
+// 0 interests · 1 who for · 2 source · 3 Search Console · 4 agent setup
+export const ONBOARDING_LAST_STEP = 4;
 
 // Option values below are persisted and used by analytics. Change display copy
 // here instead of renaming those values, so historical answers stay comparable.
@@ -149,7 +150,7 @@ export function buildOnboardingPayload(
     ...(step >= 0 ? { interestedFeatures } : {}),
     ...(step >= 1 ? { workFor, clientWebsiteCount } : {}),
     ...(step >= 2 ? { foundVia } : {}),
-    ...(step >= 3 && answers.mcpSetupIntent
+    ...(step >= ONBOARDING_LAST_STEP && answers.mcpSetupIntent
       ? { mcpSetupIntent: answers.mcpSetupIntent }
       : {}),
     ...extra,
