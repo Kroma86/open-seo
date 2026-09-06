@@ -79,6 +79,7 @@ export const {
   rankSnapshots,
   organizationActivationState,
   projectActivationState,
+  dashboardStepDismissals,
   backlinkSnapshots,
   projectContextSections,
   projectCompetitors,

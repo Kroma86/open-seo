@@ -3,6 +3,14 @@ import { getOnboardingAnswers } from "@/serverFunctions/onboarding";
 
 export const ONBOARDING_LAST_STEP = 3;
 
+// Option values below are persisted and used by analytics. Change display copy
+// here instead of renaming those values, so historical answers stay comparable.
+export const ONBOARDING_OPTION_LABELS: Readonly<Record<string, string>> = {
+  "AI workflows with Claude or Codex (MCP)": "AI Workflows (MCP + Skills)",
+  "My own startup or business": "My Own Business",
+  "My employer's website": "My Company's Website",
+};
+
 export const INTEREST_OPTIONS = [
   "AI workflows with Claude or Codex (MCP)",
   "Keyword research",
@@ -31,23 +39,17 @@ export const CLIENT_WEBSITE_COUNT_OPTIONS = [
   "25+",
 ] as const;
 
-// Ordered by how often each source is actually reported (Aug 2026 answers).
+// Display order. Keep persisted values stable for attribution metrics.
 export const SOURCE_OPTIONS = [
   "Google",
+  "X / Twitter",
   "GitHub",
-  "Product Hunt",
-  "Friend or colleague",
-  "X / Twitter",
   "Instagram",
+  "YouTube",
+  "Friend or colleague",
   "AI (Claude, ChatGPT, etc)",
+  "Product Hunt",
   "Other",
-] as const;
-
-// Keep the mobile list short: these still count as known options, they just
-// aren't shown on small screens.
-export const SOURCE_OPTIONS_HIDDEN_ON_MOBILE = [
-  "X / Twitter",
-  "AI (Claude, ChatGPT, etc)",
 ] as const;
 
 /** In-progress form state. Step is tracked separately in the URL. */
@@ -59,6 +61,7 @@ export type OnboardingAnswers = {
   clientWebsiteCount: string;
   source: string;
   sourceOther: string;
+  mcpSetupIntent?: "yes" | "no" | "";
 };
 
 /** Answers as persisted in the DB (read back via getOnboardingAnswers). */
@@ -108,6 +111,10 @@ export function restoreOnboardingAnswers(
       work.value === CLIENT_WORK_FOR ? (saved.clientWebsiteCount ?? "") : "",
     source: found.value,
     sourceOther: found.other,
+    mcpSetupIntent:
+      saved.mcpSetupIntent === "yes" || saved.mcpSetupIntent === "no"
+        ? saved.mcpSetupIntent
+        : "",
   };
 }
 
@@ -118,7 +125,7 @@ export function restoreOnboardingAnswers(
 export function buildOnboardingPayload(
   answers: OnboardingAnswers,
   step: number,
-  extra: { completed?: boolean } = {},
+  extra: { completed?: boolean; mcpSetupIntent?: "yes" | "no" } = {},
 ) {
   const interestedFeatures = answers.selectedInterests.map((value) =>
     value === "Other" && answers.interestOther.trim()
@@ -142,6 +149,9 @@ export function buildOnboardingPayload(
     ...(step >= 0 ? { interestedFeatures } : {}),
     ...(step >= 1 ? { workFor, clientWebsiteCount } : {}),
     ...(step >= 2 ? { foundVia } : {}),
+    ...(step >= 3 && answers.mcpSetupIntent
+      ? { mcpSetupIntent: answers.mcpSetupIntent }
+      : {}),
     ...extra,
   };
 }

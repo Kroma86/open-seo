@@ -1,3 +1,4 @@
+import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import { sort } from "remeda";
 import type { BillingCustomerContext } from "@/server/billing/subscription";
 import { ActivationRepository } from "@/server/features/activation/repositories/ActivationRepository";
@@ -36,6 +37,9 @@ export type DashboardActivation = {
     cardDismissedAt: string | null;
   };
   competitorClickedAt: string | null;
+  hasMultipleProjects: boolean;
+  hasTeammate: boolean;
+  dismissedSteps: string[];
 };
 
 type DashboardRankSummary = {
@@ -79,19 +83,34 @@ type DashboardOverview = {
 };
 
 async function getActivation(input: {
+  userId: string;
   projectId: string;
   organizationId: string;
   domain: string | null;
 }): Promise<DashboardActivation> {
-  const [ga4, gsc, orgActivation, projectActivation] = await Promise.all([
+  const [
+    ga4,
+    gsc,
+    orgActivation,
+    projectActivation,
+    projectCount,
+    hasTeammate,
+    dismissed,
+  ] = await Promise.all([
     Ga4ConnectionRepository.getByProjectId(input.projectId),
     GscConnectionRepository.getByProjectId(input.projectId),
     ActivationRepository.getOrganizationActivation(input.organizationId),
     ActivationRepository.getProjectActivation(input.projectId),
+    ProjectRepository.countProjects(input.organizationId),
+    ActivationRepository.hasTeammate(input.organizationId),
+    ActivationRepository.getDismissedSteps(input.userId, input.projectId),
   ]);
 
   return {
     domain: input.domain,
+    hasMultipleProjects: projectCount > 1,
+    hasTeammate,
+    dismissedSteps: dismissed.map((row) => row.step),
     ga4: {
       connected: ga4 !== null,
       propertyDisplayName: ga4?.propertyDisplayName ?? null,
@@ -295,6 +314,7 @@ async function ensureBacklinkSnapshot(input: {
 }
 
 export const DashboardService = {
+  setStepDismissed: ActivationRepository.setStepDismissed,
   getActivation,
   getOverview,
   ensureBacklinkSnapshot,

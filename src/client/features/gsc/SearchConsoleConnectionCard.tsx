@@ -25,8 +25,10 @@ const GRANT_STATUS_KEY = ["gscGrantStatus"];
 
 export function SearchConsoleConnectionCard({
   projectId,
+  returnTo,
 }: {
   projectId: string;
+  returnTo?: string;
 }) {
   const hosted = isHostedClientAuthMode();
   const queryClient = useQueryClient();
@@ -137,7 +139,8 @@ export function SearchConsoleConnectionCard({
     onError: (error) => toast.error(getStandardErrorMessage(error)),
   });
 
-  const handleConnect = () => void startGoogleLink("gsc", window.location.href);
+  const handleConnect = () =>
+    void startGoogleLink("gsc", returnTo ?? window.location.href);
 
   return (
     <IntegrationConnectionCard

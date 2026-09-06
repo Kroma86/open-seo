@@ -9,6 +9,7 @@ import {
   serial,
   text,
   uniqueIndex,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import { organization, user } from "./better-auth-schema";
 
@@ -411,5 +412,23 @@ export const backlinkSnapshots = pgTable(
       table.projectId,
       table.capturedAt,
     ),
+  ],
+);
+
+// Personal checklist preferences; completion remains derived from product state.
+export const dashboardStepDismissals = pgTable(
+  "dashboard_step_dismissals",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    step: text("step").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.projectId, table.step] }),
+    index("dashboard_step_dismissals_project_idx").on(table.projectId),
   ],
 );
