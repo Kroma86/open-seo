@@ -150,7 +150,9 @@ async function scrapePage(url: string): Promise<ScrapedPage | null> {
   if (text.length === 0) {
     return null;
   }
-  return { url, title: extractTitle(html), text };
+  // Extracted titles and shortened text can retain their entire source string
+  // in V8. Detach them before pages accumulate in results or chat transcripts.
+  return structuredClone({ url, title: extractTitle(html), text });
 }
 
 /**

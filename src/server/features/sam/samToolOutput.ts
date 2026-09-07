@@ -169,7 +169,11 @@ export function capToolOutput(
   const truncated = note(
     [...trims.values()].filter((trim) => present(copy, trim.path)),
   );
-  return typeof copy === "object" && copy !== null && !Array.isArray(copy)
-    ? { ...copy, truncated }
-    : { data: copy, truncated };
+  // Slicing after the initial clone can retain the original large strings.
+  // Detach the finished output before it enters the transcript.
+  return structuredClone(
+    typeof copy === "object" && copy !== null && !Array.isArray(copy)
+      ? { ...copy, truncated }
+      : { data: copy, truncated },
+  );
 }

@@ -144,7 +144,10 @@ export async function crawlPage(
     const headingCount = (level: number) =>
       analysis.headingOrder.filter((h) => h === level).length;
 
-    return {
+    // Parser strings can be V8 slices backed by the entire HTML body. Detach
+    // the finished result before persistence queues retain it: otherwise a
+    // few KB of metadata can keep ~2 MiB of decoded HTML alive per page.
+    return structuredClone({
       id: crypto.randomUUID(),
       url,
       statusCode,
@@ -187,7 +190,7 @@ export async function crawlPage(
       responseTimeMs,
       crawlDepth,
       inSitemap,
-    };
+    });
   } catch (error) {
     const responseTimeMs = Date.now() - startTime;
     console.warn(`Failed to crawl ${url}:`, error);
