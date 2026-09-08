@@ -75,6 +75,9 @@ export function adjustCrawlWindow(
   const troubled = recent.filter(
     (page) =>
       page.fetchClass !== "ok" ||
+      // A 429 the retries recovered from still says we are crawling faster
+      // than the site allows.
+      page.rateLimited ||
       (page.responseTimeMs ?? 0) >= SLOW_RESPONSE_MS,
   ).length;
   let next = windowSize;

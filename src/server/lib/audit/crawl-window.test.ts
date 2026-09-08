@@ -3,10 +3,8 @@ import {
   adjustCrawlWindow,
   RETRY_CRAWL_WINDOW,
 } from "@/server/lib/audit/crawl-window";
-import type {
-  CrawledPageResult,
-  PageFetchClass,
-} from "@/server/lib/audit/types";
+import type { CrawledPageResult } from "@/server/lib/audit/types";
+import type { PageFetchClass } from "@/shared/audit-fetch-class";
 
 function page(
   fetchClass: PageFetchClass,
@@ -39,6 +37,7 @@ function page(
     contentHash: null,
     isHtml: true,
     htmlBytes,
+    rateLimited: false,
     imagesTotal: 0,
     imagesMissingAlt: 0,
     images: [],
@@ -67,6 +66,14 @@ describe("adjustCrawlWindow", () => {
 
   it("treats blocked fetches as trouble", () => {
     const recent = Array.from({ length: 10 }, () => page("blocked", 300));
+    expect(adjustCrawlWindow(20, recent)).toBe(10);
+  });
+
+  it("treats a 429 the retries recovered from as trouble", () => {
+    const recent = Array.from({ length: 10 }, () => ({
+      ...page("ok", 300),
+      rateLimited: true,
+    }));
     expect(adjustCrawlWindow(20, recent)).toBe(10);
   });
 

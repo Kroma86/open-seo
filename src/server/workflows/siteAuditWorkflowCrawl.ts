@@ -19,6 +19,7 @@ import {
   CRAWL_WINDOW,
   RETRY_CRAWL_WINDOW,
 } from "@/server/lib/audit/crawl-window";
+import { createCrawlThrottle } from "@/server/lib/audit/crawl-throttle";
 import { crawlPage } from "@/server/workflows/site-audit-workflow-helpers";
 import { pgStep } from "@/server/workflows/pgStep";
 import { CRAWL_CHUNK_STEP } from "@/server/workflows/auditStepConfigs";
@@ -92,6 +93,7 @@ export type CrawlPhaseResult = {
   pagesCrawled: number;
   /** True when the frontier was exhausted before hitting maxPages. */
   completed: boolean;
+  rateLimited?: boolean;
 };
 
 export async function runCrawlPhase(
@@ -127,6 +129,13 @@ export async function runCrawlPhase(
     // with up-to-date scratchpad totals) — finalize must not see stale ones.
     attemptedTotal = result.attempted;
     pending = result.pending;
+    if (result.rateLimited) {
+      return {
+        pagesCrawled: attemptedTotal,
+        completed: false,
+        rateLimited: true,
+      };
+    }
     // `?? initial`: an instance in flight across a deploy replays cached
     // step results from before endWindow existed.
     windowHint = result.endWindow ?? CRAWL_WINDOW.initial;
@@ -152,6 +161,7 @@ async function runCrawlChunk(
   attempted: number;
   pending: number;
   endWindow: number;
+  rateLimited?: boolean;
 }> {
   const { auditId, workflowInstanceId, origin, maxPages, robots, chunkNo } =
     input;
@@ -188,6 +198,9 @@ async function runCrawlChunk(
   let nextIndex = 0;
   let attemptedInChunk = 0;
   const inFlight = new Set<Promise<void>>();
+  // Shared by every fetch in the chunk: one page's 429 pauses them all.
+  const throttle = createCrawlThrottle(deadlineAt);
+  const deferred: string[] = [];
   let persistThreshold = FIRST_PERSIST_BATCH_SIZE;
   let batch: CrawledPageResult[] = [];
   // Persistence runs concurrently with fetching (pipelined) but sequentially
@@ -221,8 +234,12 @@ async function runCrawlChunk(
   };
 
   const launch = (entry: ClaimedUrl) => {
-    const promise = crawlPage(entry.url, entry.depth, entry.inSitemap)
+    const promise = crawlPage(entry.url, entry.depth, entry.inSitemap, throttle)
       .then((page) => {
+        if (!page) {
+          deferred.push(entry.url);
+          return;
+        }
         attemptedInChunk += 1;
         batch.push(page);
         if (batch.length >= persistThreshold) flush();
@@ -242,7 +259,8 @@ async function runCrawlChunk(
       // queuedPersists changes when persistChain settles. Keep it out of the
       // loop condition because the type-aware linter cannot see that async
       // mutation and flags the otherwise valid backpressure check.
-      if (queuedPersists > MAX_QUEUED_PERSIST_BATCHES) break;
+      if (throttle.stopped || queuedPersists > MAX_QUEUED_PERSIST_BATCHES)
+        break;
       launch(claimed[nextIndex]);
       nextIndex += 1;
     }
@@ -254,6 +272,7 @@ async function runCrawlChunk(
     // backpressure, wait for the queue to drain and resume; otherwise the
     // chunk is done (leases exhausted or soft deadline hit).
     if (
+      !throttle.stopped &&
       queuedPersists > MAX_QUEUED_PERSIST_BATCHES &&
       nextIndex < claimed.length &&
       Date.now() < deadlineAt
@@ -266,8 +285,11 @@ async function runCrawlChunk(
   flush();
   await persistChain;
 
-  // Leases we never launched (soft deadline) go back to the queue.
-  const unattempted = claimed.slice(nextIndex).map((entry) => entry.url);
+  // Preserve URLs without a page result, including slots stopped by a cooldown.
+  const unattempted = [
+    ...deferred,
+    ...claimed.slice(nextIndex).map((entry) => entry.url),
+  ];
   if (unattempted.length > 0) {
     await scratchpad.releaseUrls(unattempted);
   }
@@ -276,11 +298,17 @@ async function runCrawlChunk(
   // persistCrawledPages), so a chunk that dies mid-way underreports by at
   // most one sub-batch, not a whole chunk.
   const stats = await scratchpad.getStats();
+  // The next chunk creates a fresh throttle. Honor the last response's
+  // cooldown before allowing it to fetch more URLs.
+  if (stats.pending > 0 && stats.attempted < maxPages) {
+    await throttle.ready();
+  }
   return {
     attemptedInChunk,
     attempted: stats.attempted,
     pending: stats.pending,
     endWindow: windowSize,
+    rateLimited: throttle.stopped,
   };
 }
 

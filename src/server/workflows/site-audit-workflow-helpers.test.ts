@@ -1,10 +1,176 @@
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { crawlPage } from "./site-audit-workflow-helpers";
+import { createCrawlThrottle } from "@/server/lib/audit/crawl-throttle";
+import { crawlPage } from "@/server/workflows/site-audit-workflow-helpers";
 
-afterEach(() => vi.unstubAllGlobals());
+const PAGE_URL = "https://example.com/page";
+const PAGE_HTML =
+  "<html><head><title>A page</title></head><body><h1>A page</h1></body></html>";
+
+/**
+ * Answer each fetch with the next reply, repeating the last one. Every call
+ * builds a fresh Response: a body can only be read (or cancelled) once.
+ */
+function stubFetch(...replies: Array<{ status: number; retryAfter?: string }>) {
+  let index = 0;
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+    const reply = replies[Math.min(index++, replies.length - 1)];
+    return new Response(PAGE_HTML, {
+      status: reply.status,
+      headers: {
+        "content-type": "text/html",
+        ...(reply.retryAfter ? { "retry-after": reply.retryAfter } : {}),
+      },
+    });
+  });
+}
+
+function crawl() {
+  return crawlPage(
+    PAGE_URL,
+    0,
+    false,
+    createCrawlThrottle(Date.now() + 90_000),
+  );
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe("crawlPage", () => {
+  it("waits out the server's Retry-After and keeps the retried page", async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubFetch(
+      { status: 429, retryAfter: "5" },
+      { status: 200 },
+    );
+
+    const crawled = crawl();
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    const page = await crawled;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(page?.fetchClass).toBe("ok");
+    expect(page?.title).toBe("A page");
+    // Recovered, but the crawl window should still slow down after it.
+    expect(page?.rateLimited).toBe(true);
+  });
+
+  it("holds every other fetch in the chunk while one URL's 429 pause runs", async () => {
+    vi.useFakeTimers();
+    const fetched: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      fetched.push(new Request(input).url);
+      // Only the first request to the first URL is refused.
+      const refused = fetched.length === 1;
+      return new Response(PAGE_HTML, {
+        status: refused ? 429 : 200,
+        headers: {
+          "content-type": "text/html",
+          ...(refused ? { "retry-after": "5" } : {}),
+        },
+      });
+    });
+    const throttle = createCrawlThrottle(Date.now() + 90_000);
+
+    const first = crawlPage(`${PAGE_URL}/first`, 0, false, throttle);
+    await vi.advanceTimersByTimeAsync(0);
+    const second = crawlPage(`${PAGE_URL}/second`, 0, false, throttle);
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(fetched).toEqual([`${PAGE_URL}/first`]);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    const pages = await Promise.all([first, second]);
+    expect(fetched).toHaveLength(3);
+    expect(pages.map((page) => page?.fetchClass)).toEqual(["ok", "ok"]);
+  });
+
+  it("records a page the site keeps rate limiting, without calling it blocked", async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubFetch({ status: 429 });
+
+    const crawled = crawl();
+    await vi.advanceTimersByTimeAsync(30_000);
+    const page = await crawled;
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(page?.fetchClass).toBe("rate_limited");
+  });
+
+  it("keeps the origin paused after a URL exhausts its retries", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(PAGE_HTML, {
+          status: Date.now() < 15_000 ? 429 : 200,
+          headers: { "content-type": "text/html" },
+        }),
+    );
+    const throttle = createCrawlThrottle(90_000);
+    const first = crawlPage(`${PAGE_URL}/first`, 0, false, throttle);
+    await vi.advanceTimersByTimeAsync(7_000);
+    expect((await first)?.fetchClass).toBe("rate_limited");
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    const second = crawlPage(`${PAGE_URL}/second`, 0, false, throttle);
+    await vi.advanceTimersByTimeAsync(7_999);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await second)?.fetchClass).toBe("ok");
+  });
+
+  it("recovers concurrent pages when the origin asks for sixty seconds", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(PAGE_HTML, {
+          status: Date.now() < 60_000 ? 429 : 200,
+          headers: { "content-type": "text/html", "retry-after": "60" },
+        }),
+    );
+    const throttle = createCrawlThrottle(90_000);
+    const pages = Promise.all(
+      Array.from({ length: 5 }, (_, i) =>
+        crawlPage(`${PAGE_URL}/${i}`, 0, false, throttle),
+      ),
+    );
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await pages).map((page) => page?.fetchClass)).toEqual(
+      Array(5).fill("ok"),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+  });
+
+  it("records the observed 429 but does not fetch another URL when the wait cannot fit", async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubFetch({ status: 429, retryAfter: "600" });
+    const throttle = createCrawlThrottle(Date.now() + 90_000);
+    expect((await crawlPage(PAGE_URL, 0, false, throttle))?.fetchClass).toBe(
+      "rate_limited",
+    );
+    expect(
+      await crawlPage(`${PAGE_URL}/unvisited`, 0, false, throttle),
+    ).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a 403 — bot protection is not a speed limit", async () => {
+    const fetchMock = stubFetch({ status: 403 });
+
+    const page = await crawl();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(page?.fetchClass).toBe("blocked");
+  });
+
   it("preserves extracted metadata and nested values when releasing the HTML", async () => {
     vi.stubGlobal(
       "fetch",
@@ -37,7 +203,12 @@ describe("crawlPage", () => {
       ),
     );
 
-    const page = await crawlPage("https://example.com/", 2, true);
+    const page = await crawlPage(
+      "https://example.com/",
+      2,
+      true,
+      createCrawlThrottle(Date.now() + 90_000),
+    );
 
     expect(page).toMatchObject({
       url: "https://example.com/",
@@ -85,8 +256,8 @@ describe("crawlPage", () => {
       crawlDepth: 2,
       inSitemap: true,
     });
-    expect(page.contentHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(page.htmlBytes).toBeGreaterThan(0);
+    expect(page?.contentHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(page?.htmlBytes).toBeGreaterThan(0);
   });
 
   it("does not retain large source HTML in queued crawl results", () => {
@@ -104,6 +275,8 @@ describe("crawlPage", () => {
         `
           import assert from "node:assert/strict";
           import { crawlPage } from ${JSON.stringify(new URL("./site-audit-workflow-helpers.ts", import.meta.url).href)};
+          import { createCrawlThrottle } from ${JSON.stringify(new URL("../lib/audit/crawl-throttle.ts", import.meta.url).href)};
+          const throttle = createCrawlThrottle(Date.now() + 90_000);
           globalThis.fetch = async () => {
             const html = '<title>Example memory regression 🌱</title>' +
               '<meta name="description" content="A small description">' +
@@ -125,11 +298,11 @@ describe("crawlPage", () => {
             const { heapUsed, external } = process.memoryUsage();
             return heapUsed + external;
           };
-          await crawlPage("https://example.com/warmup", 0, true);
+          await crawlPage("https://example.com/warmup", 0, true, throttle);
           const before = await collect();
           const pages = [];
           for (let i = 0; i < 50; i++) {
-            pages.push(await crawlPage("https://example.com/" + i, 0, true));
+            pages.push(await crawlPage("https://example.com/" + i, 0, true, throttle));
           }
           const retained = (await collect()) - before;
           assert.equal(pages.length, 50);
