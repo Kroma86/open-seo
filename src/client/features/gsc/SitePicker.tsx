@@ -1,4 +1,3 @@
-import { SearchableSelect } from "@/client/components/SearchableSelect";
 import { GoogleGlyph } from "@/client/features/gsc/GoogleGlyph";
 import { startGoogleLink } from "@/client/features/integrations/startGoogleLink";
 
@@ -105,55 +104,73 @@ export function SitePicker({
   const healthyAccounts = accounts.filter(
     (account) => !account.requiresReconnect,
   );
-  // The selection rides along on the option so picking one is a lookup rather
-  // than parsing the composite value back apart.
   const options = healthyAccounts.flatMap((account) =>
     account.sites.map((site) => ({
-      value: `${account.accountId}:${site.siteUrl}`,
-      label: site.siteUrl,
-      hint: site.selectable ? undefined : "No access",
-      group: account.email ?? "Google account",
-      disabled: !site.selectable,
-      selection: { accountId: account.accountId, siteUrl: site.siteUrl },
+      accountId: account.accountId,
+      siteUrl: site.siteUrl,
     })),
   );
-  const selectedValue = selection
-    ? `${selection.accountId}:${selection.siteUrl}`
-    : null;
-  const hasSelection = options.some((option) => option.value === selectedValue);
+  const selectedIndex = selection
+    ? options.findIndex(
+        (option) =>
+          option.accountId === selection.accountId &&
+          option.siteUrl === selection.siteUrl,
+      )
+    : -1;
 
   return (
     <div className="space-y-4">
-      {options.length > 0 ? (
-        <div>
-          <span className="mb-1.5 block text-sm font-medium text-base-content/80">
-            Property
-          </span>
-          <SearchableSelect
-            className="w-full max-w-md"
-            aria-label="Search Console property"
-            value={selectedValue}
-            onChange={(value) => {
-              const option = options.find((entry) => entry.value === value);
-              if (option) onSelect(option.selection);
-            }}
-            options={options}
-            placeholder="Select a property…"
-            searchPlaceholder="Search by URL or account"
-            emptyLabel="No properties match"
-          />
-        </div>
-      ) : (
-        <p className="text-sm text-base-content/60">
-          No Search Console properties are available for this account.
-        </p>
-      )}
+      <label className="block">
+        <span className="mb-1.5 block text-sm font-medium text-base-content/80">
+          Property
+        </span>
+        <select
+          className="select select-bordered w-full max-w-md"
+          value={selectedIndex >= 0 ? String(selectedIndex) : ""}
+          onChange={(event) => {
+            const option = options[Number(event.target.value)];
+            if (option) onSelect(option);
+          }}
+        >
+          <option value="" disabled>
+            Select a property…
+          </option>
+          {healthyAccounts.map((account) => (
+            <optgroup
+              key={account.accountId}
+              label={account.email ?? "Google account"}
+            >
+              {account.sites.length === 0 ? (
+                <option disabled>No properties</option>
+              ) : (
+                account.sites.map((site) => {
+                  const index = options.findIndex(
+                    (option) =>
+                      option.accountId === account.accountId &&
+                      option.siteUrl === site.siteUrl,
+                  );
+                  return (
+                    <option
+                      key={site.siteUrl}
+                      value={index}
+                      disabled={!site.selectable}
+                    >
+                      {site.siteUrl}
+                      {site.selectable ? "" : "  (no access)"}
+                    </option>
+                  );
+                })
+              )}
+            </optgroup>
+          ))}
+        </select>
+      </label>
       <div className="flex flex-wrap items-center gap-1">
         <button
           type="button"
           className="btn btn-primary btn-sm"
           onClick={onSave}
-          disabled={!hasSelection || saving}
+          disabled={selectedIndex < 0 || saving}
         >
           {saving ? "Saving…" : "Save property"}
         </button>

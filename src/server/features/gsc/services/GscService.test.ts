@@ -1,3 +1,5 @@
+/* eslint-disable max-lines */
+import type { SQL } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GscApiError, GscTokenError } from "@/server/lib/gscErrors";
 import { GscService } from "./GscService";
@@ -13,6 +15,9 @@ const mocks = vi.hoisted(() => {
     vi.fn<(opts: GscClientOptions) => Promise<string | null>>();
   const querySearchAnalytics =
     vi.fn<(opts: GscClientOptions) => Promise<never[]>>();
+  const deleteWhere = vi
+    .fn<(condition: SQL) => Promise<void>>()
+    .mockResolvedValue(undefined);
   const dbSelect = vi.fn(() => ({
     from: vi.fn(() => ({
       where: vi.fn(() => {
@@ -27,6 +32,8 @@ const mocks = vi.hoisted(() => {
   return {
     state,
     dbSelect,
+    deleteWhere,
+    dbDelete: vi.fn(() => ({ where: deleteWhere })),
     listSites,
     getUserInfoEmail,
     querySearchAnalytics,
@@ -38,13 +45,13 @@ const mocks = vi.hoisted(() => {
     upsert: vi.fn(),
     getByProjectId: vi.fn(),
     deleteByProjectId: vi.fn(),
-    deleteUnusedGrant: vi.fn(),
+    existsForConnectorAccount: vi.fn(),
   };
 });
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
 vi.mock("@/db", () => ({
-  db: { select: mocks.dbSelect },
+  db: { select: mocks.dbSelect, delete: mocks.dbDelete },
 }));
 vi.mock("@/server/lib/gscClient", () => ({
   createGscClient: mocks.createGscClient,
@@ -54,7 +61,7 @@ vi.mock("@/server/features/gsc/repositories/GscConnectionRepository", () => ({
     upsert: mocks.upsert,
     getByProjectId: mocks.getByProjectId,
     deleteByProjectId: mocks.deleteByProjectId,
-    deleteUnusedGrant: mocks.deleteUnusedGrant,
+    existsForConnectorAccount: mocks.existsForConnectorAccount,
   },
 }));
 
@@ -64,6 +71,15 @@ const baseInput = {
   accountId: "sub-a",
   userId: "u1",
 };
+
+function collectSqlParams(value: unknown): unknown[] {
+  if (!value || typeof value !== "object") return [];
+  if ("value" in value && "encoder" in value) {
+    return [value.value];
+  }
+  if (!("queryChunks" in value) || !Array.isArray(value.queryChunks)) return [];
+  return value.queryChunks.flatMap(collectSqlParams);
+}
 
 describe("GscService.setSite", () => {
   beforeEach(() => {
@@ -165,6 +181,7 @@ describe("GscService.listSitesForUserWithGrantStatus", () => {
     mocks.listSites.mockReset();
     mocks.getUserInfoEmail.mockReset();
     mocks.createGscClient.mockClear();
+    mocks.dbDelete.mockClear();
   });
 
   it("lists grants independently and never deletes a dead grant", async () => {
@@ -201,7 +218,7 @@ describe("GscService.listSitesForUserWithGrantStatus", () => {
     expect(mocks.getUserInfoEmail).not.toHaveBeenCalledWith(
       expect.objectContaining({ gscAccountId: "sub-b" }),
     );
-    expect(mocks.deleteUnusedGrant).not.toHaveBeenCalled();
+    expect(mocks.dbDelete).not.toHaveBeenCalled();
   });
 
   it("keeps userinfo failures non-fatal", async () => {
@@ -245,7 +262,7 @@ describe("GscService.listSitesForUserWithGrantStatus", () => {
       ],
     });
     expect(mocks.getUserInfoEmail).not.toHaveBeenCalled();
-    expect(mocks.deleteUnusedGrant).not.toHaveBeenCalled();
+    expect(mocks.dbDelete).not.toHaveBeenCalled();
   });
 
   it("keeps non-auth GSC API errors reportable", async () => {
@@ -287,7 +304,7 @@ describe("GscService.listSitesForUserWithGrantStatus", () => {
       "sub-b",
       rateLimit,
     );
-    expect(mocks.deleteUnusedGrant).not.toHaveBeenCalled();
+    expect(mocks.dbDelete).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });
 });
@@ -342,24 +359,74 @@ describe("GscService.getPerformance", () => {
 
 describe("GscService.disconnect", () => {
   beforeEach(() => {
-    mocks.deleteByProjectId.mockResolvedValue(undefined);
+    mocks.getByProjectId.mockReset();
+    mocks.deleteByProjectId.mockReset().mockResolvedValue(undefined);
+    mocks.existsForConnectorAccount.mockReset();
+    mocks.dbDelete.mockClear();
+    mocks.deleteWhere.mockClear();
   });
 
-  it("disconnects only the project and leaves Google accounts linked", async () => {
+  it("unlinks only the disconnected account when it is no longer used", async () => {
+    mocks.getByProjectId.mockResolvedValue({
+      connectedByUserId: "u1",
+      gscAccountId: "sub-b",
+    });
+    mocks.existsForConnectorAccount.mockResolvedValue(false);
+
     await GscService.disconnect({ projectId: "p1", userId: "u1" });
+
     expect(mocks.deleteByProjectId).toHaveBeenCalledWith("p1");
-    expect(mocks.deleteUnusedGrant).not.toHaveBeenCalled();
+    expect(mocks.existsForConnectorAccount).toHaveBeenCalledWith("u1", "sub-b");
+    expect(mocks.dbDelete).toHaveBeenCalledTimes(1);
+    const whereCondition = mocks.deleteWhere.mock.calls[0]?.[0];
+    expect(collectSqlParams(whereCondition)).toEqual(
+      expect.arrayContaining(["u1", "google-search-console", "sub-b"]),
+    );
   });
 
-  it("removes only the explicitly selected account, refusing one still in use", async () => {
-    mocks.deleteUnusedGrant
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(false);
-    await GscService.unlinkAccount({ userId: "u1", accountId: "sub-unused" });
-    expect(mocks.deleteUnusedGrant).toHaveBeenCalledWith("u1", "sub-unused");
-    await expect(
-      GscService.unlinkAccount({ userId: "u1", accountId: "sub-used" }),
-    ).resolves.toBe(false);
-    expect(mocks.deleteByProjectId).not.toHaveBeenCalled();
+  it("keeps the grant when the same account powers another project", async () => {
+    mocks.getByProjectId.mockResolvedValue({
+      connectedByUserId: "u1",
+      gscAccountId: "sub-b",
+    });
+    mocks.existsForConnectorAccount.mockResolvedValue(true);
+
+    await GscService.disconnect({ projectId: "p1", userId: "u1" });
+
+    expect(mocks.dbDelete).not.toHaveBeenCalled();
+  });
+
+  it("never revokes a grant when another member disconnects", async () => {
+    mocks.getByProjectId.mockResolvedValue({
+      connectedByUserId: "owner",
+      gscAccountId: "sub-b",
+    });
+
+    await GscService.disconnect({ projectId: "p1", userId: "other-member" });
+
+    expect(mocks.existsForConnectorAccount).not.toHaveBeenCalled();
+    expect(mocks.dbDelete).not.toHaveBeenCalled();
+  });
+
+  it("deletes no grants for a legacy null-account connection", async () => {
+    mocks.getByProjectId.mockResolvedValue({
+      connectedByUserId: "u1",
+      gscAccountId: null,
+    });
+
+    await GscService.disconnect({ projectId: "p1", userId: "u1" });
+
+    expect(mocks.deleteByProjectId).toHaveBeenCalledWith("p1");
+    expect(mocks.existsForConnectorAccount).not.toHaveBeenCalled();
+    expect(mocks.dbDelete).not.toHaveBeenCalled();
+  });
+
+  it("deletes no grants when no property was bound", async () => {
+    mocks.getByProjectId.mockResolvedValue(null);
+
+    await GscService.disconnect({ projectId: "p1", userId: "u1" });
+
+    expect(mocks.existsForConnectorAccount).not.toHaveBeenCalled();
+    expect(mocks.dbDelete).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,3 @@
-import { SearchableSelect } from "@/client/components/SearchableSelect";
 import { GoogleGlyph } from "@/client/features/gsc/GoogleGlyph";
 import { startGoogleLink } from "@/client/features/integrations/startGoogleLink";
 
@@ -105,24 +104,19 @@ export function Ga4PropertyPicker({
   const usableAccounts = accounts.filter(
     (account) => !account.requiresReconnect && !account.propertiesUnavailable,
   );
-  // The selection rides along on the option so picking one is a lookup rather
-  // than parsing the composite value back apart.
   const options = usableAccounts.flatMap((account) =>
     account.properties.map((property) => ({
-      value: `${account.accountId}:${property.propertyId}`,
-      label: `${property.accountDisplayName} · ${property.displayName}`,
-      hint: property.propertyId,
-      group: account.email ?? "Google account",
-      selection: {
-        accountId: account.accountId,
-        propertyId: property.propertyId,
-      },
+      accountId: account.accountId,
+      propertyId: property.propertyId,
     })),
   );
-  const selectedValue = selection
-    ? `${selection.accountId}:${selection.propertyId}`
-    : null;
-  const hasSelection = options.some((option) => option.value === selectedValue);
+  const selectedIndex = selection
+    ? options.findIndex(
+        (option) =>
+          option.accountId === selection.accountId &&
+          option.propertyId === selection.propertyId,
+      )
+    : -1;
   const hasUnavailableAccounts = accounts.some(
     (account) => account.propertiesUnavailable,
   );
@@ -135,26 +129,46 @@ export function Ga4PropertyPicker({
           Admin API is enabled and that this Google account has property access.
         </p>
       ) : null}
-      {options.length > 0 ? (
-        <div>
-          <span className="mb-1.5 block text-sm font-medium text-base-content/80">
-            Property
-          </span>
-          <SearchableSelect
-            className="w-full max-w-md"
-            aria-label="Google Analytics property"
-            value={selectedValue}
-            onChange={(value) => {
-              const option = options.find((entry) => entry.value === value);
-              if (option) onSelect(option.selection);
-            }}
-            options={options}
-            placeholder="Select a property…"
-            searchPlaceholder="Search by name, account, or ID"
-            emptyLabel="No properties match"
-          />
-        </div>
-      ) : null}
+      <label className="block">
+        <span className="mb-1.5 block text-sm font-medium text-base-content/80">
+          Property
+        </span>
+        <select
+          className="select select-bordered w-full max-w-md"
+          value={selectedIndex >= 0 ? String(selectedIndex) : ""}
+          onChange={(event) => {
+            const option = options[Number(event.target.value)];
+            if (option) onSelect(option);
+          }}
+        >
+          <option value="" disabled>
+            Select a property…
+          </option>
+          {usableAccounts.map((account) => (
+            <optgroup
+              key={account.accountId}
+              label={account.email ?? "Google account"}
+            >
+              {account.properties.length === 0 ? (
+                <option disabled>No properties</option>
+              ) : (
+                account.properties.map((property) => {
+                  const index = options.findIndex(
+                    (option) =>
+                      option.accountId === account.accountId &&
+                      option.propertyId === property.propertyId,
+                  );
+                  return (
+                    <option key={property.propertyId} value={index}>
+                      {property.accountDisplayName} · {property.displayName}
+                    </option>
+                  );
+                })
+              )}
+            </optgroup>
+          ))}
+        </select>
+      </label>
       {options.length === 0 && !hasUnavailableAccounts ? (
         <p className="text-sm text-base-content/60">
           No Google Analytics properties are available for this account.
@@ -165,7 +179,7 @@ export function Ga4PropertyPicker({
           type="button"
           className="btn btn-primary btn-sm"
           onClick={onSave}
-          disabled={!hasSelection || saving}
+          disabled={selectedIndex < 0 || saving}
         >
           {saving ? "Saving…" : "Save property"}
         </button>

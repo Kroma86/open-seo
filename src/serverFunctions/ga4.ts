@@ -220,13 +220,3 @@ export const startSelfHostedGa4Link = createServerFn({ method: "POST" })
       publicOrigin: getPublicOrigin(getRequest()),
     }),
   }));
-
-export const unlinkGa4Account = createServerFn({ method: "POST" })
-  .middleware(requireAuthenticatedContext)
-  .validator(z.object({ accountId: z.string().min(1) }))
-  .handler(async ({ data, context }) => ({
-    removed: await Ga4Service.unlinkAccount({
-      userId: context.userId,
-      accountId: data.accountId,
-    }),
-  }));

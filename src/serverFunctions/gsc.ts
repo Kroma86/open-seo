@@ -149,13 +149,3 @@ export const startSelfHostedGscLink = createServerFn({ method: "POST" })
 
     return { url };
   });
-
-export const unlinkGscAccount = createServerFn({ method: "POST" })
-  .middleware(requireAuthenticatedContext)
-  .validator(z.object({ accountId: z.string().min(1) }))
-  .handler(async ({ data, context }) => ({
-    removed: await GscService.unlinkAccount({
-      userId: context.userId,
-      accountId: data.accountId,
-    }),
-  }));

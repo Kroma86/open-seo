@@ -1,3 +1,4 @@
+import type { SQL } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Ga4AdminApiError, Ga4TokenError } from "@/server/lib/ga4Errors";
 import { Ga4Service } from "./Ga4Service";
@@ -9,6 +10,9 @@ const mocks = vi.hoisted(() => {
   const listProperties = vi.fn();
   const getProperty = vi.fn();
   const getUserInfoEmail = vi.fn();
+  const deleteWhere = vi
+    .fn<(condition: SQL) => Promise<void>>()
+    .mockResolvedValue(undefined);
   return {
     state,
     listProperties,
@@ -29,16 +33,18 @@ const mocks = vi.hoisted(() => {
         }),
       })),
     })),
+    dbDelete: vi.fn(() => ({ where: deleteWhere })),
+    deleteWhere,
     upsert: vi.fn(),
     getByProjectId: vi.fn(),
     deleteByProjectId: vi.fn(),
-    deleteUnusedGrant: vi.fn(),
+    existsForConnectorAccount: vi.fn(),
   };
 });
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
 vi.mock("@/db", () => ({
-  db: { select: mocks.dbSelect },
+  db: { select: mocks.dbSelect, delete: mocks.dbDelete },
 }));
 vi.mock("@/server/lib/ga4Client", () => ({
   createGa4AdminClient: mocks.createGa4AdminClient,
@@ -48,9 +54,16 @@ vi.mock("@/server/features/ga4/repositories/Ga4ConnectionRepository", () => ({
     upsert: mocks.upsert,
     getByProjectId: mocks.getByProjectId,
     deleteByProjectId: mocks.deleteByProjectId,
-    deleteUnusedGrant: mocks.deleteUnusedGrant,
+    existsForConnectorAccount: mocks.existsForConnectorAccount,
   },
 }));
+
+function collectSqlParams(value: unknown): unknown[] {
+  if (!value || typeof value !== "object") return [];
+  if ("value" in value && "encoder" in value) return [value.value];
+  if (!("queryChunks" in value) || !Array.isArray(value.queryChunks)) return [];
+  return value.queryChunks.flatMap(collectSqlParams);
+}
 
 describe("Ga4Service", () => {
   beforeEach(() => {
@@ -195,21 +208,37 @@ describe("Ga4Service", () => {
     consoleError.mockRestore();
   });
 
-  it("disconnects only the project and leaves Google accounts linked", async () => {
+  it("removes the caller's unused Analytics grant on disconnect", async () => {
+    mocks.getByProjectId.mockResolvedValue({
+      connectedByUserId: "u1",
+      ga4AccountId: "sub-a",
+    });
+    mocks.existsForConnectorAccount.mockResolvedValue(false);
+
     await Ga4Service.disconnect({ projectId: "p1", userId: "u1" });
+
     expect(mocks.deleteByProjectId).toHaveBeenCalledWith("p1");
-    expect(mocks.deleteUnusedGrant).not.toHaveBeenCalled();
+    const whereCondition = mocks.deleteWhere.mock.calls[0]?.[0];
+    expect(collectSqlParams(whereCondition)).toEqual(
+      expect.arrayContaining(["u1", "google-analytics", "sub-a"]),
+    );
   });
 
-  it("removes only the explicitly selected account, refusing one still in use", async () => {
-    mocks.deleteUnusedGrant
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(false);
-    await Ga4Service.unlinkAccount({ userId: "u1", accountId: "sub-unused" });
-    expect(mocks.deleteUnusedGrant).toHaveBeenCalledWith("u1", "sub-unused");
-    await expect(
-      Ga4Service.unlinkAccount({ userId: "u1", accountId: "sub-used" }),
-    ).resolves.toBe(false);
-    expect(mocks.deleteByProjectId).not.toHaveBeenCalled();
+  it("keeps a shared grant and never unlinks another member's grant", async () => {
+    mocks.getByProjectId.mockResolvedValue({
+      connectedByUserId: "u1",
+      ga4AccountId: "sub-a",
+    });
+    mocks.existsForConnectorAccount.mockResolvedValue(true);
+    await Ga4Service.disconnect({ projectId: "p1", userId: "u1" });
+    expect(mocks.dbDelete).not.toHaveBeenCalled();
+
+    mocks.getByProjectId.mockResolvedValue({
+      connectedByUserId: "owner",
+      ga4AccountId: "sub-a",
+    });
+    await Ga4Service.disconnect({ projectId: "p2", userId: "other-member" });
+    expect(mocks.existsForConnectorAccount).toHaveBeenCalledTimes(1);
+    expect(mocks.dbDelete).not.toHaveBeenCalled();
   });
 });

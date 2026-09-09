@@ -1,7 +1,6 @@
-import { and, eq, notExists, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { account, ga4Connections } from "@/db/schema";
-import { GA4_OAUTH_PROVIDER_ID } from "@/shared/ga4";
+import { ga4Connections } from "@/db/schema";
 
 export type Ga4Connection = typeof ga4Connections.$inferSelect;
 
@@ -60,37 +59,26 @@ async function deleteByProjectId(projectId: string): Promise<void> {
     .where(eq(ga4Connections.projectId, projectId));
 }
 
-async function deleteUnusedGrant(
+async function existsForConnectorAccount(
   userId: string,
-  accountId: string,
+  ga4AccountId: string,
 ): Promise<boolean> {
-  const deleted = await db
-    .delete(account)
+  const rows = await db
+    .select({ id: ga4Connections.id })
+    .from(ga4Connections)
     .where(
       and(
-        eq(account.userId, userId),
-        eq(account.accountId, accountId),
-        eq(account.providerId, GA4_OAUTH_PROVIDER_ID),
-        notExists(
-          db
-            .select({ id: ga4Connections.id })
-            .from(ga4Connections)
-            .where(
-              and(
-                eq(ga4Connections.connectedByUserId, account.userId),
-                eq(ga4Connections.ga4AccountId, account.accountId),
-              ),
-            ),
-        ),
+        eq(ga4Connections.connectedByUserId, userId),
+        eq(ga4Connections.ga4AccountId, ga4AccountId),
       ),
     )
-    .returning({ id: account.id });
-  return deleted.length > 0;
+    .limit(1);
+  return rows.length > 0;
 }
 
 export const Ga4ConnectionRepository = {
   getByProjectId,
   upsert,
   deleteByProjectId,
-  deleteUnusedGrant,
+  existsForConnectorAccount,
 };
