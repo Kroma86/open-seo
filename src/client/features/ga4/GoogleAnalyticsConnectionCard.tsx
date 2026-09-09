@@ -16,6 +16,7 @@ import { captureClientEvent } from "@/client/lib/posthog";
 import { isHostedClientAuthMode } from "@/lib/auth-mode";
 import {
   disconnectGa4,
+  unlinkGa4Account,
   getGa4Connection,
   listGa4Properties,
   setGa4Property,
@@ -101,6 +102,25 @@ export function GoogleAnalyticsConnectionCard({
       toast.success("Google Analytics disconnected");
       setPicking(false);
       setSelection(null);
+      queryClient.removeQueries({ queryKey: ["ga4Properties"] });
+      invalidateConnectionState();
+    },
+    onError: (error) => toast.error(getStandardErrorMessage(error)),
+  });
+  const unlinkMutation = useMutation({
+    mutationFn: (accountId: string) =>
+      unlinkGa4Account({ data: { accountId } }),
+    onSuccess: ({ removed }) => {
+      if (!removed) {
+        toast.error(
+          "Disconnect projects using this Google account before removing it.",
+        );
+        return;
+      }
+      toast.success("Google account removed");
+      setSelection(null);
+      setPicking(false);
+      queryClient.removeQueries({ queryKey: ["ga4Properties"] });
       invalidateConnectionState();
     },
     onError: (error) => toast.error(getStandardErrorMessage(error)),
@@ -154,32 +174,46 @@ export function GoogleAnalyticsConnectionCard({
             disconnecting={disconnectMutation.isPending}
           />
         ) : showPicker ? (
-          <Ga4PropertyPicker
-            loading={propertiesQuery.isLoading}
-            error={propertiesQuery.isError}
-            accounts={accounts}
-            selection={selection}
-            onSelect={setSelection}
-            onSave={() => selection && setPropertyMutation.mutate(selection)}
-            saving={setPropertyMutation.isPending}
-            onRetry={() => void propertiesQuery.refetch()}
-            secondaryAction={
-              connected
-                ? { label: "Cancel", onClick: () => setPicking(false) }
-                : onDismiss
-                  ? {
-                      label: "Dismiss",
-                      disabled: dismissing,
-                      onClick: onDismiss,
-                    }
-                  : {
-                      label: "Disconnect",
-                      destructive: true,
-                      disabled: disconnectMutation.isPending,
-                      onClick: () => disconnectMutation.mutate(),
-                    }
-            }
-          />
+          <>
+            <Ga4PropertyPicker
+              loading={propertiesQuery.isLoading}
+              error={propertiesQuery.isError}
+              accounts={accounts}
+              selection={selection}
+              onSelect={setSelection}
+              onSave={() => selection && setPropertyMutation.mutate(selection)}
+              saving={setPropertyMutation.isPending || unlinkMutation.isPending}
+              onRetry={() => void propertiesQuery.refetch()}
+              secondaryAction={
+                connected
+                  ? { label: "Cancel", onClick: () => setPicking(false) }
+                  : onDismiss
+                    ? {
+                        label: "Dismiss",
+                        disabled: dismissing,
+                        onClick: onDismiss,
+                      }
+                    : undefined
+              }
+            />
+            <div className="mt-3 flex flex-wrap gap-2">
+              {accounts.map((account, index) => (
+                <button
+                  key={account.accountId}
+                  type="button"
+                  className="btn btn-ghost btn-sm text-error"
+                  disabled={
+                    unlinkMutation.isPending ||
+                    setPropertyMutation.isPending ||
+                    disconnectMutation.isPending
+                  }
+                  onClick={() => unlinkMutation.mutate(account.accountId)}
+                >
+                  Remove {account.email ?? `Google account ${index + 1}`}
+                </button>
+              ))}
+            </div>
+          </>
         ) : (
           <div className="space-y-4">
             <p className="text-sm text-base-content/70">

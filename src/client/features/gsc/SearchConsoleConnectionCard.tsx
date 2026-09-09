@@ -16,6 +16,7 @@ import {
 import { startGoogleLink } from "@/client/features/integrations/startGoogleLink";
 import {
   disconnectGsc,
+  unlinkGscAccount,
   getGscConnection,
   listGscSites,
   setGscSite,
@@ -119,9 +120,8 @@ export function SearchConsoleConnectionCard({
       toast.success("Search Console disconnected");
       setPicking(false);
       setSelection(null);
+      queryClient.removeQueries({ queryKey: ["gscSites"] });
       void queryClient.invalidateQueries({ queryKey: connectionKey });
-      // Disconnect can drop the account-level grant server-side; keep the
-      // shared grant-status cache (onboarding step + re-engagement nudge) honest.
       void queryClient.invalidateQueries({ queryKey: GRANT_STATUS_KEY });
       void queryClient.invalidateQueries({
         queryKey: ["searchPerformance", projectId],
@@ -139,6 +139,25 @@ export function SearchConsoleConnectionCard({
     onError: (error) => toast.error(getStandardErrorMessage(error)),
   });
 
+  const unlinkMutation = useMutation({
+    mutationFn: (accountId: string) =>
+      unlinkGscAccount({ data: { accountId } }),
+    onSuccess: ({ removed }) => {
+      if (!removed) {
+        toast.error(
+          "Disconnect projects using this Google account before removing it.",
+        );
+        return;
+      }
+      toast.success("Google account removed");
+      setSelection(null);
+      setPicking(false);
+      queryClient.removeQueries({ queryKey: ["gscSites"] });
+      void queryClient.invalidateQueries({ queryKey: connectionKey });
+      void queryClient.invalidateQueries({ queryKey: GRANT_STATUS_KEY });
+    },
+    onError: (error) => toast.error(getStandardErrorMessage(error)),
+  });
   const handleConnect = () =>
     void startGoogleLink("gsc", returnTo ?? window.location.href);
 
@@ -176,27 +195,41 @@ export function SearchConsoleConnectionCard({
           disconnecting={disconnectMutation.isPending}
         />
       ) : showPicker ? (
-        <SitePicker
-          loading={sitesQuery.isLoading}
-          error={sitesQuery.isError}
-          accounts={accounts}
-          selection={selection}
-          onSelect={setSelection}
-          onSave={() => selection && setSiteMutation.mutate(selection)}
-          saving={setSiteMutation.isPending}
-          onRetry={() => void sitesQuery.refetch()}
-          onReconnect={handleConnect}
-          secondaryAction={
-            connected
-              ? { label: "Cancel", onClick: () => setPicking(false) }
-              : {
-                  label: "Disconnect",
-                  destructive: true,
-                  disabled: disconnectMutation.isPending,
-                  onClick: () => disconnectMutation.mutate(),
+        <>
+          <SitePicker
+            loading={sitesQuery.isLoading}
+            error={sitesQuery.isError}
+            accounts={accounts}
+            selection={selection}
+            onSelect={setSelection}
+            onSave={() => selection && setSiteMutation.mutate(selection)}
+            saving={setSiteMutation.isPending || unlinkMutation.isPending}
+            onRetry={() => void sitesQuery.refetch()}
+            onReconnect={handleConnect}
+            secondaryAction={
+              connected
+                ? { label: "Cancel", onClick: () => setPicking(false) }
+                : undefined
+            }
+          />
+          <div className="mt-3 flex flex-wrap gap-2">
+            {accounts.map((account, index) => (
+              <button
+                key={account.accountId}
+                type="button"
+                className="btn btn-ghost btn-sm text-error"
+                disabled={
+                  unlinkMutation.isPending ||
+                  setSiteMutation.isPending ||
+                  disconnectMutation.isPending
                 }
-          }
-        />
+                onClick={() => unlinkMutation.mutate(account.accountId)}
+              >
+                Remove {account.email ?? `Google account ${index + 1}`}
+              </button>
+            ))}
+          </div>
+        </>
       ) : (
         <div className="space-y-4">
           <p className="text-sm text-base-content/70">

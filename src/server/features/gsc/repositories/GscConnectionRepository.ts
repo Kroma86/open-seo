@@ -1,6 +1,7 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, notExists, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { gscConnections } from "@/db/schema";
+import { account, gscConnections } from "@/db/schema";
+import { GSC_OAUTH_PROVIDER_ID } from "@/shared/gsc";
 
 export type GscConnection = typeof gscConnections.$inferSelect;
 
@@ -50,26 +51,40 @@ async function deleteByProjectId(projectId: string): Promise<void> {
     .where(eq(gscConnections.projectId, projectId));
 }
 
-async function existsForConnectorAccount(
+async function deleteUnusedGrant(
   userId: string,
-  gscAccountId: string,
+  accountId: string,
 ): Promise<boolean> {
-  const rows = await db
-    .select({ id: gscConnections.id })
-    .from(gscConnections)
+  const deleted = await db
+    .delete(account)
     .where(
       and(
-        eq(gscConnections.connectedByUserId, userId),
-        eq(gscConnections.gscAccountId, gscAccountId),
+        eq(account.userId, userId),
+        eq(account.accountId, accountId),
+        eq(account.providerId, GSC_OAUTH_PROVIDER_ID),
+        notExists(
+          db
+            .select({ id: gscConnections.id })
+            .from(gscConnections)
+            .where(
+              and(
+                eq(gscConnections.connectedByUserId, account.userId),
+                or(
+                  eq(gscConnections.gscAccountId, account.accountId),
+                  isNull(gscConnections.gscAccountId),
+                ),
+              ),
+            ),
+        ),
       ),
     )
-    .limit(1);
-  return rows.length > 0;
+    .returning({ id: account.id });
+  return deleted.length > 0;
 }
 
 export const GscConnectionRepository = {
   getByProjectId,
   upsert,
   deleteByProjectId,
-  existsForConnectorAccount,
+  deleteUnusedGrant,
 };

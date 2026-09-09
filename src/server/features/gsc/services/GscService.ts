@@ -185,41 +185,11 @@ async function setSite(input: {
   });
 }
 
-async function unlinkUserGrant(
-  userId: string,
-  gscAccountId: string,
-): Promise<void> {
-  await db
-    .delete(account)
-    .where(
-      and(
-        eq(account.userId, userId),
-        eq(account.providerId, GSC_OAUTH_PROVIDER_ID),
-        eq(account.accountId, gscAccountId),
-      ),
-    );
-}
-
 async function disconnect(input: {
   projectId: string;
   userId: string;
 }): Promise<void> {
-  const connection = await GscConnectionRepository.getByProjectId(
-    input.projectId,
-  );
   await GscConnectionRepository.deleteByProjectId(input.projectId);
-  if (
-    connection?.gscAccountId &&
-    connection.connectedByUserId === input.userId
-  ) {
-    const stillUsed = await GscConnectionRepository.existsForConnectorAccount(
-      input.userId,
-      connection.gscAccountId,
-    );
-    if (!stillUsed) {
-      await unlinkUserGrant(input.userId, connection.gscAccountId);
-    }
-  }
 }
 
 /** Pass-through of GSC `searchAnalytics.query` for a project's connected property. */
@@ -302,12 +272,23 @@ async function inspectUrls(input: {
   };
 }
 
+async function unlinkAccount(input: {
+  userId: string;
+  accountId: string;
+}): Promise<boolean> {
+  return GscConnectionRepository.deleteUnusedGrant(
+    input.userId,
+    input.accountId,
+  );
+}
+
 export const GscService = {
   getConnection,
   userHasGrant,
   listSitesForUserWithGrantStatus,
   setSite,
   disconnect,
+  unlinkAccount,
   getPerformance,
   inspectUrls,
 };
