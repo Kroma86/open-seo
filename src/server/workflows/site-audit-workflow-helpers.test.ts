@@ -83,7 +83,7 @@ describe("crawlPage", () => {
     await vi.advanceTimersByTimeAsync(4_000);
     expect(fetched).toEqual([`${PAGE_URL}/first`]);
 
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(3_000);
     const pages = await Promise.all([first, second]);
     expect(fetched).toHaveLength(3);
     expect(pages.map((page) => page?.fetchClass)).toEqual(["ok", "ok"]);
@@ -91,7 +91,7 @@ describe("crawlPage", () => {
 
   it("records a page the site keeps rate limiting, without calling it blocked", async () => {
     vi.useFakeTimers();
-    const fetchMock = stubFetch({ status: 429 });
+    const fetchMock = stubFetch({ status: 429, retryAfter: "1" });
 
     const crawled = crawl();
     await vi.advanceTimersByTimeAsync(30_000);
@@ -101,39 +101,17 @@ describe("crawlPage", () => {
     expect(page?.fetchClass).toBe("rate_limited");
   });
 
-  it("keeps the origin paused after a URL exhausts its retries", async () => {
+  it("recovers concurrent pages without a burst after sixty seconds", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
-      async () =>
-        new Response(PAGE_HTML, {
-          status: Date.now() < 15_000 ? 429 : 200,
-          headers: { "content-type": "text/html" },
-        }),
-    );
-    const throttle = createCrawlThrottle(90_000);
-    const first = crawlPage(`${PAGE_URL}/first`, 0, false, throttle);
-    await vi.advanceTimersByTimeAsync(7_000);
-    expect((await first)?.fetchClass).toBe("rate_limited");
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-
-    const second = crawlPage(`${PAGE_URL}/second`, 0, false, throttle);
-    await vi.advanceTimersByTimeAsync(7_999);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    await vi.advanceTimersByTimeAsync(1);
-    expect((await second)?.fetchClass).toBe("ok");
-  });
-
-  it("recovers concurrent pages when the origin asks for sixty seconds", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(0);
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
-      async () =>
-        new Response(PAGE_HTML, {
-          status: Date.now() < 60_000 ? 429 : 200,
-          headers: { "content-type": "text/html", "retry-after": "60" },
-        }),
-    );
+    const starts: number[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      starts.push(Date.now());
+      return new Response(PAGE_HTML, {
+        status: Date.now() < 60_000 ? 429 : 200,
+        headers: { "content-type": "text/html", "retry-after": "60" },
+      });
+    });
     const throttle = createCrawlThrottle(90_000);
     const pages = Promise.all(
       Array.from({ length: 5 }, (_, i) =>
@@ -141,24 +119,34 @@ describe("crawlPage", () => {
       ),
     );
     await vi.advanceTimersByTimeAsync(59_999);
-    expect(fetchMock).toHaveBeenCalledTimes(5);
-    await vi.advanceTimersByTimeAsync(1);
+    expect(starts).toEqual([0]);
+    await vi.runAllTimersAsync();
     expect((await pages).map((page) => page?.fetchClass)).toEqual(
       Array(5).fill("ok"),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(10);
+    expect(starts).toEqual([0, 60_000, 62_000, 64_000, 66_000, 68_000]);
   });
 
-  it("records the observed 429 but does not fetch another URL when the wait cannot fit", async () => {
+  it("defers the refused URL when its cooldown exceeds the chunk deadline", async () => {
     vi.useFakeTimers();
     const fetchMock = stubFetch({ status: 429, retryAfter: "600" });
+    const throttle = createCrawlThrottle(Date.now() + 90_000);
+    expect(await crawlPage(PAGE_URL, 0, false, throttle)).toBeNull();
+    expect(
+      await crawlPage(`${PAGE_URL}/unvisited`, 0, false, throttle),
+    ).toBeNull();
+    expect(throttle.stopped).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a final 429 when the requested wait exceeds the audit's cooldown budget", async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubFetch({ status: 429, retryAfter: "3600" });
     const throttle = createCrawlThrottle(Date.now() + 90_000);
     expect((await crawlPage(PAGE_URL, 0, false, throttle))?.fetchClass).toBe(
       "rate_limited",
     );
-    expect(
-      await crawlPage(`${PAGE_URL}/unvisited`, 0, false, throttle),
-    ).toBeNull();
+    expect(throttle.stopped).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -302,7 +290,8 @@ describe("crawlPage", () => {
           const before = await collect();
           const pages = [];
           for (let i = 0; i < 50; i++) {
-            pages.push(await crawlPage("https://example.com/" + i, 0, true, throttle));
+            pages.push(await crawlPage("https://example.com/" + i, 0, true,
+              createCrawlThrottle(Date.now() + 90_000)));
           }
           const retained = (await collect()) - before;
           assert.equal(pages.length, 50);

@@ -86,9 +86,12 @@ async function fetchPage(url: string, throttle: CrawlThrottle) {
       // the last retry is already classified rate_limited and needs no flag.
       rateLimited: attempt > 1,
     };
-    if (response.status !== 429) return result;
+    if (response.status !== 429) {
+      await throttle.recovered();
+      return result;
+    }
 
-    const retry = throttle.backoff(
+    const retry = await throttle.backoff(
       attempt,
       response.headers.get("retry-after"),
     );
@@ -227,6 +230,9 @@ export async function crawlPage(
       inSitemap,
     });
   } catch (error) {
+    // Losing a durable cooldown must fail the workflow, not become a page
+    // error that lets the scheduler continue making requests.
+    if (throttle.checkpointFailed) throw error;
     const responseTimeMs = Date.now() - startTime;
     console.warn(`Failed to crawl ${url}:`, error);
     return emptyPageResult({

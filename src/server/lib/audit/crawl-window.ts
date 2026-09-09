@@ -23,9 +23,9 @@ interface CrawlWindowLimits {
 }
 
 export const CRAWL_WINDOW: CrawlWindowLimits = {
-  initial: 10,
-  min: 5,
-  max: 20,
+  initial: 2,
+  min: 1,
+  max: 2,
   budgetBytes: 8 * 1024 * 1024,
 };
 
@@ -36,9 +36,9 @@ export const CRAWL_WINDOW: CrawlWindowLimits = {
  * memory profile that just killed the isolate.
  */
 export const RETRY_CRAWL_WINDOW: CrawlWindowLimits = {
-  initial: 3,
-  min: 2,
-  max: 5,
+  initial: 1,
+  min: 1,
+  max: 1,
   budgetBytes: 4 * 1024 * 1024,
 };
 

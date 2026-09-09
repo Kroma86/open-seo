@@ -1,4 +1,5 @@
 import type { WorkflowStep } from "cloudflare:workers";
+import { NonRetryableError } from "cloudflare:workflows";
 import type { RobotsResult } from "@/server/lib/audit/discovery";
 import type { CrawledPageResult } from "@/server/lib/audit/types";
 import { isSameOrigin } from "@/server/lib/audit/url-utils";
@@ -19,7 +20,10 @@ import {
   CRAWL_WINDOW,
   RETRY_CRAWL_WINDOW,
 } from "@/server/lib/audit/crawl-window";
-import { createCrawlThrottle } from "@/server/lib/audit/crawl-throttle";
+import {
+  createCrawlThrottle,
+  type CrawlThrottleState,
+} from "@/server/lib/audit/crawl-throttle";
 import { crawlPage } from "@/server/workflows/site-audit-workflow-helpers";
 import { pgStep } from "@/server/workflows/pgStep";
 import { CRAWL_CHUNK_STEP } from "@/server/workflows/auditStepConfigs";
@@ -109,6 +113,7 @@ export async function runCrawlPhase(
   // the site's page weight the hard way — on heavy-page sites that meant an
   // exceededMemory death every ~200 pages.
   let windowHint = CRAWL_WINDOW.initial;
+  let throttleState: CrawlThrottleState | undefined;
 
   while (pending > 0 && attemptedTotal < params.maxPages) {
     chunkNo += 1;
@@ -122,6 +127,7 @@ export async function runCrawlPhase(
           chunkNo,
           attemptedBefore: attemptedTotal,
           startWindow: windowHint,
+          throttleState,
         }),
     );
     // Apply the chunk's counters even when it did no new work (a retried
@@ -139,6 +145,14 @@ export async function runCrawlPhase(
     // `?? initial`: an instance in flight across a deploy replays cached
     // step results from before endWindow existed.
     windowHint = result.endWindow ?? CRAWL_WINDOW.initial;
+    throttleState = result.throttleState;
+    if (pending > 0 && attemptedTotal < params.maxPages && result.resumeAt) {
+      // The timestamp comes from the persisted chunk result. Always replay
+      // the same sleep step, even when that timestamp is now in the past.
+      await step.sleepUntil(`crawl-cooldown-${chunkNo}`, result.resumeAt);
+      zeroProgressChunks = 0;
+      continue;
+    }
     // One zero-attempt chunk is normal (retry of a completed chunk number);
     // two in a row means the frontier is unservable — stop with what we
     // have instead of spinning forever.
@@ -155,6 +169,7 @@ async function runCrawlChunk(
     chunkNo: number;
     attemptedBefore: number;
     startWindow: number;
+    throttleState?: CrawlThrottleState;
   },
 ): Promise<{
   attemptedInChunk: number;
@@ -162,10 +177,14 @@ async function runCrawlChunk(
   pending: number;
   endWindow: number;
   rateLimited?: boolean;
+  throttleState?: CrawlThrottleState;
+  resumeAt?: number;
 }> {
   const { auditId, workflowInstanceId, origin, maxPages, robots, chunkNo } =
     input;
   const scratchpad = getAuditScratchpad(auditId);
+  let previousThrottle =
+    (await scratchpad.getCrawlThrottle()) ?? input.throttleState;
 
   const claimLimit = Math.min(
     CHUNK_TARGET_PAGES,
@@ -175,6 +194,31 @@ async function runCrawlChunk(
     chunkNo,
     claimLimit,
   );
+  const deadlineAt = Date.now() + CHUNK_SOFT_DEADLINE_MS;
+  if (isRetry && previousThrottle) {
+    // Requests made since the last checkpoint may have consumed a slot.
+    previousThrottle = {
+      ...previousThrottle,
+      nextRequestAt: Math.max(
+        previousThrottle.nextRequestAt,
+        Date.now() + previousThrottle.intervalMs,
+      ),
+    };
+  }
+  const throttle = createCrawlThrottle(
+    deadlineAt,
+    previousThrottle,
+    async (state) => {
+      try {
+        await scratchpad.saveCrawlThrottle(state);
+      } catch {
+        // A retry cannot safely honor a cooldown that failed to checkpoint.
+        throw new NonRetryableError(
+          "Unable to save the site's crawl cooldown.",
+        );
+      }
+    },
+  );
   if (claimed.length === 0) {
     const stats = await scratchpad.getStats();
     return {
@@ -182,11 +226,16 @@ async function runCrawlChunk(
       attempted: stats.attempted,
       pending: stats.pending,
       endWindow: input.startWindow,
+      throttleState: throttle.state,
+      rateLimited: throttle.stopped,
+      resumeAt:
+        throttle.state.pausedUntil > Date.now()
+          ? throttle.state.pausedUntil
+          : undefined,
     };
   }
 
   const depthByUrl = new Map(claimed.map((entry) => [entry.url, entry.depth]));
-  const deadlineAt = Date.now() + CHUNK_SOFT_DEADLINE_MS;
 
   // A retry means the previous attempt died mid-crawl (in production almost
   // always exceededMemory), and it is the chunk's last attempt — so it runs
@@ -198,8 +247,6 @@ async function runCrawlChunk(
   let nextIndex = 0;
   let attemptedInChunk = 0;
   const inFlight = new Set<Promise<void>>();
-  // Shared by every fetch in the chunk: one page's 429 pauses them all.
-  const throttle = createCrawlThrottle(deadlineAt);
   const deferred: string[] = [];
   let persistThreshold = FIRST_PERSIST_BATCH_SIZE;
   let batch: CrawledPageResult[] = [];
@@ -284,6 +331,7 @@ async function runCrawlChunk(
   }
   flush();
   await persistChain;
+  await scratchpad.saveCrawlThrottle(throttle.state);
 
   // Preserve URLs without a page result, including slots stopped by a cooldown.
   const unattempted = [
@@ -298,17 +346,18 @@ async function runCrawlChunk(
   // persistCrawledPages), so a chunk that dies mid-way underreports by at
   // most one sub-batch, not a whole chunk.
   const stats = await scratchpad.getStats();
-  // The next chunk creates a fresh throttle. Honor the last response's
-  // cooldown before allowing it to fetch more URLs.
-  if (stats.pending > 0 && stats.attempted < maxPages) {
-    await throttle.ready();
-  }
+  const throttleState = throttle.state;
   return {
     attemptedInChunk,
     attempted: stats.attempted,
     pending: stats.pending,
     endWindow: windowSize,
     rateLimited: throttle.stopped,
+    throttleState,
+    resumeAt:
+      throttleState.pausedUntil > Date.now()
+        ? throttleState.pausedUntil
+        : undefined,
   };
 }
 

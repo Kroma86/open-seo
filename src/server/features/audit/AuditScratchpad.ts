@@ -14,11 +14,12 @@
  * write racing in after destroy() — is wiped after 7 days (failed audits'
  * state doubles as the resume/debug artifact until then).
  *
- * All methods are synchronous inside (SQLite in DOs is sync), so each RPC is
- * effectively atomic. Writes are idempotent: the workflow retries steps, so
+ * SQL mutations are synchronous; key-value checkpoints await durable writes.
+ * Writes are idempotent: the workflow retries steps, so
  * every insert is OR IGNORE / OR REPLACE on a stable key.
  */
 import { DurableObject, env } from "cloudflare:workers";
+import type { CrawlThrottleState } from "@/server/lib/audit/crawl-throttle";
 import {
   BROKEN_LINKS_SQL,
   ORPHAN_PAGES_SQL,
@@ -117,6 +118,14 @@ export class AuditScratchpad extends DurableObject {
       `INSERT OR IGNORE INTO frontier (url, depth, source, in_sitemap) VALUES (?, 0, 'link', 0)`,
       url,
     );
+  }
+
+  async getCrawlThrottle(): Promise<CrawlThrottleState | undefined> {
+    return this.ctx.storage.get<CrawlThrottleState>("crawl-throttle");
+  }
+
+  async saveCrawlThrottle(state: CrawlThrottleState): Promise<void> {
+    await this.ctx.storage.put("crawl-throttle", state);
   }
 
   async seedSitemapUrls(urls: string[]): Promise<void> {
