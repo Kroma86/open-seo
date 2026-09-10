@@ -10,6 +10,16 @@ import {
   vi,
 } from "vitest";
 import type * as AgencyLoopReportsServiceModule from "./AgencyLoopReportsService";
+import {
+  article,
+  saved,
+  source,
+} from "../sam-loops/services/monthlyContent.fixture";
+import {
+  hasVerifiedMonthlyDraft,
+  stripDraftEvidence,
+  validateMonthlyContent,
+} from "../sam-loops/services/monthlyContentResult";
 
 // Real in-memory SQLite so status/finishedAt filters, inclusive since, joins,
 // and limit clamping run against actual SQL — the parts a mocked db can't see.
@@ -124,6 +134,36 @@ async function seedRun(input: {
 }
 
 describe("getAgencyLoopReports", () => {
+  it("exports the full article without changing its stored verification evidence", async () => {
+    await seedBase();
+    const checked = await validateMonthlyContent(
+      article,
+      [{ toolResults: [saved, source] }],
+      "example.com",
+    );
+    expect(checked.error).toBeNull();
+    await seedRun({
+      id: "run_article",
+      status: "completed",
+      finishedAt: "2026-08-31T01:00:00.000Z",
+      report: checked.report,
+    });
+
+    const exported = await getAgencyLoopReports(SINCE);
+    expect(exported.runs[0]?.report).toBe(stripDraftEvidence(checked.report));
+    expect(exported.runs[0]?.report).toContain(article.body.trim());
+    expect(exported.runs[0]?.report).not.toContain("openseo-monthly-draft");
+
+    const stored = await client.execute({
+      sql: "SELECT report FROM sam_loop_runs WHERE id = ?",
+      args: ["run_article"],
+    });
+    expect(stored.rows[0]?.report).toBe(checked.report);
+    await expect(
+      hasVerifiedMonthlyDraft(stored.rows[0]?.report as string),
+    ).resolves.toBe(true);
+  });
+
   it("filters out pending and running rows", async () => {
     await seedBase();
     await seedRun({

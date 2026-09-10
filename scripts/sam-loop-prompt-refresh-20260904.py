@@ -155,7 +155,10 @@ def main() -> None:
         if total_stale != 0:
             print(f"VERIFY FAILED: {total_stale} loop(s) still carry the old prompt prefix.")
             sys.exit(1)
-        print("VERIFY OK: no seeded loop carries the old prompt prefix — the migration is idempotent.")
+        print(
+            "VERIFY OK: no loop with a seeded NAME carries the old prompt prefix "
+            "(renamed loops are invisible to this check) — the migration is idempotent."
+        )
         return
 
     report("Loops of these names (all):", d1_query(COUNT_ALL_SQL))

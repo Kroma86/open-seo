@@ -42,6 +42,7 @@ const openSeoOAuthProvider = createOpenSeoOAuthProvider(appFetch);
 // Compile-time guard for the `env as OpenSeoOAuthEnv` casts in this file:
 // the self-host Env must carry OAUTH_KV. Fails tsc if the binding is removed.
 type Assert<T extends true> = T;
+// Intentionally unreferenced: instantiating it IS the assertion.
 type _EnvCarriesOAuthKv =
   Assert<Env extends Pick<OpenSeoOAuthEnv, "OAUTH_KV"> ? true : never>;
 
@@ -218,6 +219,8 @@ async function handleFetch(
   // The edge bypass for the discovery paths is PREFIX-matched; the Worker
   // allowlist above is exact. Anything else under those prefixes is a 404,
   // never the app — the edge must never admit more than the Worker serves.
+  // (cloudflare_access only: local_noauth has no edge bypass to compensate
+  // for — those paths fall through to the app there, intentionally.)
   if (
     authMode === "cloudflare_access" &&
     isUnderSelfhostOAuthDiscoveryPrefix(pathname)

@@ -1,3 +1,5 @@
+import { fetchExternalAgencyMetrics } from "./externalAgencyMetrics";
+import { parseExternalRankObservations } from "./externalRankObservations";
 import { z } from "zod";
 import { RankTrackingService } from "@/server/features/rank-tracking/services/RankTrackingService";
 import { mcpResponse } from "@/server/mcp/formatters";
@@ -46,7 +48,7 @@ export const getRankTrackerTool = {
   config: {
     title: "Get rank tracker",
     description:
-      "Read-only access to rank tracker configs and their latest results. With `trackerId`, returns config + latest snapshot per keyword, including `trackingKeywordId` for removals. Without it, lists all trackers in the project. Uses no credits. Use create_rank_tracker when no tracker exists; then use add_rank_tracking_keywords, remove_rank_tracking_keywords, estimate_rank_tracker_cost, or run_rank_tracker to manage it. `lastCheckedAt` shows position freshness.",
+      "Read-only access to rank tracker configs and their latest results. With `trackerId`, returns config + latest snapshot per keyword, including `trackingKeywordId` for removals. Without it, lists all trackers in the project. Uses no credits. Use create_rank_tracker when no tracker exists; then use add_rank_tracking_keywords, remove_rank_tracking_keywords, estimate_rank_tracker_cost, or run_rank_tracker to manage it. `lastCheckedAt` shows native position freshness. Includes separate stored Hermes observations from the agency feed; unknown collector method/device/depth cannot support rank-change comparisons.",
     inputSchema,
     outputSchema: z
       .object({
@@ -71,11 +73,14 @@ export const getRankTrackerTool = {
       .passthrough(),
     annotations: {
       readOnlyHint: true,
-      openWorldHint: false,
+      openWorldHint: true,
       destructiveHint: false,
     },
   },
   handler: withMcpProjectAuth(async (args: Args, context) => {
+    const feed = await fetchExternalAgencyMetrics(context.project.domain);
+    const externalObservations = parseExternalRankObservations(feed.rank, new Date());
+    const externalText = `Hermes observations: ${externalObservations.status}; measured ${externalObservations.updatedAt ?? "unknown"}; ${externalObservations.rows.length} keyword/country rows. ${feed.error ?? externalObservations.note}`;
     if (!args.trackerId) {
       const configs = await RankTrackingService.getConfigs(args.projectId);
       const text =
@@ -89,13 +94,13 @@ export const getRankTrackerTool = {
               )
               .join("\n");
       return mcpResponse({
-        text,
+        text: text + "\n\n" + externalText,
         meta: buildProjectMeta(
           context,
           args.projectId,
           `/p/${args.projectId}/rank-tracking`,
         ),
-        structuredContent: { configs },
+        structuredContent: { configs, externalObservations },
       });
     }
 
@@ -118,13 +123,13 @@ export const getRankTrackerTool = {
       .filter((line): line is string => line !== null)
       .join("\n");
     return mcpResponse({
-      text,
+      text: text + "\n\n" + externalText,
       meta: buildProjectMeta(
         context,
         args.projectId,
         `/p/${args.projectId}/rank-tracking/${args.trackerId}`,
       ),
-      structuredContent: { config, results },
+      structuredContent: { config, results, externalObservations },
     });
   }),
 };

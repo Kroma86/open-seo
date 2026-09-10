@@ -204,11 +204,14 @@ describe("getNiceseoOpsStatusTool handler", () => {
     });
     const text = (result.content[0] as { type: "text"; text: string }).text;
     expect(text).toContain(
-      "NiceSEO pixel: already applied by the pixel: description, h1, title",
+      "NiceSEO pixel: fields currently served: description, h1, title",
     );
     expect(text).toContain(
-      "NiceSEO pixel: already applied by the pixel per path: /: description, title; /blog: h1",
+      "NiceSEO pixel: fields currently served per path: /: description, title; /blog: h1",
     );
+    expect(result.structuredContent.pixel.applicationVerified).toBe(false);
+    expect(text).not.toContain("already applied");
+    expect(text).toContain("Browser application of the current served values is not verified");
     expect(result.structuredContent.pixel.served_fix_keys).toEqual([
       "description",
       "h1",
@@ -227,7 +230,7 @@ describe("getNiceseoOpsStatusTool handler", () => {
     });
     const text = (result.content[0] as { type: "text"; text: string }).text;
     expect(text).toContain(
-      "NiceSEO pixel: already applied by the pixel (per-path detail unavailable): title, description — treat as domain-wide hints, verify before re-proposing",
+      "NiceSEO pixel: fields currently served (per-path detail unavailable): title, description — verify current values and pending proposals before proposing a replacement",
     );
     expect(text).not.toContain("per path:");
   });
@@ -236,7 +239,7 @@ describe("getNiceseoOpsStatusTool handler", () => {
     const result = await runHandlerWithPixel({ status: "live", events_7d: 3 });
     const text = (result.content[0] as { type: "text"; text: string }).text;
     expect(text).toContain(
-      "NiceSEO pixel: already applied by the pixel: none reported",
+      "NiceSEO pixel: fields currently served: none reported",
     );
   });
 });

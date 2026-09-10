@@ -1,4 +1,5 @@
-import { generateText, stepCountIs } from "ai";
+import { generateText, Output, stepCountIs, type StepResult, type ToolSet } from "ai";
+import { MONTHLY_CONTENT_INSTRUCTION, monthlyContentSchema, stripDraftEvidence, validateMonthlyContent } from "./monthlyContentResult";
 import { openRouterCostUsd } from "@/server/lib/chatAgent";
 import { getChatAgentModel } from "@/server/lib/openrouter";
 import { buildSamMcpTools } from "@/server/features/sam/samChatTools";
@@ -10,6 +11,7 @@ import { buildScopedLoopTools } from "@/server/features/sam-loops/services/loopT
 import { countProposalsQueued } from "@/server/features/sam-loops/services/countProposalsQueued";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import {
+  DEFAULT_SAM_LOOP_TEMPLATES,
   isSamLoopProjectAllowed,
   SAM_LOOP_ALLOWED_DOMAINS,
   SAM_LOOP_STEP_CAP,
@@ -43,6 +45,8 @@ export type HeadlessSamLoopInput = {
 };
 
 export type HeadlessSamLoopResult = {
+  status: "completed" | "failed";
+  error: string | null;
   report: string;
   stepsUsed: number;
   proposalsQueued: number;
@@ -66,6 +70,8 @@ export async function runHeadlessSamLoop(
     });
   if (!allowed) {
     return {
+      status: "failed",
+      error: "Loop is not enabled for this project.",
       report: `Loop not enabled for this domain (${row?.domain ?? "no domain"}). Allowed: the house domains or a project Jon enabled for loops (${SAM_LOOP_ALLOWED_DOMAINS.join(", ")}). No tools were called.`,
       stepsUsed: 0,
       proposalsQueued: 0,
@@ -80,6 +86,8 @@ export async function runHeadlessSamLoop(
   const contextMarkdown =
     ProjectContextService.renderProjectContextMarkdown(context);
 
+  const monthlyTemplate = DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content");
+  const monthly = input.sourceType === "custom" && !!input.customPrompt && input.customPrompt === monthlyTemplate?.customPrompt;
   let taskBody: string;
   if (input.sourceType === "skill" && input.skillName) {
     const skill = await buildSamSkillSource().load(input.skillName);
@@ -87,8 +95,28 @@ export async function runHeadlessSamLoop(
       throw new Error(`Unknown skill: ${input.skillName}`);
     }
     taskBody = `Loop: ${input.loopName}\n\nActivate and follow this skill:\n\n# ${skill.name}\n\n${skill.body}`;
+  } else if (monthly) {
+    taskBody = `Loop: ${input.loopName}\n\n${MONTHLY_CONTENT_INSTRUCTION}`;
   } else if (input.customPrompt) {
-    taskBody = `Loop: ${input.loopName}\n\n${input.customPrompt}`;
+    const onPageTemplate = DEFAULT_SAM_LOOP_TEMPLATES.find(
+      (template) => template.name === "On-page priorities",
+    );
+    let executionPrompt = input.customPrompt;
+    if (
+      input.sourceType === "custom" &&
+      input.customPrompt === onPageTemplate?.customPrompt
+    ) {
+      // Preserve the reserved stored identity used to grant proposal access.
+      // A completed skip report must never suppress the next scheduled pass.
+      const bodyStart = input.customPrompt.indexOf("Queue-only on-page pass");
+      if (bodyStart < 0) throw new Error("On-page execution template is missing");
+      executionPrompt = [
+        "Perform this pass on every scheduled run. The configured cadence controls timing.",
+        "First list existing proposals. Skip a page/field when the same replacement is already pending or approved.",
+        input.customPrompt.slice(bodyStart),
+      ].join("\n\n");
+    }
+    taskBody = `Loop: ${input.loopName}\n\n${executionPrompt}`;
   } else {
     throw new Error("Loop has neither skill nor custom prompt");
   }
@@ -105,7 +133,13 @@ export async function runHeadlessSamLoop(
       { intakeMode },
     ),
     contextMarkdown ? `Project context:\n${contextMarkdown}` : null,
-    LOOP_REPORT_INSTRUCTION,
+    monthly ? [
+      "You are running a scheduled monthly article task, with no chat user.",
+      "For this task override chat brevity: finish with the full structured article object,",
+      "including the complete body, sources and outcome, not a short run report.",
+      "Use only free first-party reading tools. Do not publish, propose changes or claim unmeasured results.",
+      "When evidence is missing, return the structured blocked outcome and explain the missing evidence.",
+    ].join(" ") : LOOP_REPORT_INSTRUCTION,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -127,23 +161,53 @@ export async function runHeadlessSamLoop(
   // (live niceseo.ai AI-visibility run 2026-09-01: "Found 5"). Loops also
   // almost never reuse the same prefix, so cache writes are pure cost.
   const model = await getChatAgentModel({ promptCache: false });
-  const result = await generateText({
+  const finishedSteps: StepResult<ToolSet>[] = [];
+  let result;
+  try {
+    result = await generateText({
     model,
     system,
     prompt: taskBody,
     tools,
     maxOutputTokens: 4000,
     stopWhen: stepCountIs(SAM_LOOP_STEP_CAP),
-  });
+    ...(monthly ? { output: Output.object({ schema: monthlyContentSchema }) } : {}),
+    onStepFinish: (step) => { finishedSteps.push(step); },
+    });
+  } catch {
+    const knownCost = finishedSteps.reduce((sum, step) => sum + openRouterCostUsd(step.providerMetadata), 0);
+    return {
+      status: "failed",
+      error: "Generation did not return a complete valid result.",
+      report: "The run did not finish a complete valid result. Completed tool steps may have incurred charges; no completed draft is claimed.",
+      stepsUsed: finishedSteps.length,
+      proposalsQueued: countProposalsQueued(finishedSteps),
+      costNote: knownCost > 0 ? `OpenRouter recorded steps ≈ $${knownCost.toFixed(4)}; unfinished-step cost unavailable` : "Generation failed; final cost unavailable",
+    };
+  }
 
   const costUsd = result.steps.reduce(
     (sum, step) => sum + openRouterCostUsd(step.providerMetadata),
     0,
   );
   const proposalsQueued = countProposalsQueued(result.steps);
-  const report =
-    result.text.trim() ||
-    "not measured — the loop finished without a written report.";
+  let report = stripDraftEvidence(result.text ?? "");
+  let error: string | null = null;
+  if (result.finishReason && result.finishReason !== "stop") {
+    error = `The model did not finish normally (${result.finishReason}); the report is incomplete.`;
+  } else if (monthly) {
+    try {
+      const article = await validateMonthlyContent(result.output, result.steps, row!.domain ?? "");
+      report = article.report;
+      error = article.error;
+    } catch {
+      error = "The run did not finish a valid structured article result.";
+    }
+  } else if (!report) {
+    error = "The run ended without a written report.";
+  }
+  if (error && monthly) report = `Monthly article not completed: ${error}`;
+  if (!report) report = `Not measured — ${error}`;
 
   let costNote: string | null = null;
   if (costUsd > 0) {
@@ -151,6 +215,8 @@ export async function runHeadlessSamLoop(
   }
 
   return {
+    status: error ? "failed" : "completed",
+    error,
     report,
     stepsUsed: result.steps.length,
     proposalsQueued,

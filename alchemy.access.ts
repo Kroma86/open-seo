@@ -12,7 +12,8 @@ import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
-import { SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES } from "./src/shared/mcp-discovery-paths";
+import { SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES } from "./src/shared/mcp-discovery-paths.ts";
+import { CURSOR_MCP_OAUTH_ALLOWED_URIS } from "./src/shared/mcp-cursor-oauth.ts";
 
 const WORKER_PREFIX = "open-seo";
 
@@ -58,6 +59,37 @@ export const requireAllowedEmails = (remedy: string) =>
     }
     return emails;
   });
+
+/**
+ * Managed OAuth settings for MCP clients (Cursor / Claude Code / Codex).
+ * Alchemy's Access.Application resource does not yet pass
+ * `oauth_configuration`, and a plain Application PUT without it turns
+ * Managed OAuth OFF — which is why every deploy used to break MCP login.
+ * Call this after the hostname-wide Access app is reconciled.
+ */
+export const SELFHOST_MANAGED_OAUTH_CONFIGURATION = {
+  enabled: true,
+  dynamicClientRegistration: {
+    enabled: true,
+    allowAnyOnLocalhost: true,
+    allowAnyOnLoopback: true,
+    // HTTPS only — Cloudflare rejects non-https redirect URIs.
+    allowedUris: [...CURSOR_MCP_OAUTH_ALLOWED_URIS],
+  },
+} as const;
+
+/**
+ * Re-apply Managed OAuth + Cursor HTTPS callback allow-list on an Access app.
+ * Safe to call on every deploy: GET current app, PUT with oauth merged in.
+ */
+/**
+ * Alchemy Access.Application does not pass oauth_configuration yet, so a
+ * drift-sync PUT can turn Managed OAuth OFF / drop allowed_uris. After each
+ * selfhost deploy that touches Access apps, re-apply with:
+ *   python3 scripts/restore-openseo-managed-oauth.py
+ * (or Zero Trust -> Applications -> open-seo selfhost -> OAuth).
+ * SELFHOST_MANAGED_OAUTH_CONFIGURATION is the canonical desired state.
+ */
 
 /**
  * The gate itself: an email allow-policy on a self-hosted Access application.
@@ -220,6 +252,7 @@ export const emailAccessGate = (options: {
         policies: [allow.policyId],
       },
     );
+
 
     if (options.internalApiBypass) {
       const bypass = yield* Cloudflare.Access.Policy(

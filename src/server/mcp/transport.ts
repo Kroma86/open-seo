@@ -7,6 +7,7 @@ import {
   originValidationResponse,
   WebStandardStreamableHTTPServerTransport,
 } from "@modelcontextprotocol/server";
+import { withPgClient } from "@/db";
 import { getHostedBaseUrl } from "@/lib/auth";
 import { MCP_SCOPE } from "@/lib/oauth-resource";
 import type { EnsuredUserContext } from "@/middleware/ensure-user/types";
@@ -193,7 +194,7 @@ export async function handleSelfHostedOpenSeoMcpRequest(
 
   const identity =
     authMode === "local_noauth"
-      ? await resolveLocalNoAuthContext()
+      ? await withPgClient(() => resolveLocalNoAuthContext())
       : accessContext;
   if (!identity) {
     throw new Error("Cloudflare Access context is required for MCP requests");

@@ -142,12 +142,10 @@ describe("server /mcp routing under cloudflare_access", () => {
   });
 
   it("passes OPTIONS preflight to the user handler with an explicit null context, without calling the gate", async () => {
-    const response = await handler.fetch(
-      mcpRequest("OPTIONS"),
-      env,
-      ctx,
-    );
+    await handler.fetch(mcpRequest("OPTIONS"), env, ctx);
 
+    // Routing is the whole assertion here: the 200 status would come from the
+    // mocked transport, not from any real preflight logic (see M3-5).
     expect(mocks.gate).not.toHaveBeenCalled();
     expect(mocks.transport).toHaveBeenCalledWith(
       expect.any(Request),
@@ -156,7 +154,6 @@ describe("server /mcp routing under cloudflare_access", () => {
       ctx,
       null,
     );
-    expect(response.status).toBe(200);
   });
 });
 

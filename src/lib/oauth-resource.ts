@@ -1,11 +1,12 @@
-import { SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES } from "@/shared/mcp-discovery-paths";
+import {
+  OAUTH_AUTHORIZATION_SERVER_PATH,
+  OAUTH_PROTECTED_RESOURCE_PATH,
+  SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES,
+} from "@/shared/mcp-discovery-paths";
 
 const MCP_RESOURCE_PATH = "/mcp";
 export const MCP_SCOPE = "mcp";
 export const MCP_OAUTH_SCOPES = ["offline_access", MCP_SCOPE];
-
-const [AUTH_SERVER_PATH, PROTECTED_RESOURCE_PATH] =
-  SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES;
 
 export function getMcpResource(baseUrl: string) {
   return new URL(MCP_RESOURCE_PATH, baseUrl).toString();
@@ -14,9 +15,9 @@ export function getMcpResource(baseUrl: string) {
 /** OAuth discovery paths served by @cloudflare/workers-oauth-provider. */
 export function isSelfHostedMcpOAuthDiscoveryPath(pathname: string) {
   return (
-    pathname === `${PROTECTED_RESOURCE_PATH}${MCP_RESOURCE_PATH}` ||
-    pathname === `${AUTH_SERVER_PATH}${MCP_RESOURCE_PATH}` ||
-    pathname === AUTH_SERVER_PATH
+    pathname === `${OAUTH_PROTECTED_RESOURCE_PATH}${MCP_RESOURCE_PATH}` ||
+    pathname === `${OAUTH_AUTHORIZATION_SERVER_PATH}${MCP_RESOURCE_PATH}` ||
+    pathname === OAUTH_AUTHORIZATION_SERVER_PATH
   );
 }
 

@@ -1,3 +1,8 @@
+export const OAUTH_AUTHORIZATION_SERVER_PATH =
+  "/.well-known/oauth-authorization-server";
+export const OAUTH_PROTECTED_RESOURCE_PATH =
+  "/.well-known/oauth-protected-resource";
+
 /**
  * The OAuth discovery path families for self-host MCP, shared by the two
  * allowlists that MUST NOT drift apart:
@@ -12,6 +17,6 @@
  * surface when routes change.
  */
 export const SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES = [
-  "/.well-known/oauth-authorization-server",
-  "/.well-known/oauth-protected-resource",
+  OAUTH_AUTHORIZATION_SERVER_PATH,
+  OAUTH_PROTECTED_RESOURCE_PATH,
 ] as const;

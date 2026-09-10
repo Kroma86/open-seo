@@ -194,6 +194,15 @@ describe("resolveCloudflareAccessMcpGate", () => {
     expect(joseMocks.jwtVerify).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects at config time when both audiences are identical (a user JWT would verify at the MCP audience and die on the claim-shape guard with no guidance)", async () => {
+    mockEnv.MCP_POLICY_AUD = "user-app-aud";
+
+    await expect(resolveCloudflareAccessMcpGate(WITH_TOKEN)).rejects.toThrow(
+      /identical/,
+    );
+    expect(joseMocks.jwtVerify).not.toHaveBeenCalled();
+  });
+
   it("rejects when the request carries no Access token", async () => {
     await expect(
       resolveCloudflareAccessMcpGate(new Headers()),

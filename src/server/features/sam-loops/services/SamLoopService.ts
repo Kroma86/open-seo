@@ -1,3 +1,4 @@
+import { stripDraftEvidence } from "./monthlyContentResult";
 import { env } from "cloudflare:workers";
 import { AppError } from "@/server/lib/errors";
 import { SamLoopRepository } from "@/server/features/sam-loops/repositories/SamLoopRepository";
@@ -25,6 +26,10 @@ import type {
 } from "@/types/schemas/sam-loops";
 import type { z } from "zod";
 
+function publicRun<T extends { report: string | null }>(run: T): T {
+  return { ...run, report: run.report === null ? null : stripDraftEvidence(run.report) };
+}
+
 /** Pure list — defaults are seeded on project create, not on every read. */
 export async function listSamLoopsForProject(projectId: string) {
   const loops = await SamLoopRepository.getLoopsForProject(projectId);
@@ -32,7 +37,7 @@ export async function listSamLoopsForProject(projectId: string) {
     projectId,
     limit: 40,
   });
-  return { loops, runs };
+  return { loops, runs: runs.map(publicRun) };
 }
 
 function contentVelocityWindow(now = new Date()) {
@@ -90,7 +95,7 @@ export async function getContentVelocity(
     if (!monthSet.has(monthKey)) continue;
     const entry = byLoopId.get(run.loopId);
     if (!entry) continue;
-    if (run.hasReport) {
+    if (run.hasDraft) {
       entry.drafted[monthKey] += 1;
     } else {
       entry.completedWithoutDraft[monthKey] += 1;
@@ -238,16 +243,18 @@ export async function getSamLoopRuns(input: {
   limit?: number;
 }) {
   if (input.loopId) {
-    return SamLoopRepository.getRunsForLoop({
+    const runs = await SamLoopRepository.getRunsForLoop({
       loopId: input.loopId,
       projectId: input.projectId,
       limit: input.limit,
     });
+    return runs.map(publicRun);
   }
-  return SamLoopRepository.getRecentRunsForProject({
+  const runs = await SamLoopRepository.getRecentRunsForProject({
     projectId: input.projectId,
     limit: input.limit,
   });
+  return runs.map(publicRun);
 }
 
 export async function getSamLoopRun(input: {
@@ -258,7 +265,7 @@ export async function getSamLoopRun(input: {
   if (!run || run.projectId !== input.projectId) {
     throw new AppError("NOT_FOUND", "Run not found");
   }
-  return run;
+  return publicRun(run);
 }
 
 export async function triggerSamLoop(input: {
