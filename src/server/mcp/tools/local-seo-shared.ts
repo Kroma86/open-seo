@@ -138,6 +138,44 @@ export function pickRowFields(
   return trimmed;
 }
 
+function hostOf(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  let host = value.trim().toLowerCase();
+  if (!host) return null;
+  for (const prefix of ["https://", "http://"]) {
+    if (host.startsWith(prefix)) host = host.slice(prefix.length);
+  }
+  host = host.split("/")[0] ?? host;
+  host = host.split(":")[0] ?? host;
+  if (host.startsWith("www.")) host = host.slice(4);
+  return host || null;
+}
+
+/**
+ * Does a business listing belong to THIS project's website? Name lookups
+ * (businessName, query) match any business with that name anywhere, and the
+ * agency has imported another business's facts that way once. The listing's
+ * `domain` or `url` host must equal the project domain for `true`; `false`
+ * when both sides have a host and they differ; `null` when either side has
+ * none (nothing to compare). Callers must never write business facts from a
+ * listing that is not `true`.
+ */
+export function verifiedDomainMatch(
+  row: unknown,
+  projectDomain: string | null | undefined,
+): boolean | null {
+  const project = hostOf(projectDomain);
+  const listing = hostOf(readPath(row, "domain")) ?? hostOf(readPath(row, "url"));
+  if (!project || !listing) return null;
+  return listing === project;
+}
+
+export function describeDomainMatch(match: boolean | null): string {
+  if (match === true) return "yes";
+  if (match === false) return "NO — different website; not this project's business";
+  return "unknown (no website to compare)";
+}
+
 /** "lat,lng" with an optional trailing map zoom, as the Maps SERP wants. */
 export function formatLocalSerpCoordinate(near: {
   latitude: number;

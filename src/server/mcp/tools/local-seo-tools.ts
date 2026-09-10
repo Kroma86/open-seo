@@ -32,10 +32,12 @@ import {
   businessDataNearSchema,
   businessIdentifierInputSchema,
   businessIdentifierKeyword,
+  describeDomainMatch,
   formatBusinessDataCoordinate,
   formatLocalSerpCoordinate,
   pickRowFields,
   resolveBusinessIdentifier,
+  verifiedDomainMatch,
 } from "@/server/mcp/tools/local-seo-shared";
 
 // ---------------------------------------------------------------------------
@@ -222,6 +224,7 @@ export const getBusinessProfileTool = {
     inputSchema: getBusinessProfileInputSchema,
     outputSchema: {
       profile: looseObjectOutputSchema.nullable(),
+      verified_domain_match: z.boolean().nullable(),
       ...optionalMetaOutputSchema,
     },
     annotations: {
@@ -238,12 +241,18 @@ export const getBusinessProfileTool = {
       ...resolveBusinessLocation(args, context.project),
     });
 
+    // A name lookup can return a different business with the same name; the
+    // listing's website is the only proof it is this project's business.
+    const verified = profile
+      ? verifiedDomainMatch(profile, context.project.domain)
+      : null;
+
     return mcpResponse({
       text: profile
-        ? `Google Business Profile:\n${formatProfileText(profile)}`
+        ? `Google Business Profile:\n${formatProfileText(profile)}\n- matches project website: ${describeDomainMatch(verified)}`
         : "No Google Business Profile matched that identifier. Try a cid or placeId from get_local_serp_results.",
       meta: buildProjectMeta(context, args.projectId, `/p/${args.projectId}`),
-      structuredContent: { profile },
+      structuredContent: { profile, verified_domain_match: verified },
     });
   }),
 };

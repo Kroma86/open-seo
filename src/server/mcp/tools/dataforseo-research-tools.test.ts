@@ -87,10 +87,48 @@ describe("DataForSEO research MCP tools", () => {
     expect(questionsAnswers).not.toHaveBeenCalled();
 
     expect(result.structuredContent.businesses).toEqual([
-      { title: "Acme Cafe", url: "https://acme-cafe.example" },
+      {
+        title: "Acme Cafe",
+        url: "https://acme-cafe.example",
+        // Project row has no domain: nothing to compare against.
+        verified_domain_match: null,
+      },
     ]);
     expect(textContent(result)).toContain("title | category");
     expect(textContent(result)).toContain("Acme Cafe");
+  });
+
+  it("marks which same-name listings belong to the project's own website", async () => {
+    mocks.getProjectForOrganization.mockResolvedValue({
+      ...usProjectRow,
+      domain: "homecaresolutions.ca",
+    });
+    const businessListings = vi.fn().mockResolvedValue([
+      { title: "Home Care Solutions", domain: "www.homecaresolutions.ca" },
+      { title: "Home Care Solutions", url: "https://hcs-toronto.example/" },
+      { title: "Home Care Solutions" },
+    ]);
+    mocks.createDataforseoClient.mockReturnValue({
+      business: { businessListings },
+    });
+
+    const result = await researchTools.searchLocalBusinessesTool.handler(
+      {
+        projectId: "project_1",
+        query: "Home Care Solutions",
+        near: { latitude: 49.9, longitude: -119.4, radiusKm: 25 },
+      },
+      toolContext,
+    );
+    expect(
+      result.structuredContent.businesses.map(
+        (b) => b.verified_domain_match,
+      ),
+    ).toEqual([true, false, null]);
+    const text = textContent(result);
+    expect(text).toContain("matches project website");
+    expect(text).toContain("NO — different website");
+    expect(text).toContain("Only a row with matches project website = yes");
   });
 
   it("maps local business rating/review/claim filters onto the provider call", async () => {

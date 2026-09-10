@@ -21,9 +21,9 @@ Use this when asked for an SEO audit or review of a domain, especially when the 
 The project-context tools are free and shared with the app and other agents.
 
 1. Call `get_project_context` first and ground the report in it — what the business does decides which findings matter and what the one thing should be.
-2. This skill needs `business_overview`. If it is empty, run a minimal inline setup: infer what the business does from the site and confirm it with the user in one question, write it back with `update_project_context`, then continue the audit. Never front-load the full interview; suggest `seo-project-setup` at the end for the rest.
+2. This skill needs `business_overview`. If it is empty, run a minimal inline setup: infer what the business does from the site and confirm it with the user in one question, write it back with `update_project_context`, then continue the audit. Business facts from a lookup (`get_business_profile`, `search_local_businesses`) may be written to `business_overview` only from a result whose `verified_domain_match` is `true` (its website is the project website); for `false` or `null` list the candidates and ask the user which is theirs — a same-name business elsewhere has been imported as the client's before. Never front-load the full interview; suggest `seo-project-setup` at the end for the rest.
 3. Before spending credits, check the research log. If the same research ran within the last 30 days, reuse that result and say so instead of re-buying it.
-4. On finish, write back what is durable — a corrected `business_overview`, the pages the report singles out via `addKeyPages` — and append a research log entry: `{ appendResearchLog: { summary: "Site audit: <domain>. Verdict: <conclusion>" } }`.
+4. On finish, write back what is durable — a corrected `business_overview` (never from a listing whose `verified_domain_match` is not `true`), the pages the report singles out via `addKeyPages` — and append a research log entry: `{ appendResearchLog: { summary: "Site audit: <domain>. Verdict: <conclusion>" } }`.
 
 ## OpenSEO MCP tools
 

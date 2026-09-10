@@ -122,6 +122,7 @@ describe("DataForSEO research tool output schemas", () => {
 
     const result = await schema.safeParseAsync({
       profile: new ProviderRow("example.com", 1),
+      verified_domain_match: null,
     });
 
     expect(result.success).toBe(true);
