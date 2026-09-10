@@ -1,5 +1,6 @@
 import { listHomegrownOttoProposals } from "@/server/features/agency/AgencyOttoProposalsService";
 import { type ToolContext } from "@/server/mcp/context";
+import { requireProjectForDomain } from "@/server/mcp/tools/domain-project-auth";
 import { mcpResponse } from "@/server/mcp/formatters";
 import { optionalMetaOutputSchema } from "@/server/mcp/output-schemas";
 import { getOptionalEnvValue } from "@/server/lib/runtime-env";
@@ -37,11 +38,15 @@ export const getNiceseoOpsStatusTool = {
       destructiveHint: false,
     },
   },
-  handler: async (args: { domain: string }, _context: ToolContext) => {
+  handler: async (args: { domain: string }, context: ToolContext) => {
     const domain = normalizeOpsDomain(args.domain);
+    // Only the caller's own project domains; other organizations' queues and
+    // pixel rows are never shown here.
+    const { organizationId } = await requireProjectForDomain(context, domain);
     const proposals = await listHomegrownOttoProposals({
       domain,
       limit: 200,
+      visibleToOrganizationId: organizationId,
     });
     const byStatus = { pending: 0, pulled: 0, rejected: 0 };
     for (const p of proposals) {

@@ -5,6 +5,7 @@ import {
   listHomegrownOttoProposals,
   markHomegrownOttoProposalsPulled,
 } from "@/server/features/agency/AgencyOttoProposalsService";
+import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 
 function timingSafeEqual(left: string, right: string): boolean {
   const leftBytes = new TextEncoder().encode(left);
@@ -85,11 +86,28 @@ async function handlePost(request: Request): Promise<Response> {
     return Response.json({ marked });
   }
 
+  // Bearer path (Hermes): attach the owner when the domain resolves to exactly
+  // one project; otherwise leave it unowned rather than guess.
+  let organizationId: string | null = null;
+  let projectId = typeof record.projectId === "string" ? record.projectId : null;
+  try {
+    const project = await ProjectRepository.resolveProjectByDomain({
+      domain: String(record.domain ?? ""),
+      organizationId: null,
+    });
+    if (project) {
+      organizationId = project.organizationId;
+      projectId = project.id;
+    }
+  } catch {
+    // ambiguous domain: stored without an owner, as before
+  }
+
   try {
     const proposal = await enqueueHomegrownOttoProposal({
       domain: String(record.domain ?? ""),
-      projectId:
-        typeof record.projectId === "string" ? record.projectId : null,
+      organizationId,
+      projectId,
       path: typeof record.path === "string" ? record.path : "/",
       fixes:
         record.fixes && typeof record.fixes === "object"

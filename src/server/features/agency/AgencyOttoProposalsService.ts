@@ -12,6 +12,9 @@ const MAX_INDEX = 500;
 export type HomegrownOttoProposal = {
   id: string;
   domain: string;
+  // Owner of the proposal. Null only on rows written before 2026-09-09 or by
+  // the Hermes bearer route when the domain did not resolve to one project.
+  organizationId: string | null;
   projectId: string | null;
   status: "pending" | "pulled" | "rejected";
   proposedAt: string;
@@ -52,6 +55,7 @@ async function writeIndex(ids: string[]): Promise<void> {
 
 export async function enqueueHomegrownOttoProposal(input: {
   domain: string;
+  organizationId?: string | null;
   projectId?: string | null;
   path?: string;
   fixes: Record<string, string>;
@@ -82,6 +86,7 @@ export async function enqueueHomegrownOttoProposal(input: {
   const proposal: HomegrownOttoProposal = {
     id: crypto.randomUUID(),
     domain,
+    organizationId: input.organizationId ?? null,
     projectId: input.projectId ?? null,
     status: "pending",
     proposedAt: new Date().toISOString(),
@@ -105,7 +110,15 @@ export async function listHomegrownOttoProposals(input?: {
   status?: HomegrownOttoProposal["status"];
   domain?: string;
   limit?: number;
+  // Org-scoped callers (MCP / Sam) see only their own rows. Legacy rows with
+  // no organizationId stay visible ONLY because the caller has already proven
+  // (resolveProjectByDomain in its org) that `domain` is its project, so pass
+  // this together with `domain`, never alone. Omitted = unscoped (Hermes).
+  visibleToOrganizationId?: string;
 }): Promise<HomegrownOttoProposal[]> {
+  if (input?.visibleToOrganizationId && !input.domain) {
+    throw new Error("visibleToOrganizationId requires domain");
+  }
   const limit = Math.min(Math.max(input?.limit ?? 50, 1), 200);
   const index = await readIndex();
   const out: HomegrownOttoProposal[] = [];
@@ -116,6 +129,13 @@ export async function listHomegrownOttoProposals(input?: {
     try {
       const proposal = JSON.parse(raw) as HomegrownOttoProposal;
       if (input?.status && proposal.status !== input.status) continue;
+      if (
+        input?.visibleToOrganizationId &&
+        proposal.organizationId != null &&
+        proposal.organizationId !== input.visibleToOrganizationId
+      ) {
+        continue;
+      }
       if (
         input?.domain &&
         proposal.domain !==

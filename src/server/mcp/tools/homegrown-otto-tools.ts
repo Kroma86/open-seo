@@ -3,6 +3,7 @@ import {
   listHomegrownOttoProposals,
 } from "@/server/features/agency/AgencyOttoProposalsService";
 import { type ToolContext } from "@/server/mcp/context";
+import { requireProjectForDomain } from "@/server/mcp/tools/domain-project-auth";
 import { mcpResponse } from "@/server/mcp/formatters";
 import { optionalMetaOutputSchema } from "@/server/mcp/output-schemas";
 import { z } from "zod";
@@ -56,8 +57,15 @@ export const proposeHomegrownOttoFixesTool = {
       rationale?: string;
       human_review?: string[];
     },
-    _context: ToolContext,
+    context: ToolContext,
   ) => {
+    // The domain must be one of the caller's own projects; the proposal is
+    // stored with that owner so no other organization can see or pull it.
+    const { organizationId, project } = await requireProjectForDomain(
+      context,
+      args.domain,
+    );
+
     const fixes: Record<string, string> = {};
     if (args.title) fixes.title = args.title;
     if (args.description) fixes.description = args.description;
@@ -67,6 +75,8 @@ export const proposeHomegrownOttoFixesTool = {
 
     const proposal = await enqueueHomegrownOttoProposal({
       domain: args.domain,
+      organizationId,
+      projectId: project.id,
       path: args.path,
       fixes,
       before: {
@@ -80,7 +90,7 @@ export const proposeHomegrownOttoFixesTool = {
 
     return mcpResponse({
       text: [
-        `Queued HomeGrown OTTO proposal ${proposal.id} for ${proposal.domain}${proposal.path}.`,
+        `Queued HomeGrown OTTO proposal ${proposal.id} for ${proposal.domain}${proposal.path} (project ${project.name}).`,
         "Status: pending — waiting for Hermes pull + Jon's gate. Nothing was deployed.",
         `Fixes: ${Object.keys(proposal.fixes).join(", ")}`,
       ].join("\n"),
@@ -94,9 +104,12 @@ export const listHomegrownOttoProposalsTool = {
   config: {
     title: "List HomeGrown OTTO proposals",
     description:
-      "List queued HomeGrown OTTO fix proposals (pending/pulled/rejected). Read-only. Use after propose_homegrown_otto_fixes to confirm the queue.",
+      "List queued HomeGrown OTTO fix proposals (pending/pulled/rejected) for one of your projects' domains. Read-only. Use after propose_homegrown_otto_fixes to confirm the queue.",
     inputSchema: {
-      domain: z.string().optional().describe("Filter to one hostname."),
+      domain: z
+        .string()
+        .min(1)
+        .describe("Hostname of one of your projects (required)."),
       status: z
         .enum(["pending", "pulled", "rejected"])
         .optional()
@@ -115,16 +128,21 @@ export const listHomegrownOttoProposalsTool = {
   },
   handler: async (
     args: {
-      domain?: string;
+      domain: string;
       status?: "pending" | "pulled" | "rejected";
       limit?: number;
     },
-    _context: ToolContext,
+    context: ToolContext,
   ) => {
+    const { organizationId } = await requireProjectForDomain(
+      context,
+      args.domain,
+    );
     const proposals = await listHomegrownOttoProposals({
       domain: args.domain,
       status: args.status ?? "pending",
       limit: args.limit,
+      visibleToOrganizationId: organizationId,
     });
     return mcpResponse({
       text:
