@@ -5,6 +5,7 @@
 import { and, asc, eq, gte, inArray, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
 import { projects, samLoopRuns, samLoops } from "@/db/schema";
+import { stripDraftEvidence } from "@/server/features/sam-loops/services/monthlyContentResult";
 
 export type AgencyLoopReport = {
   id: string;
@@ -72,7 +73,7 @@ export async function getAgencyLoopReports(
 
   return {
     // Filter guarantees completed|failed; drizzle still types the full enum.
-    runs: rows as AgencyLoopReport[],
+    runs: rows.map((row) => ({ ...row, report: row.report === null ? null : stripDraftEvidence(row.report) })) as AgencyLoopReport[],
     count: rows.length,
   };
 }

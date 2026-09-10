@@ -10,6 +10,10 @@ import {
   handleSelfHostedOpenSeoMcpRequest,
 } from "@/server/mcp/transport";
 
+vi.mock("cloudflare:workers", () => ({
+  env: {},
+}));
+
 const selfHostedAuthMocks = vi.hoisted(() => ({
   resolveLocalNoAuthContext: vi.fn(),
   createOpenSeoMcpServer: vi.fn(),

@@ -7,7 +7,11 @@ import * as Effect from "effect/Effect";
 // the hostname-wide user gate) is a property of this wiring — a code comment
 // alone cannot hold it.
 const calls = vi.hoisted(() => ({
-  applications: [] as { id: string; policies: string[] }[],
+  applications: [] as {
+    id: string;
+    policies: string[];
+    destinations: string[];
+  }[],
 }));
 
 vi.mock("alchemy/Cloudflare", async () => {
@@ -18,14 +22,22 @@ vi.mock("alchemy/Cloudflare", async () => {
         Eff.succeed({ serviceTokenId: `st:${id}` }),
       Policy: (id: string, _props: unknown) =>
         Eff.succeed({ policyId: `pol:${id}` }),
-      Application: (id: string, props: { policies?: string[] }) => {
-        calls.applications.push({ id, policies: props.policies ?? [] });
+      Application: (
+        id: string,
+        props: { policies?: string[]; destinations?: { uri: string }[] },
+      ) => {
+        calls.applications.push({
+          id,
+          policies: props.policies ?? [],
+          destinations: (props.destinations ?? []).map((d) => d.uri),
+        });
         return Eff.succeed({ aud: `aud:${id}` });
       },
     },
   };
 });
 
+import { SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES } from "./src/shared/mcp-discovery-paths.ts";
 import { emailAccessGate } from "./alchemy.access";
 
 const OPTIONS = {
@@ -82,6 +94,20 @@ describe("emailAccessGate topology", () => {
     // Discovery is bypass-everyone on its own scoped app.
     expect(byId.get("SelfHostMcpDiscoveryAccess")).toEqual([
       "pol:SelfHostMcpDiscoveryBypass",
+    ]);
+    // ...and its destinations are EXACTLY the shared discovery prefixes on
+    // each hostname — a bare-hostname typo here would bypass-everyone the
+    // entire site, and this assertion is the only thing that catches it.
+    const destinationsById = new Map(
+      calls.applications.map((a) => [a.id, a.destinations]),
+    );
+    expect(destinationsById.get("SelfHostMcpDiscoveryAccess")).toEqual(
+      [...SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES].map(
+        (p) => `seo.example.com${p}`,
+      ),
+    );
+    expect(destinationsById.get("SelfHostMcpAccess")).toEqual([
+      "seo.example.com/mcp",
     ]);
     // The worker binds the /mcp app's AUD as MCP_POLICY_AUD.
     expect(result.mcpPolicyAud).toBe("aud:SelfHostMcpAccess");

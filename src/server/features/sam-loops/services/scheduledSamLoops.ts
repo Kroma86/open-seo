@@ -65,12 +65,16 @@ export async function runScheduledSamLoops(env: Env) {
           loopsEnabled: loop.loopsEnabled,
         })
       ) {
-        await SamLoopRepository.claimDueLoop({
+        const deferred = await SamLoopRepository.claimDueLoop({
           loopId: loop.id,
           projectId: loop.projectId,
           observedNextRunAt,
           nextRunAt,
         });
+        if (!deferred) {
+          concurrentChangeSkips++;
+          continue;
+        }
         domainSkips++;
         continue;
       }
@@ -90,6 +94,19 @@ export async function runScheduledSamLoops(env: Env) {
         concurrentChangeSkips++;
         continue;
       }
+      const restoreSchedule = async () => {
+        const restored = await SamLoopRepository.claimDueLoop({
+          loopId: loop.id,
+          projectId: loop.projectId,
+          observedNextRunAt: nextRunAt,
+          nextRunAt: observedNextRunAt,
+        });
+        if (!restored) {
+          console.log(
+            `[cron] Could not restore schedule for Sam loop ${loop.id} — changed concurrently`,
+          );
+        }
+      };
 
       let result;
       try {
@@ -107,6 +124,7 @@ export async function runScheduledSamLoops(env: Env) {
           `[cron] Failed to start Sam loop ${loop.id} (${loop.name}):`,
           err,
         );
+        await restoreSchedule();
         continue;
       }
 
@@ -115,25 +133,18 @@ export async function runScheduledSamLoops(env: Env) {
         continue;
       }
 
+      // Keep the original due date when admission refuses the run.
+      if (result.reason === "daily_cap") stoppedByCap = true;
+      await restoreSchedule();
+      if (stoppedByCap) break;
       alreadyRunning++;
       if (alreadyRunningLoopIds.length < ALREADY_RUNNING_IDS_CAP) {
         alreadyRunningLoopIds.push(loop.id);
       }
-      // Restore schedule so the loop retries next tick once the blocker clears.
-      const restored = await SamLoopRepository.claimDueLoop({
-        loopId: loop.id,
-        projectId: loop.projectId,
-        observedNextRunAt: nextRunAt,
-        nextRunAt: observedNextRunAt,
-      });
-      if (!restored) {
-        console.log(
-          `[cron] Could not restore schedule for Sam loop ${loop.id} — changed concurrently`,
-        );
-      }
     } catch (err) {
       loopErrors++;
       console.error(`[cron] Error processing Sam loop ${loop.id}:`, err);
+      if (stoppedByCap) break;
     }
   }
 

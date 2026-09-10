@@ -20,7 +20,7 @@ export const getNiceseoOpsStatusTool = {
   config: {
     title: "Get NiceSEO ops status (OTTO + pixel)",
     description:
-      "Read-only HomeGrown OTTO proposal queue counts plus NiceSEO pixel status for a domain. Uses the OpenSEO proposal KV and the agency board metrics API — no credits, no deploy. Call this before answering OTTO/pixel/\"how connected\" questions. The pixel section lists fixes already applied by the pixel, per path — never re-propose a fix on a path the pixel already covers.",
+      "Read-only HomeGrown OTTO proposal queue counts plus NiceSEO pixel status for a domain. Uses the OpenSEO proposal KV and the agency board metrics API — no credits, no deploy. Call this before answering OTTO/pixel/\"how connected\" questions. Served field names show what is available to the pixel, not proof that the current values were applied in a browser. Compare the actual current value and pending proposals before deciding whether a field needs improvement; coverage alone does not make a whole page complete.",
     inputSchema: {
       domain: z
         .string()
@@ -71,13 +71,14 @@ export const getNiceseoOpsStatusTool = {
         rejected: byStatus.rejected,
         total: proposals.length,
         latest,
-        note: "Queued proposals are not live until Hermes pull + Jon's gate.",
+        note: "Queued proposals are not live until Hermes pulls them and the configured quality and approval checks pass.",
       },
       pixel: {
         configured: pixelFetch.configured,
         error: pixelFetch.error,
         ...pixelFetch.pixel,
-        note: "NiceSEO pixel is separate from public page fetch / DataForSEO / GSC.",
+        applicationVerified: false,
+        note: "Served fields are available to the pixel. This feed does not prove that each current value was applied in a browser; aggregate events are not unique fix confirmations.",
       },
     };
 
@@ -114,23 +115,24 @@ export const getNiceseoOpsStatusTool = {
       if (pathEntries.length) {
         if (servedFixKeys.length) {
           lines.push(
-            `NiceSEO pixel: already applied by the pixel: ${servedFixKeys.join(", ")}`,
+            `NiceSEO pixel: fields currently served: ${servedFixKeys.join(", ")}`,
           );
         }
         lines.push(
-          `NiceSEO pixel: already applied by the pixel per path: ${pathEntries
+          `NiceSEO pixel: fields currently served per path: ${pathEntries
             .map(([path, keys]) => `${path}: ${keys.join(", ")}`)
             .join("; ")}`,
         );
       } else if (servedFixKeys.length) {
         lines.push(
-          `NiceSEO pixel: already applied by the pixel (per-path detail unavailable): ${servedFixKeys.join(", ")} — treat as domain-wide hints, verify before re-proposing`,
+          `NiceSEO pixel: fields currently served (per-path detail unavailable): ${servedFixKeys.join(", ")} — verify current values and pending proposals before proposing a replacement`,
         );
       } else {
-        lines.push("NiceSEO pixel: already applied by the pixel: none reported");
+        lines.push("NiceSEO pixel: fields currently served: none reported");
       }
     }
     lines.push(
+      "Browser application of the current served values is not verified by this feed. Served coverage does not mean a whole page is complete.",
       "Nothing here deploys from chat — OTTO apply stays on Hermes gate.",
     );
 

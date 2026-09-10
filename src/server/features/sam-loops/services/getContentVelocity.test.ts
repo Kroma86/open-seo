@@ -1,4 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_SAM_LOOP_TEMPLATES } from "@/shared/sam-loops";
+import { article, saved, source } from "./monthlyContent.fixture";
+import {
+  hasVerifiedMonthlyDraft,
+  validateMonthlyContent,
+} from "./monthlyContentResult";
 
 const mocks = vi.hoisted(() => ({
   getLoopsForProject: vi.fn(),
@@ -8,15 +14,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => ({
   env: { SAM_LOOP_WORKFLOW: {} },
 }));
-vi.mock(
-  "@/server/features/sam-loops/repositories/SamLoopRepository",
-  () => ({
-    SamLoopRepository: {
-      getLoopsForProject: mocks.getLoopsForProject,
-      getContentVelocityForProject: mocks.getContentVelocityForProject,
-    },
-  }),
-);
+vi.mock("@/server/features/sam-loops/repositories/SamLoopRepository", () => ({
+  SamLoopRepository: {
+    getLoopsForProject: mocks.getLoopsForProject,
+    getContentVelocityForProject: mocks.getContentVelocityForProject,
+  },
+}));
 
 import { getContentVelocity } from "./SamLoopService";
 
@@ -29,6 +32,51 @@ describe("getContentVelocity", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("counts a verified article after the approved monthly loop is renamed", async () => {
+    const template = DEFAULT_SAM_LOOP_TEMPLATES.find(
+      (loop) => loop.name === "Monthly content",
+    )!;
+    const checked = await validateMonthlyContent(
+      article,
+      [{ toolResults: [saved, source] }],
+      "example.com",
+    );
+    expect(checked.error).toBeNull();
+    const renamed = {
+      id: "loop_editorial",
+      name: "Editorial routine",
+      sourceType: template.sourceType,
+      skillName: null,
+      customPrompt: template.customPrompt,
+      cadence: "monthly",
+      isEnabled: true,
+    };
+    mocks.getLoopsForProject.mockResolvedValue([renamed]);
+    mocks.getContentVelocityForProject.mockResolvedValue([
+      {
+        loopId: renamed.id,
+        loopName: renamed.name,
+        cadence: renamed.cadence,
+        isEnabled: renamed.isEnabled,
+        finishedAt: "2026-09-04T12:00:00.000Z",
+        hasDraft: await hasVerifiedMonthlyDraft(checked.report),
+      },
+    ]);
+
+    const result = await getContentVelocity("project_example");
+    expect(result.loops).toEqual([
+      {
+        loopId: renamed.id,
+        loopName: renamed.name,
+        cadence: "monthly",
+        isEnabled: true,
+        expectedPerMonth: 1,
+        drafted: { "2026-07": 0, "2026-08": 0, "2026-09": 1 },
+        completedWithoutDraft: { "2026-07": 0, "2026-08": 0, "2026-09": 0 },
+      },
+    ]);
   });
 
   it("buckets drafted and completed-without-draft across the 3-month window", async () => {
@@ -62,7 +110,7 @@ describe("getContentVelocity", () => {
         cadence: "monthly",
         isEnabled: true,
         finishedAt: "2026-07-10T00:00:00.000Z",
-        hasReport: true,
+        hasDraft: true,
       },
       {
         loopId: "loop_monthly",
@@ -70,7 +118,7 @@ describe("getContentVelocity", () => {
         cadence: "monthly",
         isEnabled: true,
         finishedAt: "2026-08-01T00:00:00.000Z",
-        hasReport: false,
+        hasDraft: false,
       },
       {
         loopId: "loop_brief",
@@ -78,7 +126,7 @@ describe("getContentVelocity", () => {
         cadence: "weekly",
         isEnabled: false,
         finishedAt: "2026-09-01T00:00:00.000Z",
-        hasReport: true,
+        hasDraft: true,
       },
     ]);
 
@@ -129,7 +177,7 @@ describe("getContentVelocity", () => {
         cadence: "monthly",
         isEnabled: true,
         finishedAt: "2026-08-10T00:00:00.000Z",
-        hasReport: false,
+        hasDraft: false,
       },
     ]);
 

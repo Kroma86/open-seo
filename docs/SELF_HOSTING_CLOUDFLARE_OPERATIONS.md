@@ -14,11 +14,27 @@ Managed OAuth is required for MCP clients and is not enabled by default.
 5. Turn on `Managed OAuth`.
 6. In `Managed OAuth settings`, allow the redirect URIs your MCP clients use:
    - Allow `localhost` / loopback clients for CLI and desktop agents (Codex
-     CLI, Claude Code) that register `http://localhost:PORT/callback`.
-   - Add HTTPS redirect URIs for web connectors (a path may end in `/*`).
-   - Without this, clients can't finish [Dynamic Client Registration](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/)
-     and log in but expose no tools.
+     CLI, Claude Code, Cursor desktop) that register `http://localhost:PORT/callback`
+     (Cursor desktop uses `http://localhost:8787/callback`).
+   - Add these **exact** HTTPS redirect URIs for Cursor Agents / Grok Bot:
+     - `https://www.cursor.com/agents/mcp/oauth/callback`
+   - Optional web connectors may use a path ending in `/*`.
+   - Cloudflare Access only accepts `https` in `allowed_uris`. The custom
+     scheme `cursor://anysphere.cursor-mcp/oauth/callback` **cannot** be
+     allow-listed; if a Cursor build DCR-sends it with the others, registration
+     fails until that build omits the custom scheme (loopback/Agents HTTPS work).
+   - Without this, clients fail DCR with
+     `redirect_uri is not allowed by the account configuration` and log in but
+     expose no tools. See [Managed OAuth](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/).
 7. Save.
+
+Alchemy's Access application sync can turn Managed OAuth OFF or drop
+`allowed_uris` on deploy. After a selfhost deploy, either rely on
+`ensureSelfhostManagedOAuth` in `alchemy.access.ts`, or re-run:
+
+```bash
+python3 scripts/restore-openseo-managed-oauth.py
+```
 
 MCP clients should connect to:
 

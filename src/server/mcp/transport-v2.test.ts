@@ -5,6 +5,10 @@ import { z } from "zod";
 import { createWorkersOAuthMcpProps } from "@/server/mcp/context";
 import { handleAuthenticatedOpenSeoMcpRequest } from "@/server/mcp/transport";
 
+vi.mock("cloudflare:workers", () => ({
+  env: {},
+}));
+
 vi.mock("@/lib/auth", () => ({
   getHostedBaseUrl: () => "https://open-seo.test",
 }));

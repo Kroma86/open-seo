@@ -74,9 +74,10 @@ Use the same Cloudflare Access application that protects your OpenSEO Worker. Ma
 4. Go to `Additional settings` -> `OAuth`.
 5. Turn on `Managed OAuth`.
 6. In `Managed OAuth settings`, allow the redirect URIs your MCP clients use:
-   - Allow `localhost` / loopback clients for CLI and desktop agents (Codex CLI, Claude Code) that register `http://localhost:PORT/callback`.
-   - Add HTTPS redirect URIs for web connectors (a path may end in `/*`).
-   - Without this, clients can't finish [Dynamic Client Registration](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/) and log in but expose no tools.
+   - Allow `localhost` / loopback clients for CLI and desktop agents (Codex CLI, Claude Code, Cursor desktop) that register `http://localhost:PORT/callback` (Cursor: `http://localhost:8787/callback`).
+   - Add the exact Cursor Agents / Grok Bot HTTPS callback: `https://www.cursor.com/agents/mcp/oauth/callback`.
+   - Optional web connectors may end in `/*`. Cloudflare only allows `https` in `allowed_uris` — `cursor://…` cannot be listed.
+   - Without this, clients can't finish [Dynamic Client Registration](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/) and fail with `redirect_uri is not allowed by the account configuration`.
 7. Save.
 
 MCP clients should connect to:
