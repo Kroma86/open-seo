@@ -47,6 +47,28 @@ const inputSchema = {
 
 type Args = z.infer<z.ZodObject<typeof inputSchema>>;
 
+/**
+ * Brand is free text and legitimately differs from the domain (a flower shop
+ * named "Oopsie Daisy" on vernonflowers.ca), so this never blocks. It does
+ * flag the same-name-different-business pattern: no brand word of four or
+ * more letters appears in the project's domain or name.
+ */
+export function brandMismatchWarning(
+  brand: string,
+  project: { domain: string | null; name: string },
+): string | null {
+  const haystack = `${project.domain ?? ""} ${project.name}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ");
+  const tokens = brand
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 4);
+  if (tokens.length === 0) return null;
+  if (tokens.some((token) => haystack.includes(token))) return null;
+  return `WARNING: brand "${brand}" shares no word with the project website ${project.domain ?? "(none)"} or name "${project.name}". Check this is the same business before tracking.`;
+}
+
 export const manageAiVisibilityTrackingTool = {
   name: "manage_ai_visibility_tracking",
   config: {
@@ -107,8 +129,12 @@ export const manageAiVisibilityTrackingTool = {
         config.id,
         args.projectId,
       );
+      const warning = brandMismatchWarning(config.brand, context.project);
       return mcpResponse({
-        text: `Created AI visibility config ${config.id} for ${config.brand}.`,
+        text: [
+          `Created AI visibility config ${config.id} for ${config.brand}.`,
+          ...(warning ? [warning] : []),
+        ].join("\n"),
         meta: buildProjectMeta(context, args.projectId, path),
         structuredContent: {
           action: args.action,
@@ -137,8 +163,14 @@ export const manageAiVisibilityTrackingTool = {
         args.configId,
         args.projectId,
       );
+      const warning = args.brand
+        ? brandMismatchWarning(args.brand, context.project)
+        : null;
       return mcpResponse({
-        text: `Updated AI visibility config ${args.configId}.`,
+        text: [
+          `Updated AI visibility config ${args.configId}.`,
+          ...(warning ? [warning] : []),
+        ].join("\n"),
         meta: buildProjectMeta(context, args.projectId, path),
         structuredContent: { action: args.action, config },
       });

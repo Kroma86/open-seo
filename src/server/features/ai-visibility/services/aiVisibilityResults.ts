@@ -1,4 +1,5 @@
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
+import { AppError } from "@/server/lib/errors";
 import {
   parseCompetitorsJson,
   parsePlatformsJson,
@@ -62,6 +63,16 @@ async function resolveConfig(projectId: string, configId?: string) {
     return AiVisibilityRepository.getConfigById({ configId, projectId });
   }
   const configs = await AiVisibilityRepository.getConfigsForProject(projectId);
+  if (configs.length > 1) {
+    // Never pick silently: the oldest config may track a different brand
+    // (a test config, a previous business on the same project).
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `project has ${configs.length} active AI visibility configs; pass configId (brands: ${configs
+        .map((c) => c.brand)
+        .join(", ")})`,
+    );
+  }
   return configs[0] ?? null;
 }
 

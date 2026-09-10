@@ -39,6 +39,36 @@ describe("aiVisibilityResults", () => {
     mocks.getPromptsForConfig.mockResolvedValue([]);
   });
 
+  it("refuses to pick a config silently when the project has more than one", async () => {
+    mocks.getConfigsForProject.mockResolvedValue([
+      config,
+      { ...config, id: "config_2", brand: "Oopsie Daisy" },
+    ]);
+    await expect(getLatestResults("project_1")).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+      message: expect.stringContaining("pass configId"),
+    });
+    await expect(getTrend("project_1")).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+    expect(mocks.getLatestCompletedRunForConfig).not.toHaveBeenCalled();
+  });
+
+  it("still resolves by explicit configId when the project has more than one", async () => {
+    mocks.getConfigsForProject.mockResolvedValue([
+      config,
+      { ...config, id: "config_2", brand: "Oopsie Daisy" },
+    ]);
+    mocks.getLatestCompletedRunForConfig.mockResolvedValue(null);
+    await expect(
+      getLatestResults("project_1", "config_1"),
+    ).resolves.toMatchObject({ measured: false });
+    expect(mocks.getConfigById).toHaveBeenCalledWith({
+      configId: "config_1",
+      projectId: "project_1",
+    });
+  });
+
   it("returns a not-measured shape without zero-filled numbers", async () => {
     mocks.getLatestCompletedRunForConfig.mockResolvedValue(null);
 
