@@ -157,6 +157,88 @@ describe("getProjectsByDomain / getProjectByDomain", () => {
   });
 });
 
+describe("resolveProjectByDomain", () => {
+  it("returns null when no project has the domain, even if a project NAME equals it", async () => {
+    // insertProject sets name = id, so this row is named "other.com".
+    await insertProject({ id: "other.com", domain: "something-else.com" });
+
+    await expect(
+      ProjectRepository.resolveProjectByDomain({
+        domain: "other.com",
+        organizationId: null,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      ProjectRepository.resolveProjectByDomain({
+        domain: "other.com",
+        organizationId: "org_1",
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("returns the single exact-domain row, scoped to the organization", async () => {
+    await insertProject({ id: "project_org1", domain: "client.com" });
+    await insertProject({
+      id: "project_org2",
+      domain: "client.com",
+      organizationId: "org_2",
+    });
+
+    await expect(
+      ProjectRepository.resolveProjectByDomain({
+        domain: "https://www.client.com/",
+        organizationId: "org_1",
+      }),
+    ).resolves.toEqual(expect.objectContaining({ id: "project_org1" }));
+    await expect(
+      ProjectRepository.resolveProjectByDomain({
+        domain: "client.com",
+        organizationId: "org_2",
+      }),
+    ).resolves.toEqual(expect.objectContaining({ id: "project_org2" }));
+  });
+
+  it("throws CONFLICT when more than one project shares the domain", async () => {
+    await insertProject({ id: "project_a", domain: "client.com" });
+    await insertProject({ id: "project_b", domain: "www.client.com" });
+
+    await expect(
+      ProjectRepository.resolveProjectByDomain({
+        domain: "client.com",
+        organizationId: "org_1",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    // Unscoped sees the same two rows and refuses too.
+    await expect(
+      ProjectRepository.resolveProjectByDomain({
+        domain: "client.com",
+        organizationId: null,
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("ignores archived rows and rows in other organizations when scoped", async () => {
+    await insertProject({ id: "project_live", domain: "client.com" });
+    await insertProject({
+      id: "project_archived",
+      domain: "client.com",
+      archivedAt: "2026-08-01 00:00:00",
+    });
+    await insertProject({
+      id: "project_other_org",
+      domain: "client.com",
+      organizationId: "org_2",
+    });
+
+    await expect(
+      ProjectRepository.resolveProjectByDomain({
+        domain: "client.com",
+        organizationId: "org_1",
+      }),
+    ).resolves.toEqual(expect.objectContaining({ id: "project_live" }));
+  });
+});
+
 describe("setLoopsEnabled", () => {
   it("updates an unarchived row", async () => {
     await insertProject({ id: "project_live", domain: "example.com" });
