@@ -876,7 +876,13 @@ export const searchLocalBusinessesTool = {
       "Searches local business listings near a coordinate, with optional rating, review-count, and claimed-status filters. Use this to find local business candidates, nearby competitors, or unclaimed listings; it does not run Maps rank checks or Q&A. Returns a compact row per business (identity, contact, rating, claim status); use get_business_profile for one business's full profile. Charges credits.",
     inputSchema: searchLocalBusinessesInputSchema,
     outputSchema: {
-      businesses: z.array(looseObjectOutputSchema),
+      businesses: z.array(
+        looseObjectOutputSchema.extend({
+          // Always set by the handler; optional here so the shared typed-row
+          // schema test (bare provider rows) still describes the other fields.
+          verified_domain_match: z.boolean().nullable().optional(),
+        }),
+      ),
       ...optionalMetaOutputSchema,
     },
     annotations: {

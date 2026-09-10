@@ -59,15 +59,14 @@ function AiVisibilityPageInner({
       }),
   });
 
+  // Same explicit config as the latest-results query: the service refuses to
+  // pick one when the project tracks two brands.
   const trendQuery = useQuery({
-    queryKey: ["ai-visibility-trend", projectId, latestQuery.data?.config?.id],
-    enabled: Boolean(latestQuery.data?.config?.id),
+    queryKey: ["ai-visibility-trend", projectId, activeConfigId ?? null],
+    enabled: Boolean(activeConfigId),
     queryFn: () =>
       getAiVisibilityTrackingTrend({
-        data: {
-          projectId,
-          configId: latestQuery.data?.config?.id,
-        },
+        data: { projectId, configId: activeConfigId },
       }),
   });
 

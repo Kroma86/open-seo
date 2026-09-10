@@ -55,7 +55,9 @@ async function writeIndex(ids: string[]): Promise<void> {
 
 export async function enqueueHomegrownOttoProposal(input: {
   domain: string;
-  organizationId?: string | null;
+  // Owner. Required: pass `null` only on the explicit unowned path (Hermes
+  // bearer route, domain with no project), never by omission.
+  organizationId: string | null;
   projectId?: string | null;
   path?: string;
   fixes: Record<string, string>;
@@ -86,7 +88,7 @@ export async function enqueueHomegrownOttoProposal(input: {
   const proposal: HomegrownOttoProposal = {
     id: crypto.randomUUID(),
     domain,
-    organizationId: input.organizationId ?? null,
+    organizationId: input.organizationId,
     projectId: input.projectId ?? null,
     status: "pending",
     proposedAt: new Date().toISOString(),

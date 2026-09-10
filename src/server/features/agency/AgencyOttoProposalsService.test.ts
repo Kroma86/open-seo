@@ -66,6 +66,7 @@ describe("HomeGrown OTTO proposals — ownership", () => {
     // Legacy row: written before ownership existed.
     await enqueueHomegrownOttoProposal({
       domain: "client.com",
+      organizationId: null,
       fixes: { description: "legacy" },
     });
     const rows = await listHomegrownOttoProposals({

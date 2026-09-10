@@ -92,9 +92,10 @@ export async function handlePost(request: Request): Promise<Response> {
   // one project. Two projects on the domain → 409, nothing stored: an unowned
   // row would later be visible to every org that owns that domain. Only a
   // domain with NO project is stored unowned.
+  // A caller-supplied projectId is ignored: the project is whatever the
+  // domain resolves to, and an unowned row never carries a guessed id.
   let organizationId: string | null = null;
-  let projectId =
-    typeof record.projectId === "string" ? record.projectId : null;
+  let projectId: string | null = null;
   try {
     const project = await ProjectRepository.resolveProjectByDomain({
       domain: String(record.domain ?? ""),
