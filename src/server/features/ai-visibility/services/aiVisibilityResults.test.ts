@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getAgencyExportBlock,
   getLatestResults,
   getTrend,
 } from "./aiVisibilityResults";
@@ -51,6 +52,15 @@ describe("aiVisibilityResults", () => {
     await expect(getTrend("project_1")).rejects.toMatchObject({
       code: "VALIDATION_ERROR",
     });
+    expect(mocks.getLatestCompletedRunForConfig).not.toHaveBeenCalled();
+  });
+
+  it("agency export block reports not-measured (null) for a multi-config project", async () => {
+    mocks.getConfigsForProject.mockResolvedValue([
+      config,
+      { ...config, id: "config_2", brand: "Oopsie Daisy" },
+    ]);
+    await expect(getAgencyExportBlock("project_1")).resolves.toBeNull();
     expect(mocks.getLatestCompletedRunForConfig).not.toHaveBeenCalled();
   });
 

@@ -288,7 +288,12 @@ function scrapeTools(projectDomain: string | null): ToolSet {
           return { blocked: true, urls: [], note: "Could not reach the site." };
         }
         return offsite
-          ? { blocked: false, urls: result.urls, offsite: true, note: OFFSITE_NOTE }
+          ? {
+              blocked: false,
+              urls: result.urls,
+              offsite: true,
+              note: OFFSITE_NOTE,
+            }
           : { blocked: false, urls: result.urls, offsite: false };
       },
     }),

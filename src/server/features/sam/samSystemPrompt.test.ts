@@ -19,7 +19,9 @@ describe("buildSamSystemPrompt intake mode", () => {
 
   it("forbids off-site pages as a source for this project's facts", () => {
     const prompt = buildSamSystemPrompt(project, { intakeMode: true });
-    expect(prompt).toContain("Read only the project website for business facts");
+    expect(prompt).toContain(
+      "Read only the project website for business facts",
+    );
     expect(prompt).toContain("marked offsite");
     expect(prompt).toContain("even when the names match");
   });

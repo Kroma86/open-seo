@@ -303,9 +303,7 @@ function pushRankKeyword(
   }
 }
 
-async function loadRankData(
-  projectId: string,
-): Promise<{
+async function loadRankData(projectId: string): Promise<{
   ranks: AgencyScoreInputs["ranks"];
   rankSummary: AgencyScoreInputs["rankSummary"];
 }> {
@@ -322,10 +320,7 @@ async function loadRankData(
     const { rows, run } = await getLatestResults(config.id, projectId, "7d");
     const checkedAt = run?.lastCheckedAt ?? null;
     if (checkedAt) {
-      if (
-        index < 3 &&
-        (!ranksCapturedAt || checkedAt > ranksCapturedAt)
-      ) {
+      if (index < 3 && (!ranksCapturedAt || checkedAt > ranksCapturedAt)) {
         ranksCapturedAt = checkedAt;
       }
       if (!summaryCapturedAt || checkedAt > summaryCapturedAt) {
@@ -449,10 +444,12 @@ async function loadAudit(
 
 export async function getAgencyScoreInputs(input: {
   domain: string;
-  organizationId?: string | null;
+  // The caller's organization. `null` is the unscoped Hermes export and is
+  // only reachable through getAgencyScoreInputsGlobal; "" is refused.
+  organizationId: string | null;
 }): Promise<AgencyScoreInputs> {
   const domain = normalizeDomain(input.domain);
-  const project = await findProject(input.organizationId ?? null, domain);
+  const project = await findProject(input.organizationId, domain);
 
   if (!project) {
     return emptyInputs(domain);

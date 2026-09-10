@@ -76,6 +76,21 @@ describe("HomeGrown OTTO proposals — ownership", () => {
     expect(rows[0]?.organizationId).toBeNull();
   });
 
+  it("refuses an empty organization id as the scope (it is not 'unscoped')", async () => {
+    await enqueueHomegrownOttoProposal({
+      domain: "client.com",
+      organizationId: "org_a",
+      projectId: "proj_a",
+      fixes: { title: "A" },
+    });
+    await expect(
+      listHomegrownOttoProposals({
+        domain: "client.com",
+        visibleToOrganizationId: "",
+      }),
+    ).rejects.toThrow(/non-empty/);
+  });
+
   it("refuses an org-scoped listing without a domain (the domain is the proof)", async () => {
     await expect(
       listHomegrownOttoProposals({ visibleToOrganizationId: "org_a" }),

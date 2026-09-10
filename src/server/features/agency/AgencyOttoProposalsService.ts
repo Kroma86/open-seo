@@ -116,7 +116,11 @@ export async function listHomegrownOttoProposals(input?: {
   // this together with `domain`, never alone. Omitted = unscoped (Hermes).
   visibleToOrganizationId?: string;
 }): Promise<HomegrownOttoProposal[]> {
-  if (input?.visibleToOrganizationId && !input.domain) {
+  const scoped = input?.visibleToOrganizationId !== undefined;
+  if (scoped && !input.visibleToOrganizationId?.trim()) {
+    throw new Error("visibleToOrganizationId must be a non-empty id");
+  }
+  if (scoped && !input.domain) {
     throw new Error("visibleToOrganizationId requires domain");
   }
   const limit = Math.min(Math.max(input?.limit ?? 50, 1), 200);
@@ -130,7 +134,7 @@ export async function listHomegrownOttoProposals(input?: {
       const proposal = JSON.parse(raw) as HomegrownOttoProposal;
       if (input?.status && proposal.status !== input.status) continue;
       if (
-        input?.visibleToOrganizationId &&
+        scoped &&
         proposal.organizationId != null &&
         proposal.organizationId !== input.visibleToOrganizationId
       ) {

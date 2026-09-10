@@ -45,13 +45,15 @@ describe("propose_homegrown_otto_fixes", () => {
   beforeEach(() => {
     mocks.resolveProjectByDomain.mockReset();
     mocks.enqueue.mockReset();
-    mocks.enqueue.mockImplementation(async (input: Record<string, unknown>) => ({
-      id: "prop_1",
-      domain: "client.com",
-      path: "/",
-      fixes: input.fixes,
-      ...input,
-    }));
+    mocks.enqueue.mockImplementation(
+      async (input: Record<string, unknown>) => ({
+        id: "prop_1",
+        domain: "client.com",
+        path: "/",
+        fixes: input.fixes,
+        ...input,
+      }),
+    );
   });
 
   it("refuses a domain that is not one of the caller's projects (FORBIDDEN), nothing queued", async () => {
@@ -65,9 +67,24 @@ describe("propose_homegrown_otto_fixes", () => {
     expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 
+  it("refuses a token with no organization before any lookup", async () => {
+    mocks.resolveProjectByDomain.mockResolvedValue(PROJECT);
+    await expect(
+      proposeHomegrownOttoFixesTool.handler(
+        { domain: "client.com", title: "X" },
+        { auth: { ...context.auth, organizationId: "" } },
+      ),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(mocks.resolveProjectByDomain).not.toHaveBeenCalled();
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+
   it("surfaces CONFLICT when two projects share the domain, nothing queued", async () => {
     mocks.resolveProjectByDomain.mockRejectedValue(
-      new AppError("CONFLICT", "ambiguous_project_domain: 2 projects share client.com"),
+      new AppError(
+        "CONFLICT",
+        "ambiguous_project_domain: 2 projects share client.com",
+      ),
     );
     await expect(
       proposeHomegrownOttoFixesTool.handler(

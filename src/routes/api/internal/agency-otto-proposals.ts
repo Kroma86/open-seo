@@ -6,6 +6,7 @@ import {
   markHomegrownOttoProposalsPulled,
 } from "@/server/features/agency/AgencyOttoProposalsService";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
+import { AppError } from "@/server/lib/errors";
 
 function timingSafeEqual(left: string, right: string): boolean {
   const leftBytes = new TextEncoder().encode(left);
@@ -25,8 +26,9 @@ function extractBearer(request: Request): string | null {
 }
 
 function assertAgencyToken(request: Request): Response | null {
-  const expected = (env as { AGENCY_SCORE_EXPORT_TOKEN?: string })
-    .AGENCY_SCORE_EXPORT_TOKEN?.trim();
+  const expected = (
+    env as { AGENCY_SCORE_EXPORT_TOKEN?: string }
+  ).AGENCY_SCORE_EXPORT_TOKEN?.trim();
   if (!expected) {
     return Response.json(
       { error: "agency_score_export_disabled" },
@@ -40,7 +42,7 @@ function assertAgencyToken(request: Request): Response | null {
   return null;
 }
 
-async function handleGet(request: Request): Promise<Response> {
+export async function handleGet(request: Request): Promise<Response> {
   const denied = assertAgencyToken(request);
   if (denied) return denied;
   const url = new URL(request.url);
@@ -63,7 +65,7 @@ async function handleGet(request: Request): Promise<Response> {
   );
 }
 
-async function handlePost(request: Request): Promise<Response> {
+export async function handlePost(request: Request): Promise<Response> {
   const denied = assertAgencyToken(request);
   if (denied) return denied;
 
@@ -87,9 +89,12 @@ async function handlePost(request: Request): Promise<Response> {
   }
 
   // Bearer path (Hermes): attach the owner when the domain resolves to exactly
-  // one project; otherwise leave it unowned rather than guess.
+  // one project. Two projects on the domain → 409, nothing stored: an unowned
+  // row would later be visible to every org that owns that domain. Only a
+  // domain with NO project is stored unowned.
   let organizationId: string | null = null;
-  let projectId = typeof record.projectId === "string" ? record.projectId : null;
+  let projectId =
+    typeof record.projectId === "string" ? record.projectId : null;
   try {
     const project = await ProjectRepository.resolveProjectByDomain({
       domain: String(record.domain ?? ""),
@@ -99,8 +104,14 @@ async function handlePost(request: Request): Promise<Response> {
       organizationId = project.organizationId;
       projectId = project.id;
     }
-  } catch {
-    // ambiguous domain: stored without an owner, as before
+  } catch (error) {
+    if (error instanceof AppError && error.code === "CONFLICT") {
+      return Response.json(
+        { error: "ambiguous_project_domain", detail: error.message },
+        { status: 409 },
+      );
+    }
+    return Response.json({ error: "project_resolve_failed" }, { status: 500 });
   }
 
   try {

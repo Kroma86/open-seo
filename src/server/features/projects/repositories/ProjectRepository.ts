@@ -129,12 +129,19 @@ async function resolveProjectByDomain(input: {
   domain: string;
   organizationId: string | null;
 }) {
-  const rows = input.organizationId
-    ? await getProjectsByDomainForOrganization(
-        input.organizationId,
-        input.domain,
-      )
-    : await getProjectsByDomain(input.domain);
+  // Only an explicit `null` is the unscoped (trusted bearer) form. An empty
+  // or missing organization id is a broken caller, never a licence to scan
+  // every organization.
+  if (input.organizationId !== null && !input.organizationId?.trim()) {
+    throw new AppError("FORBIDDEN", "organizationId is required");
+  }
+  const rows =
+    input.organizationId === null
+      ? await getProjectsByDomain(input.domain)
+      : await getProjectsByDomainForOrganization(
+          input.organizationId,
+          input.domain,
+        );
   if (rows.length > 1) {
     throw new AppError(
       "CONFLICT",

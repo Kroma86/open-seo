@@ -53,9 +53,8 @@ beforeAll(async () => {
     );
   `);
 
-  ({ ProjectRepository, normalizeProjectDomain } = await import(
-    "./ProjectRepository"
-  ));
+  ({ ProjectRepository, normalizeProjectDomain } =
+    await import("./ProjectRepository"));
   ({ setLoopsEnabled } = await import("../services/ProjectService"));
 });
 
@@ -215,6 +214,30 @@ describe("resolveProjectByDomain", () => {
         organizationId: null,
       }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("refuses an empty organization id instead of scanning every organization", async () => {
+    await insertProject({ id: "project_live", domain: "client.com" });
+
+    await expect(
+      ProjectRepository.resolveProjectByDomain({
+        domain: "client.com",
+        organizationId: "",
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      ProjectRepository.resolveProjectByDomain({
+        domain: "client.com",
+        organizationId: "   ",
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      ProjectRepository.resolveProjectByDomain({
+        domain: "client.com",
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- simulating a broken caller
+        organizationId: undefined as unknown as string,
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("ignores archived rows and rows in other organizations when scoped", async () => {

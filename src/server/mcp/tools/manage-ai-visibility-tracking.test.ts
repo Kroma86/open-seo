@@ -97,7 +97,7 @@ describe("manage_ai_visibility_tracking create", () => {
     );
     const text = textContent(result);
     expect(text).toContain("Created AI visibility config cfg_1 for DreamLog.");
-    expect(text).toContain("WARNING: brand \"DreamLog\"");
+    expect(text).toContain('WARNING: brand "DreamLog"');
   });
 
   it("stays quiet when the brand matches the domain", async () => {

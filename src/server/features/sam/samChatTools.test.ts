@@ -67,7 +67,9 @@ describe("isOffsite", () => {
   });
 
   it("flags any other host, including a same-name business elsewhere", () => {
-    expect(isOffsite("https://client-toronto.example/", "client.com")).toBe(true);
+    expect(isOffsite("https://client-toronto.example/", "client.com")).toBe(
+      true,
+    );
     expect(isOffsite("notclient.com", "client.com")).toBe(true);
   });
 

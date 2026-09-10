@@ -88,7 +88,10 @@ describe("getAgencyOttoPageInputs project resolution", () => {
 
   it("returns the empty shape (no project id) when the domain resolves to nothing", async () => {
     mocks.resolveProjectByDomain.mockResolvedValue(null);
-    const data = await getAgencyOttoPageInputs({ domain: "nobody.example" });
+    const data = await getAgencyOttoPageInputs({
+      domain: "nobody.example",
+      organizationId: "org1",
+    });
     expect(data).toMatchObject({
       domain: "nobody.example",
       projectId: null,
@@ -102,7 +105,10 @@ describe("getAgencyOttoPageInputs project resolution", () => {
 
   it("surfaces CONFLICT when two projects share the domain", async () => {
     mocks.resolveProjectByDomain.mockRejectedValue(
-      new AppError("CONFLICT", "ambiguous_project_domain: 2 projects share client.com"),
+      new AppError(
+        "CONFLICT",
+        "ambiguous_project_domain: 2 projects share client.com",
+      ),
     );
     await expect(
       getAgencyOttoPageInputs({ domain: "client.com", organizationId: "org1" }),

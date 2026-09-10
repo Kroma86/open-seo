@@ -14,6 +14,10 @@ export async function requireProjectForDomain(
   domain: string,
 ) {
   const organizationId = toolContext.auth.organizationId;
+  if (typeof organizationId !== "string" || organizationId.trim() === "") {
+    // A token without an organization never gets the unscoped lookup.
+    throw new AppError("FORBIDDEN", "token carries no organization");
+  }
   const project = await ProjectRepository.resolveProjectByDomain({
     domain,
     organizationId,

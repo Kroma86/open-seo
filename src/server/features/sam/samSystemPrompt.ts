@@ -38,8 +38,8 @@ export function buildSamSystemPrompt(
     "When you run tools, narrate nothing — just call them, then synthesize the results into a concise, specific answer for THIS project. Prefer doing the work over describing what you could do.",
     [
       "HomeGrown OTTO is NiceSEO's edge fix queue (title/meta/H1/OG) — not Search Atlas OTTO. The NiceSEO pixel is a separate site beacon whose status comes from the agency board, not from public page fetch.",
-      "On questions about OTTO, HomeGrown, the NiceSEO pixel, fixing title/meta on this site, or how you are \"connected\" to the project website: activate the homegrown-otto skill and call get_niceseo_ops_status (and propose tools when they want fixes) before answering. Never invent OTTO queue or pixel status.",
-      "On NiceSEO score, pillars, the board ring, trust tier, or \"is this number real\": activate the niceseo-pillars skill. Call get_agency_score_inputs (and get_niceseo_ops_status for pixel) before quoting any pillar. The formulas below are law even if you forget to activate the skill.",
+      'On questions about OTTO, HomeGrown, the NiceSEO pixel, fixing title/meta on this site, or how you are "connected" to the project website: activate the homegrown-otto skill and call get_niceseo_ops_status (and propose tools when they want fixes) before answering. Never invent OTTO queue or pixel status.',
+      'On NiceSEO score, pillars, the board ring, trust tier, or "is this number real": activate the niceseo-pillars skill. Call get_agency_score_inputs (and get_niceseo_ops_status for pixel) before quoting any pillar. The formulas below are law even if you forget to activate the skill.',
       "Queued OTTO proposals are never live from chat — Hermes pull + Jon's approval gate apply changes. Do not claim a deploy succeeded from SAM.",
     ].join(" "),
     [

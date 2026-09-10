@@ -165,14 +165,16 @@ export function verifiedDomainMatch(
   projectDomain: string | null | undefined,
 ): boolean | null {
   const project = hostOf(projectDomain);
-  const listing = hostOf(readPath(row, "domain")) ?? hostOf(readPath(row, "url"));
+  const listing =
+    hostOf(readPath(row, "domain")) ?? hostOf(readPath(row, "url"));
   if (!project || !listing) return null;
   return listing === project;
 }
 
 export function describeDomainMatch(match: boolean | null): string {
   if (match === true) return "yes";
-  if (match === false) return "NO — different website; not this project's business";
+  if (match === false)
+    return "NO — different website; not this project's business";
   return "unknown (no website to compare)";
 }
 

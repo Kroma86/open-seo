@@ -27,12 +27,7 @@ const inputSchema = {
     "Management action: list configs, create/update config, or add/remove/toggle tracked prompts.",
   ),
   configId: z.string().uuid().optional(),
-  brand: z
-    .string()
-    .trim()
-    .min(1)
-    .max(BRAND_LOOKUP_MAX_INPUT_LENGTH)
-    .optional(),
+  brand: z.string().trim().min(1).max(BRAND_LOOKUP_MAX_INPUT_LENGTH).optional(),
   competitors: z
     .array(z.string().trim().min(1).max(BRAND_LOOKUP_MAX_INPUT_LENGTH))
     .max(5)

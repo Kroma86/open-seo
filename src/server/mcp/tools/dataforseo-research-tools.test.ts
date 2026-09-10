@@ -103,11 +103,13 @@ describe("DataForSEO research MCP tools", () => {
       ...usProjectRow,
       domain: "homecaresolutions.ca",
     });
-    const businessListings = vi.fn().mockResolvedValue([
-      { title: "Home Care Solutions", domain: "www.homecaresolutions.ca" },
-      { title: "Home Care Solutions", url: "https://hcs-toronto.example/" },
-      { title: "Home Care Solutions" },
-    ]);
+    const businessListings = vi
+      .fn()
+      .mockResolvedValue([
+        { title: "Home Care Solutions", domain: "www.homecaresolutions.ca" },
+        { title: "Home Care Solutions", url: "https://hcs-toronto.example/" },
+        { title: "Home Care Solutions" },
+      ]);
     mocks.createDataforseoClient.mockReturnValue({
       business: { businessListings },
     });
@@ -121,9 +123,7 @@ describe("DataForSEO research MCP tools", () => {
       toolContext,
     );
     expect(
-      result.structuredContent.businesses.map(
-        (b) => b.verified_domain_match,
-      ),
+      result.structuredContent.businesses.map((b) => b.verified_domain_match),
     ).toEqual([true, false, null]);
     const text = textContent(result);
     expect(text).toContain("matches project website");
