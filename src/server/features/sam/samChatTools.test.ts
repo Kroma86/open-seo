@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Tool } from "ai";
-import { waitingAuditStatusTool } from "./samChatTools";
+import { isOffsite, waitingAuditStatusTool } from "./samChatTools";
 
 vi.mock("cloudflare:workers", () => ({
   env: {},
@@ -56,5 +56,22 @@ describe("waitingAuditStatusTool", () => {
       summary: "phase lighthouse, 56/56 pages",
     });
     expect(execute).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("isOffsite", () => {
+  it("treats the project host, www and subdomains as on-site", () => {
+    expect(isOffsite("https://www.client.com/about", "client.com")).toBe(false);
+    expect(isOffsite("blog.client.com", "https://www.client.com/")).toBe(false);
+    expect(isOffsite("client.com", "client.com")).toBe(false);
+  });
+
+  it("flags any other host, including a same-name business elsewhere", () => {
+    expect(isOffsite("https://client-toronto.example/", "client.com")).toBe(true);
+    expect(isOffsite("notclient.com", "client.com")).toBe(true);
+  });
+
+  it("is off-site when the project has no website to compare against", () => {
+    expect(isOffsite("https://anything.example/", null)).toBe(true);
   });
 });

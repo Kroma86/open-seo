@@ -234,6 +234,35 @@ export function waitingAuditStatusTool(
 // Free (credit-less) site-reading tools, mirroring the onboarding agent's
 // read_website but split into discovery + reading so the model can pick which
 // pages to read instead of blindly taking the first N sitemap entries.
+function hostOfUrlOrDomain(value: string): string | null {
+  let host = value.trim().toLowerCase();
+  for (const prefix of ["https://", "http://"]) {
+    if (host.startsWith(prefix)) host = host.slice(prefix.length);
+  }
+  host = host.split("/")[0] ?? host;
+  host = host.split(":")[0] ?? host;
+  if (host.startsWith("www.")) host = host.slice(4);
+  return host || null;
+}
+
+/**
+ * True when `target` is NOT the project website (nor a subdomain of it).
+ * Off-site reads are allowed (competitors, references) but the result says so,
+ * and the intake prompt forbids storing business facts from them.
+ */
+export function isOffsite(
+  target: string,
+  projectDomain: string | null,
+): boolean {
+  const project = projectDomain ? hostOfUrlOrDomain(projectDomain) : null;
+  const host = hostOfUrlOrDomain(target);
+  if (!project || !host) return true;
+  return host !== project && !host.endsWith(`.${project}`);
+}
+
+const OFFSITE_NOTE =
+  "offsite: not the project website — fine for competitor or reference reading, never a source for this project's business facts.";
+
 function scrapeTools(projectDomain: string | null): ToolSet {
   return {
     map_links: tool({
@@ -253,10 +282,14 @@ function scrapeTools(projectDomain: string | null): ToolSet {
               "This project has no website set — ask the user for their site first.",
           };
         }
+        const offsite = isOffsite(target, projectDomain);
         const result = await discoverSiteUrls(target, SAM_MAX_MAPPED_URLS);
-        return result.blocked
-          ? { blocked: true, urls: [], note: "Could not reach the site." }
-          : { blocked: false, urls: result.urls };
+        if (result.blocked) {
+          return { blocked: true, urls: [], note: "Could not reach the site." };
+        }
+        return offsite
+          ? { blocked: false, urls: result.urls, offsite: true, note: OFFSITE_NOTE }
+          : { blocked: false, urls: result.urls, offsite: false };
       },
     }),
     read_pages: tool({
@@ -290,7 +323,18 @@ function scrapeTools(projectDomain: string | null): ToolSet {
             note: "Could not read the requested page(s). Ask the user to describe the site instead, and say you couldn't read it.",
           };
         }
-        return { blocked: false, pages: site.pages };
+        const offsiteUrls = (urls ?? []).filter((url) =>
+          isOffsite(url, projectDomain),
+        );
+        return offsiteUrls.length > 0
+          ? {
+              blocked: false,
+              pages: site.pages,
+              offsite: true,
+              offsiteUrls,
+              note: OFFSITE_NOTE,
+            }
+          : { blocked: false, pages: site.pages, offsite: false };
       },
     }),
   };
