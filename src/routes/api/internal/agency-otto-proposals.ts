@@ -5,6 +5,8 @@ import {
   listHomegrownOttoProposals,
   markHomegrownOttoProposalsPulled,
 } from "@/server/features/agency/AgencyOttoProposalsService";
+import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
+import { AppError } from "@/server/lib/errors";
 
 function timingSafeEqual(left: string, right: string): boolean {
   const leftBytes = new TextEncoder().encode(left);
@@ -24,8 +26,9 @@ function extractBearer(request: Request): string | null {
 }
 
 function assertAgencyToken(request: Request): Response | null {
-  const expected = (env as { AGENCY_SCORE_EXPORT_TOKEN?: string })
-    .AGENCY_SCORE_EXPORT_TOKEN?.trim();
+  const expected = (
+    env as { AGENCY_SCORE_EXPORT_TOKEN?: string }
+  ).AGENCY_SCORE_EXPORT_TOKEN?.trim();
   if (!expected) {
     return Response.json(
       { error: "agency_score_export_disabled" },
@@ -39,7 +42,7 @@ function assertAgencyToken(request: Request): Response | null {
   return null;
 }
 
-async function handleGet(request: Request): Promise<Response> {
+export async function handleGet(request: Request): Promise<Response> {
   const denied = assertAgencyToken(request);
   if (denied) return denied;
   const url = new URL(request.url);
@@ -62,7 +65,7 @@ async function handleGet(request: Request): Promise<Response> {
   );
 }
 
-async function handlePost(request: Request): Promise<Response> {
+export async function handlePost(request: Request): Promise<Response> {
   const denied = assertAgencyToken(request);
   if (denied) return denied;
 
@@ -85,11 +88,38 @@ async function handlePost(request: Request): Promise<Response> {
     return Response.json({ marked });
   }
 
+  // Bearer path (Hermes): attach the owner when the domain resolves to exactly
+  // one project. Two projects on the domain → 409, nothing stored: an unowned
+  // row would later be visible to every org that owns that domain. Only a
+  // domain with NO project is stored unowned.
+  // A caller-supplied projectId is ignored: the project is whatever the
+  // domain resolves to, and an unowned row never carries a guessed id.
+  let organizationId: string | null = null;
+  let projectId: string | null = null;
+  try {
+    const project = await ProjectRepository.resolveProjectByDomain({
+      domain: String(record.domain ?? ""),
+      organizationId: null,
+    });
+    if (project) {
+      organizationId = project.organizationId;
+      projectId = project.id;
+    }
+  } catch (error) {
+    if (error instanceof AppError && error.code === "CONFLICT") {
+      return Response.json(
+        { error: "ambiguous_project_domain", detail: error.message },
+        { status: 409 },
+      );
+    }
+    return Response.json({ error: "project_resolve_failed" }, { status: 500 });
+  }
+
   try {
     const proposal = await enqueueHomegrownOttoProposal({
       domain: String(record.domain ?? ""),
-      projectId:
-        typeof record.projectId === "string" ? record.projectId : null,
+      organizationId,
+      projectId,
       path: typeof record.path === "string" ? record.path : "/",
       fixes:
         record.fixes && typeof record.fixes === "object"

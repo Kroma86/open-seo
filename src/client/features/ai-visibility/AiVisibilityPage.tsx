@@ -11,6 +11,7 @@ import {
   createAiVisibilityTrackingConfig,
   getAiVisibilityTracking,
   getAiVisibilityTrackingTrend,
+  listAiVisibilityTrackingConfigs,
   triggerAiVisibilityCheck,
 } from "@/serverFunctions/ai-visibility";
 import { formatMentionsDisplay } from "@/shared/ai-visibility-mentions";
@@ -37,21 +38,35 @@ function AiVisibilityPageInner({
   const [brand, setBrand] = useState("");
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [selectedConfigId, setSelectedConfigId] = useState<string | null>(null);
+
+  // A project can track more than one brand. The service refuses to pick one
+  // silently, so the page asks for the list and shows a visible selector.
+  const configsQuery = useQuery({
+    queryKey: ["ai-visibility-configs", projectId],
+    queryFn: () => listAiVisibilityTrackingConfigs({ data: { projectId } }),
+  });
+  const configs = configsQuery.data ?? [];
+  const activeConfigId =
+    configs.find((row) => row.id === selectedConfigId)?.id ?? configs[0]?.id;
 
   const latestQuery = useQuery({
-    queryKey: ["ai-visibility", projectId],
-    queryFn: () => getAiVisibilityTracking({ data: { projectId } }),
+    queryKey: ["ai-visibility", projectId, activeConfigId ?? null],
+    enabled: configsQuery.isSuccess,
+    queryFn: () =>
+      getAiVisibilityTracking({
+        data: { projectId, configId: activeConfigId },
+      }),
   });
 
+  // Same explicit config as the latest-results query: the service refuses to
+  // pick one when the project tracks two brands.
   const trendQuery = useQuery({
-    queryKey: ["ai-visibility-trend", projectId, latestQuery.data?.config?.id],
-    enabled: Boolean(latestQuery.data?.config?.id),
+    queryKey: ["ai-visibility-trend", projectId, activeConfigId ?? null],
+    enabled: Boolean(activeConfigId),
     queryFn: () =>
       getAiVisibilityTrackingTrend({
-        data: {
-          projectId,
-          configId: latestQuery.data?.config?.id,
-        },
+        data: { projectId, configId: activeConfigId },
       }),
   });
 
@@ -63,6 +78,9 @@ function AiVisibilityPageInner({
     onSuccess: async () => {
       setBrand("");
       setError(null);
+      await queryClient.invalidateQueries({
+        queryKey: ["ai-visibility-configs"],
+      });
       await queryClient.invalidateQueries({ queryKey: ["ai-visibility"] });
     },
     onError: (err) => setError(getStandardErrorMessage(err)),
@@ -148,6 +166,26 @@ function AiVisibilityPageInner({
                   Prompt set v{config.promptSetVersion} ·{" "}
                   {config.scheduleInterval} schedule
                 </p>
+                {configs.length > 1 ? (
+                  <label className="mt-2 flex items-center gap-2 text-sm">
+                    <span className="text-base-content/60">
+                      Tracked brand ({configs.length}):
+                    </span>
+                    <select
+                      className="select select-bordered select-sm"
+                      value={activeConfigId ?? ""}
+                      onChange={(event) =>
+                        setSelectedConfigId(event.target.value || null)
+                      }
+                    >
+                      {configs.map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {row.brand}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
               </div>
               <button
                 type="button"
@@ -308,9 +346,7 @@ function Metric({
   return (
     <div>
       <dt className="text-base-content/60">{label}</dt>
-      <dd className="font-medium">
-        {value == null ? "not measured" : value}
-      </dd>
+      <dd className="font-medium">{value == null ? "not measured" : value}</dd>
       {fetchedAt ? (
         <dd className="text-xs text-base-content/50">
           {fetchedAt} · {source ?? "dataforseo_llm_mentions"}

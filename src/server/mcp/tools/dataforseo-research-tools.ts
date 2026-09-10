@@ -23,8 +23,10 @@ import {
   formatBusinessDataCoordinate,
   formatCoordinate,
   formatLocalSerpCoordinate,
+  describeDomainMatch,
   pickRowFields,
   resolveBusinessIdentifier,
+  verifiedDomainMatch,
 } from "@/server/mcp/tools/local-seo-shared";
 import { resolveLabsMarket, resolveMarket } from "@/shared/keyword-locations";
 import {
@@ -701,6 +703,13 @@ const LOCAL_BUSINESS_COLUMNS: McpTableColumn<unknown>[] = [
   { header: "reviews", value: (row) => readPath(row, "rating", "votes_count") },
   { header: "phone", value: (row) => readPath(row, "phone") },
   { header: "address", value: (row) => readPath(row, "address") },
+  {
+    header: "matches project website",
+    value: (row) => {
+      const match = readPath(row, "verified_domain_match");
+      return describeDomainMatch(typeof match === "boolean" ? match : null);
+    },
+  },
 ];
 
 const LOCAL_SERP_COLUMNS: McpTableColumn<unknown>[] = [
@@ -867,7 +876,13 @@ export const searchLocalBusinessesTool = {
       "Searches local business listings near a coordinate, with optional rating, review-count, and claimed-status filters. Use this to find local business candidates, nearby competitors, or unclaimed listings; it does not run Maps rank checks or Q&A. Returns a compact row per business (identity, contact, rating, claim status); use get_business_profile for one business's full profile. Charges credits.",
     inputSchema: searchLocalBusinessesInputSchema,
     outputSchema: {
-      businesses: z.array(looseObjectOutputSchema),
+      businesses: z.array(
+        looseObjectOutputSchema.extend({
+          // Always set by the handler; optional here so the shared typed-row
+          // schema test (bare provider rows) still describes the other fields.
+          verified_domain_match: z.boolean().nullable().optional(),
+        }),
+      ),
       ...optionalMetaOutputSchema,
     },
     annotations: {
@@ -889,11 +904,14 @@ export const searchLocalBusinessesTool = {
         limit: args.limit ?? 20,
         offset: args.offset,
       });
-      const businesses = rows.map((row) =>
-        pickRowFields(row, LOCAL_BUSINESS_ROW_FIELDS),
-      );
+      // Name search returns every business with that name; only the listing
+      // whose website equals the project domain is this project's business.
+      const businesses = rows.map((row) => ({
+        ...pickRowFields(row, LOCAL_BUSINESS_ROW_FIELDS),
+        verified_domain_match: verifiedDomainMatch(row, context.project.domain),
+      }));
 
-      const header = `Found ${businesses.length} local business rows${args.query ? ` for ${args.query}` : ""}.`;
+      const header = `Found ${businesses.length} local business rows${args.query ? ` for ${args.query}` : ""}. Only a row with matches project website = yes may feed business facts; the rest are other businesses or unverified.`;
       return mcpResponse({
         text:
           businesses.length === 0

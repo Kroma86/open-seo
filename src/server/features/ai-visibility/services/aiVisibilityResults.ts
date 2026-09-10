@@ -1,4 +1,5 @@
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
+import { AppError } from "@/server/lib/errors";
 import {
   parseCompetitorsJson,
   parsePlatformsJson,
@@ -16,8 +17,9 @@ function parsePartialMentionsFromDetail(detail: string | null): boolean {
   try {
     const parsed: unknown = JSON.parse(detail);
     if (!parsed || typeof parsed !== "object") return false;
-    const brandLookup = (parsed as { brandLookup?: { partialMentions?: boolean } })
-      .brandLookup;
+    const brandLookup = (
+      parsed as { brandLookup?: { partialMentions?: boolean } }
+    ).brandLookup;
     return Boolean(brandLookup?.partialMentions);
   } catch {
     return false;
@@ -62,6 +64,16 @@ async function resolveConfig(projectId: string, configId?: string) {
     return AiVisibilityRepository.getConfigById({ configId, projectId });
   }
   const configs = await AiVisibilityRepository.getConfigsForProject(projectId);
+  if (configs.length > 1) {
+    // Never pick silently: the oldest config may track a different brand
+    // (a test config, a previous business on the same project).
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `project has ${configs.length} active AI visibility configs; pass configId (brands: ${configs
+        .map((c) => c.brand)
+        .join(", ")})`,
+    );
+  }
   return configs[0] ?? null;
 }
 
@@ -192,7 +204,18 @@ export async function getTrend(
 
 /** Latest completed-run summary for agency score export. */
 export async function getAgencyExportBlock(projectId: string) {
-  const latest = await getLatestResults(projectId);
+  let latest: AiVisibilityLatestResults;
+  try {
+    latest = await getLatestResults(projectId);
+  } catch (error) {
+    // Several configs (several brands) on one project: the export cannot
+    // know which brand is the client's, so it reports "not measured" rather
+    // than the oldest config's numbers.
+    if (error instanceof AppError && error.code === "VALIDATION_ERROR") {
+      return null;
+    }
+    throw error;
+  }
   if (!latest.measured || !latest.latestRun) return null;
   return {
     capturedAt: latest.fetchedAt,

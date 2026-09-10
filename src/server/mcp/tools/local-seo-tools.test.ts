@@ -96,6 +96,50 @@ describe("get_business_profile", () => {
     expect(out).toContain("- claimed: yes");
   });
 
+  it("reports whether the listing's website matches the project domain", async () => {
+    mocks.getProjectForOrganization.mockResolvedValue({
+      id: "project_1",
+      domain: "https://www.homecaresolutions.ca/",
+      locationCode: 2840,
+      languageCode: "en",
+    });
+    const myBusinessInfo = vi.fn().mockResolvedValue({
+      title: "Home Care Solutions",
+      url: "https://homecaresolutions-toronto.example/",
+      domain: "homecaresolutions-toronto.example",
+    });
+    mocks.createDataforseoClient.mockReturnValue({
+      business: { myBusinessInfo },
+    });
+
+    const result = await getBusinessProfileTool.handler(
+      { projectId: "project_1", businessName: "Home Care Solutions" },
+      toolContext,
+    );
+    expect(result.structuredContent.verified_domain_match).toBe(false);
+    expect(textContent(result)).toContain(
+      "- matches project website: NO — different website",
+    );
+
+    myBusinessInfo.mockResolvedValue({
+      title: "Home Care Solutions",
+      url: "https://www.homecaresolutions.ca/about",
+    });
+    const same = await getBusinessProfileTool.handler(
+      { projectId: "project_1", businessName: "Home Care Solutions" },
+      toolContext,
+    );
+    expect(same.structuredContent.verified_domain_match).toBe(true);
+    expect(textContent(same)).toContain("- matches project website: yes");
+
+    myBusinessInfo.mockResolvedValue({ title: "Home Care Solutions" });
+    const unknown = await getBusinessProfileTool.handler(
+      { projectId: "project_1", businessName: "Home Care Solutions" },
+      toolContext,
+    );
+    expect(unknown.structuredContent.verified_domain_match).toBeNull();
+  });
+
   it("falls back to the project market when no coordinate is given", async () => {
     const myBusinessInfo = vi.fn().mockResolvedValue(null);
     mocks.createDataforseoClient.mockReturnValue({

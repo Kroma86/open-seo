@@ -76,17 +76,17 @@ export async function getContentVelocity(
         throw new Error("unknown cadence: " + loop.cadence);
       }
       return [
-      loop.id,
-      {
-        loopId: loop.id,
-        loopName: loop.name,
-        cadence: loop.cadence,
-        isEnabled: loop.isEnabled,
-        expectedPerMonth: expectedSamLoopDraftsPerMonth(loop.cadence),
-        drafted: emptyMonthCounts(months),
-        completedWithoutDraft: emptyMonthCounts(months),
-      },
-    ];
+        loop.id,
+        {
+          loopId: loop.id,
+          loopName: loop.name,
+          cadence: loop.cadence,
+          isEnabled: loop.isEnabled,
+          expectedPerMonth: expectedSamLoopDraftsPerMonth(loop.cadence),
+          drafted: emptyMonthCounts(months),
+          completedWithoutDraft: emptyMonthCounts(months),
+        },
+      ];
     }),
   );
 
@@ -129,7 +129,10 @@ export async function createSamLoop(
   if (input.sourceType === "skill" && input.skillName) {
     const skill = await buildSamSkillSource().load(input.skillName);
     if (!skill) {
-      throw new AppError("VALIDATION_ERROR", `Unknown skill: ${input.skillName}`);
+      throw new AppError(
+        "VALIDATION_ERROR",
+        `Unknown skill: ${input.skillName}`,
+      );
     }
   }
 
@@ -296,8 +299,7 @@ export async function triggerSamLoop(input: {
   const nextRunMs = loop.nextRunAt
     ? new Date(loop.nextRunAt).getTime()
     : Number.NaN;
-  const nextRunIsFuture =
-    Number.isFinite(nextRunMs) && nextRunMs > Date.now();
+  const nextRunIsFuture = Number.isFinite(nextRunMs) && nextRunMs > Date.now();
 
   if (!nextRunIsFuture) {
     // CAS only when we have a parsable observed nextRunAt. A corrupt value
@@ -350,7 +352,10 @@ export type DomainLoopTriggerRow = {
 };
 
 export type DomainLoopTriggerResult =
-  | { ok: false; reason: "project_not_found" | "domain_not_allowed" | "daily_cap" }
+  | {
+      ok: false;
+      reason: "project_not_found" | "domain_not_allowed" | "daily_cap";
+    }
   | {
       ok: false;
       reason: "ambiguous_project_domain";
@@ -404,7 +409,21 @@ export async function triggerSamLoopsForDomain(input: {
     return { ok: false, reason: "domain_not_allowed" };
   }
 
-  const score = await getAgencyScoreInputsGlobal(domain);
+  let score: Awaited<ReturnType<typeof getAgencyScoreInputsGlobal>>;
+  try {
+    score = await getAgencyScoreInputsGlobal(domain);
+  } catch (error) {
+    // Two allowed projects on one domain: the resolver refuses to pick one,
+    // and so do we — no loop run starts on a guessed project.
+    if (error instanceof AppError && error.code === "CONFLICT") {
+      return {
+        ok: false,
+        reason: "ambiguous_project_domain",
+        count: candidates.length,
+      };
+    }
+    throw error;
+  }
   if (!score.projectId) {
     return { ok: false, reason: "project_not_found" };
   }
@@ -419,9 +438,8 @@ export async function triggerSamLoopsForDomain(input: {
   }
 
   const dailyRunCap = getSamLoopDailyRunCap(env);
-  const runsToday = await SamLoopRepository.countRunsCreatedSince(
-    startOfUtcDay(),
-  );
+  const runsToday =
+    await SamLoopRepository.countRunsCreatedSince(startOfUtcDay());
   if (runsToday >= dailyRunCap) {
     return { ok: false, reason: "daily_cap" };
   }

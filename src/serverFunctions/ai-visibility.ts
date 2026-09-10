@@ -33,6 +33,20 @@ export const getAiVisibilityTrackingTrend = createServerFn({ method: "POST" })
     return getTrend(context.projectId, data.configId, data.limit);
   });
 
+// Every tracked brand on the project, so the page can ask the user which one
+// to show instead of the service picking one (it refuses when there are two).
+export const listAiVisibilityTrackingConfigs = createServerFn({
+  method: "POST",
+})
+  .middleware(requireProjectContext)
+  .validator(getAiVisibilityLatestSchema.pick({ projectId: true }))
+  .handler(async ({ context }) => {
+    const configs = await AiVisibilityManagementService.getConfigs(
+      context.projectId,
+    );
+    return configs.map((config) => ({ id: config.id, brand: config.brand }));
+  });
+
 export const createAiVisibilityTrackingConfig = createServerFn({
   method: "POST",
 })

@@ -101,6 +101,56 @@ async function getProjectByDomain(domain: string) {
   return row ?? null;
 }
 
+// Same exact-domain match, limited to one organization.
+async function getProjectsByDomainForOrganization(
+  organizationId: string,
+  domain: string,
+) {
+  const needle = normalizeProjectDomain(domain);
+  if (!needle) return [];
+  return db
+    .select()
+    .from(projects)
+    .where(
+      and(
+        eq(projects.organizationId, organizationId),
+        isNull(projects.archivedAt),
+        domainMatchSql(needle),
+      ),
+    );
+}
+
+// Resolve a hostname to exactly one project. Exact domain only — never the
+// project name (a name equal to someone else's domain must not resolve).
+// Zero rows → null. More than one row → CONFLICT: two projects claim the same
+// domain and no caller may pick one silently. `organizationId: null` is the
+// unscoped form for trusted bearer paths (Hermes).
+async function resolveProjectByDomain(input: {
+  domain: string;
+  organizationId: string | null;
+}) {
+  // Only an explicit `null` is the unscoped (trusted bearer) form. An empty
+  // or missing organization id is a broken caller, never a licence to scan
+  // every organization.
+  if (input.organizationId !== null && !input.organizationId?.trim()) {
+    throw new AppError("FORBIDDEN", "organizationId is required");
+  }
+  const rows =
+    input.organizationId === null
+      ? await getProjectsByDomain(input.domain)
+      : await getProjectsByDomainForOrganization(
+          input.organizationId,
+          input.domain,
+        );
+  if (rows.length > 1) {
+    throw new AppError(
+      "CONFLICT",
+      `ambiguous_project_domain: ${rows.length} projects share ${normalizeProjectDomain(input.domain) ?? input.domain}`,
+    );
+  }
+  return rows[0] ?? null;
+}
+
 async function createProject(
   organizationId: string,
   name: string,
@@ -285,6 +335,8 @@ export const ProjectRepository = {
   getProjectById,
   getProjectByDomain,
   getProjectsByDomain,
+  getProjectsByDomainForOrganization,
+  resolveProjectByDomain,
   createProject,
   updateProject,
   updateProjectDomain,

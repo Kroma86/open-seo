@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getAgencyScoreInputs } from "./AgencyScoreInputsService";
+import { AppError } from "@/server/lib/errors";
+import {
+  getAgencyScoreInputs,
+  getAgencyScoreInputsGlobal,
+} from "./AgencyScoreInputsService";
 import type { RankTrackingRow } from "@/types/schemas/rank-tracking";
 
 type GscRow = {
@@ -46,16 +50,27 @@ const mocks = vi.hoisted(() => ({
   gscError: null as Error | null,
   getPerformance: vi.fn(),
   getLatestResults: vi.fn(),
+  resolveProjectByDomain: vi.fn(),
 }));
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
-vi.mock("@/db", () => ({
-  db: {
-    select: () => ({
-      from: () => ({
-        where: () => Promise.resolve(mocks.projectRows),
-      }),
-    }),
+// The resolver's exact-domain / CONFLICT semantics are covered by
+// ProjectRepository.query.test.ts; here it is a stand-in that records how the
+// service calls it and returns the fixture rows.
+vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
+  normalizeProjectDomain: (raw: string | null | undefined) => {
+    if (raw == null) return null;
+    let host = raw.trim().toLowerCase();
+    for (const prefix of ["https://", "http://"]) {
+      if (host.startsWith(prefix)) host = host.slice(prefix.length);
+    }
+    if (host.startsWith("www.")) host = host.slice(4);
+    host = host.split("/")[0] ?? host;
+    return host || null;
+  },
+  ProjectRepository: {
+    resolveProjectByDomain: (...args: unknown[]) =>
+      mocks.resolveProjectByDomain(...args),
   },
 }));
 vi.mock("@/server/features/gsc/repositories/GscConnectionRepository", () => ({
@@ -97,12 +112,9 @@ vi.mock("@/server/features/audit/repositories/AuditRepository", () => ({
     getLatestAuditForProject: vi.fn(async () => null),
   },
 }));
-vi.mock(
-  "@/server/features/ai-visibility/services/aiVisibilityResults",
-  () => ({
-    getAgencyExportBlock: vi.fn(async () => null),
-  }),
-);
+vi.mock("@/server/features/ai-visibility/services/aiVisibilityResults", () => ({
+  getAgencyExportBlock: vi.fn(async () => null),
+}));
 
 const PROJECT = {
   id: "p1",
@@ -127,6 +139,10 @@ describe("getAgencyScoreInputs connections", () => {
     mocks.latestResultsByConfig = new Map();
     mocks.gscRows = [];
     mocks.gscError = null;
+    mocks.resolveProjectByDomain.mockReset();
+    mocks.resolveProjectByDomain.mockImplementation(
+      async () => mocks.projectRows[0] ?? null,
+    );
     mocks.getPerformance.mockReset();
     mocks.getLatestResults.mockReset();
     mocks.getLatestResults.mockImplementation(
@@ -151,7 +167,10 @@ describe("getAgencyScoreInputs connections", () => {
   });
 
   it("returns disconnected GSC/GA4 and native GBP gap when no project exists", async () => {
-    const data = await getAgencyScoreInputs({ domain: "missing.example" });
+    const data = await getAgencyScoreInputs({
+      domain: "missing.example",
+      organizationId: "org1",
+    });
     expect(data.projectId).toBeNull();
     expect(data.connections.gsc).toEqual({
       connected: false,
@@ -167,9 +186,55 @@ describe("getAgencyScoreInputs connections", () => {
     });
   });
 
+  it("resolves the project by exact domain inside the caller's organization", async () => {
+    mocks.projectRows = [PROJECT];
+    await getAgencyScoreInputs({
+      domain: "https://www.niceseo.ai/",
+      organizationId: "org1",
+    });
+    expect(mocks.resolveProjectByDomain).toHaveBeenCalledWith({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
+  });
+
+  it("uses the unscoped resolver only for the global (Hermes) export", async () => {
+    mocks.projectRows = [PROJECT];
+    await getAgencyScoreInputsGlobal("niceseo.ai");
+    expect(mocks.resolveProjectByDomain).toHaveBeenCalledWith({
+      domain: "niceseo.ai",
+      organizationId: null,
+    });
+  });
+
+  it("returns empty inputs (not another project) when the domain resolves to nothing", async () => {
+    mocks.projectRows = [];
+    const data = await getAgencyScoreInputs({
+      domain: "nobody.example",
+      organizationId: "org1",
+    });
+    expect(data.projectId).toBeNull();
+    expect(data.domain).toBe("nobody.example");
+  });
+
+  it("surfaces CONFLICT when two projects share the domain instead of picking one", async () => {
+    mocks.resolveProjectByDomain.mockRejectedValue(
+      new AppError(
+        "CONFLICT",
+        "ambiguous_project_domain: 2 projects share niceseo.ai",
+      ),
+    );
+    await expect(
+      getAgencyScoreInputs({ domain: "niceseo.ai", organizationId: "org1" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
   it("never calls GSC and reports gsc null when no property is mapped", async () => {
     mocks.projectRows = [PROJECT];
-    const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
     expect(data.connections.gsc.connected).toBe(false);
     expect(data.gsc).toBeNull();
     expect(mocks.getPerformance).not.toHaveBeenCalled();
@@ -182,7 +247,10 @@ describe("getAgencyScoreInputs connections", () => {
       { clicks: 100, impressions: 3000, ctr: 0.0333, position: 20 },
       { clicks: 20, impressions: 1000, ctr: 0.02, position: 12 },
     ];
-    const data = await getAgencyScoreInputs({ domain: "https://www.niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "https://www.niceseo.ai",
+      organizationId: "org1",
+    });
     expect(data.connections.gsc).toEqual({
       connected: true,
       siteUrl: "sc-domain:niceseo.ai",
@@ -207,7 +275,10 @@ describe("getAgencyScoreInputs connections", () => {
     mocks.projectRows = [PROJECT];
     mocks.gsc = GSC_CONNECTION;
     mocks.gscRows = [];
-    const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
     expect(data.connections.gsc.connected).toBe(true);
     expect(data.gsc).toBeNull();
   });
@@ -216,14 +287,20 @@ describe("getAgencyScoreInputs connections", () => {
     mocks.projectRows = [PROJECT];
     mocks.gsc = GSC_CONNECTION;
     mocks.gscError = new Error("expired grant");
-    const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
     expect(data.connections.gsc.connected).toBe(true);
     expect(data.gsc).toBeNull();
   });
 
   it("returns aiVisibility null when never run", async () => {
     mocks.projectRows = [PROJECT];
-    const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
     expect(data.aiVisibility).toBeNull();
   });
 
@@ -232,7 +309,10 @@ describe("getAgencyScoreInputs connections", () => {
     mocks.gsc = GSC_CONNECTION;
     // A day with genuine zero traffic is a measurement, not a gap.
     mocks.gscRows = [{ clicks: 0, impressions: 0, ctr: 0, position: 0 }];
-    const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
     expect(data.gsc).toEqual({
       clicks: 0,
       impressions: 0,
@@ -279,6 +359,10 @@ describe("getAgencyScoreInputs rankSummary", () => {
     mocks.ga4 = null;
     mocks.gscRows = [];
     mocks.gscError = null;
+    mocks.resolveProjectByDomain.mockReset();
+    mocks.resolveProjectByDomain.mockImplementation(
+      async () => mocks.projectRows[0] ?? null,
+    );
     mocks.getPerformance.mockReset();
     mocks.getLatestResults.mockReset();
     mocks.getLatestResults.mockImplementation(
@@ -335,7 +419,10 @@ describe("getAgencyScoreInputs rankSummary", () => {
       },
     });
 
-    const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
 
     expect(data.ranks?.keywords).toHaveLength(3);
     expect(data.ranks?.capturedAt).toBe("2026-09-03T00:00:00.000Z");
@@ -360,7 +447,10 @@ describe("getAgencyScoreInputs rankSummary", () => {
       },
     });
 
-    const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
 
     expect(data.rankSummary).toEqual({
       trackedKeywords: 1,
@@ -409,7 +499,10 @@ describe("getAgencyScoreInputs rankSummary", () => {
       },
     });
 
-    const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
 
     expect(data.ranks?.capturedAt).toBe("2026-09-03T00:00:00.000Z");
     expect(data.rankSummary?.capturedAt).toBe("2026-09-04T00:00:00.000Z");
@@ -422,7 +515,10 @@ describe("getAgencyScoreInputs rankSummary", () => {
       run: null,
     });
 
-    const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
 
     expect(data.rankSummary).toEqual({
       trackedKeywords: 2,
@@ -440,7 +536,10 @@ describe("getAgencyScoreInputs rankSummary", () => {
       run: null,
     });
 
-    const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
 
     expect(data.rankSummary).toEqual({
       trackedKeywords: 2,
@@ -503,7 +602,10 @@ describe("getAgencyScoreInputs rankSummary", () => {
       },
     });
 
-    const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
 
     expect(data.rankSummary).toEqual({
       trackedKeywords: 2,
@@ -516,7 +618,10 @@ describe("getAgencyScoreInputs rankSummary", () => {
 
   it("returns rankSummary null when the project has no rank configs", async () => {
     mocks.rankConfigs = [];
-    const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
     expect(data.rankSummary).toBeNull();
   });
 });
