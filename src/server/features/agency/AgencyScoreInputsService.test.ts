@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getAgencyScoreInputs } from "./AgencyScoreInputsService";
+import { AppError } from "@/server/lib/errors";
+import {
+  getAgencyScoreInputs,
+  getAgencyScoreInputsGlobal,
+} from "./AgencyScoreInputsService";
 import type { RankTrackingRow } from "@/types/schemas/rank-tracking";
 
 type GscRow = {
@@ -46,16 +50,27 @@ const mocks = vi.hoisted(() => ({
   gscError: null as Error | null,
   getPerformance: vi.fn(),
   getLatestResults: vi.fn(),
+  resolveProjectByDomain: vi.fn(),
 }));
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
-vi.mock("@/db", () => ({
-  db: {
-    select: () => ({
-      from: () => ({
-        where: () => Promise.resolve(mocks.projectRows),
-      }),
-    }),
+// The resolver's exact-domain / CONFLICT semantics are covered by
+// ProjectRepository.query.test.ts; here it is a stand-in that records how the
+// service calls it and returns the fixture rows.
+vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
+  normalizeProjectDomain: (raw: string | null | undefined) => {
+    if (raw == null) return null;
+    let host = raw.trim().toLowerCase();
+    for (const prefix of ["https://", "http://"]) {
+      if (host.startsWith(prefix)) host = host.slice(prefix.length);
+    }
+    if (host.startsWith("www.")) host = host.slice(4);
+    host = host.split("/")[0] ?? host;
+    return host || null;
+  },
+  ProjectRepository: {
+    resolveProjectByDomain: (...args: unknown[]) =>
+      mocks.resolveProjectByDomain(...args),
   },
 }));
 vi.mock("@/server/features/gsc/repositories/GscConnectionRepository", () => ({
@@ -127,6 +142,10 @@ describe("getAgencyScoreInputs connections", () => {
     mocks.latestResultsByConfig = new Map();
     mocks.gscRows = [];
     mocks.gscError = null;
+    mocks.resolveProjectByDomain.mockReset();
+    mocks.resolveProjectByDomain.mockImplementation(
+      async () => mocks.projectRows[0] ?? null,
+    );
     mocks.getPerformance.mockReset();
     mocks.getLatestResults.mockReset();
     mocks.getLatestResults.mockImplementation(
@@ -165,6 +184,43 @@ describe("getAgencyScoreInputs connections", () => {
       source: null,
       capturedAt: null,
     });
+  });
+
+  it("resolves the project by exact domain inside the caller's organization", async () => {
+    mocks.projectRows = [PROJECT];
+    await getAgencyScoreInputs({
+      domain: "https://www.niceseo.ai/",
+      organizationId: "org1",
+    });
+    expect(mocks.resolveProjectByDomain).toHaveBeenCalledWith({
+      domain: "niceseo.ai",
+      organizationId: "org1",
+    });
+  });
+
+  it("uses the unscoped resolver only for the global (Hermes) export", async () => {
+    mocks.projectRows = [PROJECT];
+    await getAgencyScoreInputsGlobal("niceseo.ai");
+    expect(mocks.resolveProjectByDomain).toHaveBeenCalledWith({
+      domain: "niceseo.ai",
+      organizationId: null,
+    });
+  });
+
+  it("returns empty inputs (not another project) when the domain resolves to nothing", async () => {
+    mocks.projectRows = [];
+    const data = await getAgencyScoreInputs({ domain: "nobody.example" });
+    expect(data.projectId).toBeNull();
+    expect(data.domain).toBe("nobody.example");
+  });
+
+  it("surfaces CONFLICT when two projects share the domain instead of picking one", async () => {
+    mocks.resolveProjectByDomain.mockRejectedValue(
+      new AppError("CONFLICT", "ambiguous_project_domain: 2 projects share niceseo.ai"),
+    );
+    await expect(
+      getAgencyScoreInputs({ domain: "niceseo.ai", organizationId: "org1" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
   it("never calls GSC and reports gsc null when no property is mapped", async () => {
@@ -279,6 +335,10 @@ describe("getAgencyScoreInputs rankSummary", () => {
     mocks.ga4 = null;
     mocks.gscRows = [];
     mocks.gscError = null;
+    mocks.resolveProjectByDomain.mockReset();
+    mocks.resolveProjectByDomain.mockImplementation(
+      async () => mocks.projectRows[0] ?? null,
+    );
     mocks.getPerformance.mockReset();
     mocks.getLatestResults.mockReset();
     mocks.getLatestResults.mockImplementation(

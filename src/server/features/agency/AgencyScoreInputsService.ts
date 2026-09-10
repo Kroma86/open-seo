@@ -2,12 +2,13 @@
  * DB-only agency score inputs for NiceSEO board.
  * Never calls DataForSEO — reads stored rank / backlink / audit rows only.
  *
- * Domain match risk: if multiple active projects share a normalized domain,
- * the first match wins (exact domain, then name).
+ * Domain match: exact domain only via ProjectRepository.resolveProjectByDomain;
+ * a domain shared by two projects is a CONFLICT error, never a silent pick.
  */
-import { and, eq, isNull } from "drizzle-orm";
-import { db } from "@/db";
-import { projects } from "@/db/schema";
+import {
+  ProjectRepository,
+  normalizeProjectDomain,
+} from "@/server/features/projects/repositories/ProjectRepository";
 import { AuditRepository } from "@/server/features/audit/repositories/AuditRepository";
 import { BacklinkSnapshotRepository } from "@/server/features/dashboard/repositories/BacklinkSnapshotRepository";
 import { Ga4ConnectionRepository } from "@/server/features/ga4/repositories/Ga4ConnectionRepository";
@@ -251,43 +252,18 @@ async function loadConnections(projectId: string): Promise<{
 }
 
 function normalizeDomain(raw: string): string {
-  let h = raw.trim().toLowerCase();
-  for (const prefix of ["https://", "http://"]) {
-    if (h.startsWith(prefix)) h = h.slice(prefix.length);
-  }
-  if (h.startsWith("www.")) h = h.slice(4);
-  return h.split("/")[0] ?? h;
-}
-
-function domainsMatch(a: string | null | undefined, b: string): boolean {
-  if (!a) return false;
-  return normalizeDomain(a) === normalizeDomain(b);
+  return normalizeProjectDomain(raw) ?? raw.trim().toLowerCase();
 }
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-async function findProject(
-  organizationId: string | null,
-  domain: string,
-): Promise<typeof projects.$inferSelect | null> {
-  const needle = normalizeDomain(domain);
-  const rows = organizationId
-    ? await db
-        .select()
-        .from(projects)
-        .where(
-          and(
-            eq(projects.organizationId, organizationId),
-            isNull(projects.archivedAt),
-          ),
-        )
-    : await db.select().from(projects).where(isNull(projects.archivedAt));
-
-  const exact = rows.find((p) => domainsMatch(p.domain, needle));
-  if (exact) return exact;
-  return rows.find((p) => domainsMatch(p.name, needle)) ?? null;
+// Exact-domain resolution only (never the project name); two projects on the
+// same domain throw CONFLICT instead of picking one. Scoped to the caller's
+// organization when given; unscoped only for the Hermes bearer export.
+async function findProject(organizationId: string | null, domain: string) {
+  return ProjectRepository.resolveProjectByDomain({ domain, organizationId });
 }
 
 function rowHasSnapshotData(row: RankTrackingRow): boolean {

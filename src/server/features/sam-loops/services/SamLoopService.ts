@@ -404,7 +404,21 @@ export async function triggerSamLoopsForDomain(input: {
     return { ok: false, reason: "domain_not_allowed" };
   }
 
-  const score = await getAgencyScoreInputsGlobal(domain);
+  let score: Awaited<ReturnType<typeof getAgencyScoreInputsGlobal>>;
+  try {
+    score = await getAgencyScoreInputsGlobal(domain);
+  } catch (error) {
+    // Two allowed projects on one domain: the resolver refuses to pick one,
+    // and so do we — no loop run starts on a guessed project.
+    if (error instanceof AppError && error.code === "CONFLICT") {
+      return {
+        ok: false,
+        reason: "ambiguous_project_domain",
+        count: candidates.length,
+      };
+    }
+    throw error;
+  }
   if (!score.projectId) {
     return { ok: false, reason: "project_not_found" };
   }

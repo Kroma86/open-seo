@@ -2,10 +2,14 @@
  * DB-only page SEO fields for HomeGrown OTTO (scan → fixgen).
  * Never calls DataForSEO — reads the latest completed site-audit pages only.
  */
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { auditPages, projects } from "@/db/schema";
+import { auditPages } from "@/db/schema";
 import { AuditRepository } from "@/server/features/audit/repositories/AuditRepository";
+import {
+  ProjectRepository,
+  normalizeProjectDomain,
+} from "@/server/features/projects/repositories/ProjectRepository";
 
 export type AgencyOttoPage = {
   url: string;
@@ -36,17 +40,7 @@ export type AgencyOttoPageInputs = {
 };
 
 function normalizeDomain(raw: string): string {
-  let host = raw.trim().toLowerCase();
-  for (const prefix of ["https://", "http://"]) {
-    if (host.startsWith(prefix)) host = host.slice(prefix.length);
-  }
-  if (host.startsWith("www.")) host = host.slice(4);
-  return host.split("/")[0] ?? host;
-}
-
-function domainsMatch(a: string | null | undefined, b: string): boolean {
-  if (!a) return false;
-  return normalizeDomain(a) === normalizeDomain(b);
+  return normalizeProjectDomain(raw) ?? raw.trim().toLowerCase();
 }
 
 function pathOf(url: string): string {
@@ -115,26 +109,10 @@ function toOttoPage(row: {
   };
 }
 
-async function findProject(
-  organizationId: string | null,
-  domain: string,
-): Promise<typeof projects.$inferSelect | null> {
-  const needle = normalizeDomain(domain);
-  const rows = organizationId
-    ? await db
-        .select()
-        .from(projects)
-        .where(
-          and(
-            eq(projects.organizationId, organizationId),
-            isNull(projects.archivedAt),
-          ),
-        )
-    : await db.select().from(projects).where(isNull(projects.archivedAt));
-
-  const exact = rows.find((project) => domainsMatch(project.domain, needle));
-  if (exact) return exact;
-  return rows.find((project) => domainsMatch(project.name, needle)) ?? null;
+// Exact-domain resolution only (never the project name); two projects on the
+// same domain throw CONFLICT instead of picking one.
+async function findProject(organizationId: string | null, domain: string) {
+  return ProjectRepository.resolveProjectByDomain({ domain, organizationId });
 }
 
 function pickHomepage(
