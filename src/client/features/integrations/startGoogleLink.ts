@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { useSyncExternalStore } from "react";
 import { getStandardErrorMessage } from "@/client/lib/error-messages";
 import { GOOGLE_LINK_ERROR_PARAM } from "@/client/features/integrations/googleLinkError";
 import { authClient } from "@/lib/auth-client";
@@ -32,6 +33,26 @@ function withGoogleLinkErrorParam(
 // redirect to Google is pending, would overwrite the single Better Auth state
 // cookie and guarantee a state_mismatch for whichever consent screen finishes.
 let linkRedirectPending = false;
+const listeners = new Set<() => void>();
+
+function setLinkPending(pending: boolean) {
+  linkRedirectPending = pending;
+  for (const listener of listeners) listener();
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** All Google entry points share the same request and navigation state. */
+export function useGoogleLinkPending() {
+  return useSyncExternalStore(
+    subscribe,
+    () => linkRedirectPending,
+    () => false,
+  );
+}
 
 /**
  * Kick off an incremental Google OAuth grant. On success this redirects the
@@ -45,9 +66,9 @@ let linkRedirectPending = false;
 export async function startGoogleLink(
   provider: "gsc" | "ga4",
   callbackURL: string,
-): Promise<void> {
-  if (linkRedirectPending) return;
-  linkRedirectPending = true;
+): Promise<boolean> {
+  if (linkRedirectPending) return false;
+  setLinkPending(true);
   let redirecting = false;
   try {
     const config = googleProviders[provider];
@@ -63,11 +84,11 @@ export async function startGoogleLink(
       });
       if (res.error) {
         toast.error(res.error.message ?? "Could not start Google sign-in");
-        return;
+        return false;
       }
       url = res.data?.url;
     }
-    if (!url) return;
+    if (!url) return false;
 
     redirecting = true;
     window.location.href = url;
@@ -76,13 +97,15 @@ export async function startGoogleLink(
     // beforeunload prompt). Revive the buttons instead of leaving the page
     // dead until reload.
     setTimeout(() => {
-      linkRedirectPending = false;
+      setLinkPending(false);
     }, 15_000);
+    return true;
   } catch (error) {
     toast.error(getStandardErrorMessage(error));
+    return false;
   } finally {
     // Single release point: any exit that didn't hand off to the browser
     // (error, missing URL, thrown) re-arms the button immediately.
-    if (!redirecting) linkRedirectPending = false;
+    if (!redirecting) setLinkPending(false);
   }
 }

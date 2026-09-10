@@ -9,7 +9,10 @@ import {
   SitePicker,
   type GscSiteSelection,
 } from "@/client/features/gsc/SitePicker";
-import { startGoogleLink } from "@/client/features/integrations/startGoogleLink";
+import {
+  startGoogleLink,
+  useGoogleLinkPending,
+} from "@/client/features/integrations/startGoogleLink";
 import { getStandardErrorMessage } from "@/client/lib/error-messages";
 import { captureClientEvent } from "@/client/lib/posthog";
 import {
@@ -54,6 +57,7 @@ export function SearchConsoleOnboardingStep() {
 /** Connect + pick-a-property flow, scoped to a known project. */
 function GscConnect({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
+  const linking = useGoogleLinkPending();
   const [selection, setSelection] = React.useState<GscSiteSelection | null>(
     null,
   );
@@ -133,17 +137,20 @@ function GscConnect({ projectId }: { projectId: string }) {
     return (
       <div className="space-y-4">
         <GoogleLinkErrorAlert provider="gsc" />
-        <SitePicker
-          loading={sitesQuery.isLoading}
-          error={sitesQuery.isError}
-          accounts={accounts}
-          selection={selection}
-          onSelect={setSelection}
-          onSave={() => selection && setSiteMutation.mutate(selection)}
-          saving={setSiteMutation.isPending}
-          onRetry={() => void sitesQuery.refetch()}
-          onReconnect={handleConnect}
-        />
+        <fieldset disabled={linking}>
+          <SitePicker
+            linking={linking}
+            loading={sitesQuery.isLoading}
+            error={sitesQuery.isError}
+            accounts={accounts}
+            selection={selection}
+            onSelect={setSelection}
+            onSave={() => selection && setSiteMutation.mutate(selection)}
+            saving={setSiteMutation.isPending}
+            onRetry={() => void sitesQuery.refetch()}
+            onReconnect={handleConnect}
+          />
+        </fieldset>
       </div>
     );
   }
@@ -154,10 +161,16 @@ function GscConnect({ projectId }: { projectId: string }) {
       <button
         type="button"
         onClick={handleConnect}
+        disabled={linking}
+        aria-busy={linking}
         className="inline-flex items-center gap-2.5 rounded-lg border border-base-300 bg-base-100 px-4 py-2.5 text-sm font-semibold text-base-content shadow-sm transition hover:bg-base-200 hover:shadow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
-        <GoogleGlyph className="size-[18px]" />
-        Connect with Google
+        {linking ? (
+          <span className="loading loading-spinner loading-xs" />
+        ) : (
+          <GoogleGlyph className="size-[18px]" />
+        )}
+        {linking ? "Opening Google…" : "Connect with Google"}
       </button>
     </div>
   );
