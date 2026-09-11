@@ -9,7 +9,7 @@ Most teams know they need search traffic, but the traditional SEO workflow is br
 
 You open an expensive dashboard, spend an hour filtering columns, export a spreadsheet, clean up the data, and copy five numbers into a doc before writing a single word. By the time you sit down to outline, your mental bandwidth was burned on data triage instead of creating content that wins.
 
-Connecting OpenSEO to a personal AI assistant like Vellum inverts that dynamic completely.
+Connecting OpenSEO to a personal AI assistant like [Vellum](http://vellum.ai) inverts that dynamic completely.
 
 Instead of treating search data like an external destination you have to visit, your assistant accesses live keyword metrics, competitor gaps, and SERP rankings directly inside your workspace. You bring the business positioning and editorial direction; your assistant pulls the live search ground truth and handles the execution.
 
@@ -47,7 +47,7 @@ The first answer pulls live search ground truth. The second is an editorial move
 
 Connecting OpenSEO to Vellum takes two minutes:
 
-1. In Vellum, add the **OpenSEO plugin** from the plugin catalog (`https://www.vellum.ai/plugins/openseo`) or connect via MCP (`https://openseo.so/docs/mcp`).
+1. In Vellum, add the **OpenSEO plugin** from the [plugin catalog](https://www.vellum.ai/plugins/openseo) or [connect via MCP](https://openseo.so/docs/mcp).
 2. Follow the OAuth prompt to sign in to your OpenSEO account and approve the connection.
 3. Your assistant immediately gets access to all OpenSEO tools: keyword research, competitor analysis, live SERP lookups, backlink data, and rank tracking.
 
