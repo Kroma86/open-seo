@@ -33,6 +33,37 @@ describe("Sam loop result persistence", () => {
     expect(mocks.execute).toHaveBeenCalledTimes(1);
     expect(mocks.fail).not.toHaveBeenCalled();
   });
+  it("logs typed failure metadata without the human-readable run error", async () => {
+    mocks.execute.mockResolvedValue({
+      status: "failed",
+      error: "Generation did not return a complete valid result.",
+      report: "Draft not completed",
+      proposalsQueued: 0,
+      stepsUsed: 1,
+      costNote: null,
+      modelFailure: {
+        kind: "generation_error",
+        detail: "Error (message redacted)",
+      },
+    });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await run();
+      expect(log).toHaveBeenCalledWith({
+        event: "sam_loop_run_failed",
+        runId: "run_1",
+        loopId: "loop_1",
+        projectId: "project_1",
+        trigger: "scheduled",
+        failureKind: "generation_error",
+        failureDetail: "Error (message redacted)",
+        steps: 1,
+        proposalsQueued: 0,
+      });
+    } finally {
+      log.mockRestore();
+    }
+  });
   it("does not overwrite a run already marked terminal during execution", async () => {
     mocks.getRunById.mockResolvedValueOnce({ status: "running" }).mockResolvedValueOnce({ status: "failed" });
     mocks.execute.mockResolvedValue({ status: "completed", error: null, report: "Article", proposalsQueued: 0, stepsUsed: 1, costNote: null });

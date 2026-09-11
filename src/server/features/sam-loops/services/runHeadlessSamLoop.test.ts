@@ -95,6 +95,7 @@ const abortResult = (domain: string) => ({
   stepsUsed: 0,
   proposalsQueued: 0,
   costNote: "no model call",
+  modelFailure: null,
 });
 
 describe("runHeadlessSamLoop", () => {
@@ -111,7 +112,7 @@ describe("runHeadlessSamLoop", () => {
     });
     mocks.getProjectContext.mockResolvedValue({ missingSections: [] });
     mocks.getChatAgentModel.mockResolvedValue({});
-    mocks.generateText.mockResolvedValue({ text: "loop report", steps: [] });
+    mocks.generateText.mockResolvedValue({ text: "loop report", steps: [], finishReason: "stop" });
     mocks.buildSamMcpTools.mockReturnValue({});
     mocks.openRouterCostUsd.mockReturnValue(0);
   });
@@ -169,6 +170,7 @@ describe("runHeadlessSamLoop", () => {
       stepsUsed: 0,
       proposalsQueued: 0,
       costNote: null,
+      modelFailure: null,
     });
     expect(mocks.getProjectById).toHaveBeenCalledWith("project_1");
     expect(mocks.getProjectContext).toHaveBeenCalled();
@@ -233,6 +235,7 @@ describe("runHeadlessSamLoop", () => {
     const result = await runHeadlessSamLoop(input("client-example.com"));
     expect(result.status).toBe("failed");
     expect(result.error).toContain("without a written report");
+    expect(result.modelFailure).toEqual({ kind: "empty_report", detail: null });
     expect(result.costNote).toContain("0.1250");
     expect(result.stepsUsed).toBe(1);
     expect(mocks.generateText).toHaveBeenCalledTimes(1);
@@ -244,6 +247,54 @@ describe("runHeadlessSamLoop", () => {
     const result = await runHeadlessSamLoop(input("client-example.com"));
     expect(result.status).toBe("failed");
     expect(result.report).toBe("Partial report");
+    expect(result.modelFailure).toEqual({
+      kind: "incomplete_finish",
+      detail: `finishReason=${finishReason}`,
+    });
+  });
+
+  it("classifies a missing finish reason as incomplete, never completed", async () => {
+    mocks.getProjectById.mockResolvedValue({ domain: "client-example.com", loopsEnabled: true, archivedAt: null });
+    mocks.generateText.mockResolvedValue({ text: "Plausible looking report", steps: [] });
+    const result = await runHeadlessSamLoop(input("client-example.com"));
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("no finish reason");
+    expect(result.modelFailure).toEqual({
+      kind: "incomplete_finish",
+      detail: "finishReason=missing",
+    });
+  });
+
+  it.each([
+    { finishReason: "length", text: "" },
+    { finishReason: "length", text: "   " },
+    { finishReason: "length", text: "partial" },
+    { finishReason: "tool-calls", text: "partial" },
+    { finishReason: "error", text: "" },
+    { finishReason: "content-filter", text: "partial" },
+    { finishReason: "other", text: "partial" },
+    { finishReason: undefined, text: "" },
+    { finishReason: undefined, text: "plausible but unclassified" },
+    { finishReason: "stop", text: "" },
+    { finishReason: "stop", text: "   " },
+  ])("never marks an incomplete result completed (finishReason=$finishReason, text=$text)", async ({ finishReason, text }) => {
+    mocks.getProjectById.mockResolvedValue({ domain: "client-example.com", loopsEnabled: true, archivedAt: null });
+    mocks.generateText.mockResolvedValue({ text, steps: [], finishReason });
+    const result = await runHeadlessSamLoop(input("client-example.com"));
+    expect(result.status).toBe("failed");
+    expect(result.modelFailure?.kind).toMatch(/incomplete_finish|empty_report/);
+  });
+
+  it("keeps a safe typed provider cause when generation throws, and calls the model exactly once", async () => {
+    mocks.getProjectById.mockResolvedValue({ domain: "client-example.com", loopsEnabled: true, archivedAt: null });
+    mocks.generateText.mockRejectedValue(new Error("No allowed providers; Authorization: Bearer should-never-be-logged"));
+    const result = await runHeadlessSamLoop(input("client-example.com"));
+    expect(result.status).toBe("failed");
+    expect(result.error).toBe("Generation did not return a complete valid result.");
+    expect(result.modelFailure?.kind).toBe("generation_error");
+    expect(result.modelFailure?.detail).toBe("Error (message redacted)");
+    expect(result.modelFailure?.detail).not.toContain("should-never-be-logged");
+    expect(mocks.generateText).toHaveBeenCalledTimes(1);
   });
 
   it.each(["Monthly content", "Renamed article routine"])("requires a complete article for an approved monthly identity: %s", async (loopName) => {
@@ -254,6 +305,10 @@ describe("runHeadlessSamLoop", () => {
     mocks.generateText.mockResolvedValue({ text: "I could write an article next", steps: [{}], finishReason: "stop", get output() { throw new Error("No output"); } });
     const result = await runHeadlessSamLoop({ ...input("client-example.com"), sourceType: "custom", customPrompt: approved, skillName: null, loopName });
     expect(result.status).toBe("failed");
+    expect(result.modelFailure).toEqual({
+      kind: "invalid_monthly_content",
+      detail: null,
+    });
     expect(result.costNote).toContain("0.1000");
     const request = mocks.generateText.mock.calls[0]![0];
     expect(request.prompt).toContain("complete article draft using saved first-party research");
@@ -281,6 +336,7 @@ describe("runHeadlessSamLoop", () => {
     const result = await runHeadlessSamLoop({ ...input("example.com"), sourceType: "custom", skillName: null, customPrompt: DEFAULT_SAM_LOOP_TEMPLATES.find(t => t.name === "Monthly content")!.customPrompt!, loopName });
     expect(result.status).toBe("completed");
     expect(result.error).toBeNull();
+    expect(result.modelFailure).toBeNull();
     expect(result.report).toContain(article.body.trim());
     expect(await hasVerifiedMonthlyDraft(result.report)).toBe(true);
     expect(result.costNote).toContain("0.1200");
@@ -298,6 +354,8 @@ describe("runHeadlessSamLoop", () => {
     });
     const result = await runHeadlessSamLoop({ ...input("example.com"), sourceType: "custom", skillName: null, customPrompt: DEFAULT_SAM_LOOP_TEMPLATES.find(t => t.name === "Monthly content")!.customPrompt!, loopName: "Monthly content" });
     expect(result.status).toBe("failed");
+    expect(result.modelFailure?.kind).toBe("generation_error");
+    expect(result.modelFailure?.detail).toBe("Error (message redacted)");
     expect(result.stepsUsed).toBe(1);
     expect(result.costNote).toContain("0.2500");
     expect(result.costNote).toContain("unfinished-step cost unavailable");

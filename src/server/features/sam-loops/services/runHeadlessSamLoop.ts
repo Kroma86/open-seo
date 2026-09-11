@@ -1,5 +1,10 @@
 import { generateText, Output, stepCountIs, type StepResult, type ToolSet } from "ai";
 import { MONTHLY_CONTENT_INSTRUCTION, monthlyContentSchema, stripDraftEvidence, validateMonthlyContent } from "./monthlyContentResult";
+import {
+  describeThrown,
+  samLoopModelFailure,
+  type SamLoopModelFailure,
+} from "./samLoopRunFailure";
 import { openRouterCostUsd } from "@/server/lib/chatAgent";
 import { getChatAgentModel } from "@/server/lib/openrouter";
 import { buildSamMcpTools } from "@/server/features/sam/samChatTools";
@@ -51,6 +56,11 @@ export type HeadlessSamLoopResult = {
   stepsUsed: number;
   proposalsQueued: number;
   costNote: string | null;
+  /**
+   * Typed model-failure diagnostic (null on success and on pre-model aborts).
+   * SamLoopWorkflow logs it as a structured event for later internal alerts.
+   */
+  modelFailure: SamLoopModelFailure | null;
 };
 
 /**
@@ -76,6 +86,7 @@ export async function runHeadlessSamLoop(
       stepsUsed: 0,
       proposalsQueued: 0,
       costNote: "no model call",
+      modelFailure: null,
     };
   }
 
@@ -174,7 +185,7 @@ export async function runHeadlessSamLoop(
     ...(monthly ? { output: Output.object({ schema: monthlyContentSchema }) } : {}),
     onStepFinish: (step) => { finishedSteps.push(step); },
     });
-  } catch {
+  } catch (err) {
     const knownCost = finishedSteps.reduce((sum, step) => sum + openRouterCostUsd(step.providerMetadata), 0);
     return {
       status: "failed",
@@ -183,6 +194,7 @@ export async function runHeadlessSamLoop(
       stepsUsed: finishedSteps.length,
       proposalsQueued: countProposalsQueued(finishedSteps),
       costNote: knownCost > 0 ? `OpenRouter recorded steps ≈ $${knownCost.toFixed(4)}; unfinished-step cost unavailable` : "Generation failed; final cost unavailable",
+      modelFailure: samLoopModelFailure("generation_error", describeThrown(err)),
     };
   }
 
@@ -193,18 +205,32 @@ export async function runHeadlessSamLoop(
   const proposalsQueued = countProposalsQueued(result.steps);
   let report = stripDraftEvidence(result.text ?? "");
   let error: string | null = null;
-  if (result.finishReason && result.finishReason !== "stop") {
-    error = `The model did not finish normally (${result.finishReason}); the report is incomplete.`;
+  let modelFailure: SamLoopModelFailure | null = null;
+  // Only "stop" is a complete finish. A missing finish reason is classified
+  // incomplete too — a truthiness guard here once let unclassified finishes
+  // through as completed runs.
+  if (result.finishReason !== "stop") {
+    const reason = result.finishReason ?? "no finish reason";
+    error = `The model did not finish normally (${reason}); the report is incomplete.`;
+    modelFailure = samLoopModelFailure(
+      "incomplete_finish",
+      `finishReason=${result.finishReason ?? "missing"}`,
+    );
   } else if (monthly) {
     try {
-      const article = await validateMonthlyContent(result.output, result.steps, row!.domain ?? "");
+      const article = await validateMonthlyContent(result.output, result.steps, row.domain ?? "");
       report = article.report;
       error = article.error;
+      if (error) {
+        modelFailure = samLoopModelFailure("invalid_monthly_content", error);
+      }
     } catch {
       error = "The run did not finish a valid structured article result.";
+      modelFailure = samLoopModelFailure("invalid_monthly_content");
     }
   } else if (!report) {
     error = "The run ended without a written report.";
+    modelFailure = samLoopModelFailure("empty_report");
   }
   if (error && monthly) report = `Monthly article not completed: ${error}`;
   if (!report) report = `Not measured — ${error}`;
@@ -221,5 +247,6 @@ export async function runHeadlessSamLoop(
     stepsUsed: result.steps.length,
     proposalsQueued,
     costNote,
+    modelFailure,
   };
 }
