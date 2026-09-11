@@ -135,6 +135,22 @@ export class SamLoopWorkflow extends WorkflowEntrypoint<Env, SamLoopParams> {
           lastRunAt: nowIso,
         });
 
+        // Structured failure event: the alert hook for the typed diagnostic
+        // (the run row stores only the human-readable error string).
+        if (execution.status === "failed") {
+          console.error({
+            event: "sam_loop_run_failed",
+            runId,
+            loopId,
+            projectId,
+            trigger,
+            failureKind: execution.modelFailure?.kind ?? null,
+            failureDetail: execution.modelFailure?.detail ?? null,
+            steps: execution.stepsUsed,
+            proposalsQueued: execution.proposalsQueued,
+          });
+        }
+
         console.log(
           `[sam-loop] ${runId} ${execution.status} loop=${loopId} project=${projectId} trigger=${trigger} proposals=${execution.proposalsQueued} steps=${execution.stepsUsed}`,
         );

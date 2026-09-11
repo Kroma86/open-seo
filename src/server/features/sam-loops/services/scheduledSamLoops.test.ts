@@ -161,6 +161,22 @@ describe("runScheduledSamLoops", () => {
     }));
   });
 
+  it("does not retry a failed workflow start within the same tick", async () => {
+    mocks.getDueLoopsWithOrganization.mockResolvedValue([dueLoop()]);
+    mocks.claimDueLoop.mockResolvedValue(true);
+    mocks.beginSamLoopRun.mockRejectedValue(new Error("workflow unavailable"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await runTick();
+
+    // One claim to advance + one to restore; exactly one start attempt.
+    expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(1);
+    expect(mocks.claimDueLoop).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({
+      workflowStartErrors: 1, started: 0,
+    }));
+  });
+
   it("does not overwrite a concurrent schedule change while restoring", async () => {
     mocks.getDueLoopsWithOrganization.mockResolvedValue([dueLoop()]);
     mocks.claimDueLoop.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
