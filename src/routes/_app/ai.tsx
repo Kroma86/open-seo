@@ -148,11 +148,12 @@ function AiPage() {
             >
               <ol className="ml-5 list-decimal space-y-1.5 text-sm text-base-content/70 leading-relaxed">
                 <li>
-                  Open <span className="text-base-content">Settings</span> →{" "}
+                  Open <span className="text-base-content">Customize</span> →{" "}
                   <span className="text-base-content">Connectors</span>.
                 </li>
                 <li>
-                  Click{" "}
+                  Click <span className="text-base-content">Add</span> (or +),
+                  then choose{" "}
                   <span className="font-medium text-base-content">
                     Add custom connector
                   </span>
@@ -173,7 +174,8 @@ function AiPage() {
                 </li>
               </ol>
               <p className="text-xs text-base-content/55 leading-relaxed">
-                Requires a Claude Pro, Max, Team, or Enterprise plan.
+                Available on Claude Free, Pro, Max, Team, and Enterprise plans.
+                Free plans support one custom connector.
               </p>
             </Collapsible>
 
