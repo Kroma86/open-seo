@@ -58,11 +58,15 @@ vi.mock("@/middleware/ensure-user/delegated", () => ({
 
 import { errors as joseErrors } from "jose";
 import {
+  accessJwtFromHeaders,
   resolveCloudflareAccessContext,
   resolveCloudflareAccessMcpGate,
 } from "./cloudflareAccess";
 
-const WITH_TOKEN = new Headers({ "cf-access-jwt-assertion": "the-token" });
+// Compact JWS shape (three segments) — required for Bearer acceptance.
+const JWT_SHAPE = "aaa.bbb.ccc";
+const WITH_TOKEN = new Headers({ "cf-access-jwt-assertion": JWT_SHAPE });
+const WITH_BEARER = new Headers({ Authorization: `Bearer ${JWT_SHAPE}` });
 const WORKSPACE = {
   userId: "u1",
   userEmail: "person@example.com",
@@ -125,9 +129,7 @@ describe("resolveCloudflareAccessMcpGate", () => {
     });
     // The gate must not touch the database — keeping the remote JWKS verify
     // out of any pooled-client scope depends on it.
-    expect(
-      delegatedMocks.resolveSharedWorkspaceContext,
-    ).not.toHaveBeenCalled();
+    expect(delegatedMocks.resolveSharedWorkspaceContext).not.toHaveBeenCalled();
   });
 
   it("rejects a service-token-shaped JWT at the USER audience (the C1 hole: kind must not follow audience alone)", async () => {
@@ -152,12 +154,10 @@ describe("resolveCloudflareAccessMcpGate", () => {
     await expect(resolveCloudflareAccessMcpGate(WITH_TOKEN)).rejects.toThrow(
       /UNAUTHENTICATED/,
     );
-    expect(
-      delegatedMocks.resolveSharedWorkspaceContext,
-    ).not.toHaveBeenCalled();
+    expect(delegatedMocks.resolveSharedWorkspaceContext).not.toHaveBeenCalled();
   });
 
-  it("rejects a user-shaped JWT verified against the MCP audience (no common_name)", async () => {
+  it("classifies a user-shaped JWT at the MCP audience as user (Managed OAuth for /mcp)", async () => {
     joseMocks.jwtVerify.mockImplementation(
       async (_t: unknown, _k: unknown, opts: { audience: string }) => {
         if (opts.audience === "mcp-app-aud") {
@@ -167,9 +167,11 @@ describe("resolveCloudflareAccessMcpGate", () => {
       },
     );
 
-    await expect(resolveCloudflareAccessMcpGate(WITH_TOKEN)).rejects.toThrow(
-      /UNAUTHENTICATED/,
-    );
+    await expect(resolveCloudflareAccessMcpGate(WITH_TOKEN)).resolves.toEqual({
+      kind: "user",
+      userId: "u1",
+      userEmail: "person@example.com",
+    });
   });
 
   it("rejects with audience-mismatch guidance when both audiences fail", async () => {
@@ -204,10 +206,65 @@ describe("resolveCloudflareAccessMcpGate", () => {
   });
 
   it("rejects when the request carries no Access token", async () => {
+    await expect(resolveCloudflareAccessMcpGate(new Headers())).rejects.toThrow(
+      /No Cloudflare Access token/,
+    );
+    expect(joseMocks.jwtVerify).not.toHaveBeenCalled();
+  });
+
+  it("accepts Authorization Bearer compact JWT when Cf-Access-Jwt-Assertion is absent (Cursor Managed OAuth)", async () => {
+    joseMocks.jwtVerify.mockImplementation(
+      async (_t: unknown, _k: unknown, opts: { audience: string }) => {
+        if (opts.audience === "mcp-app-aud") {
+          return { payload: { sub: "u1", email: "person@example.com" } };
+        }
+        throw audMismatch();
+      },
+    );
+
+    await expect(resolveCloudflareAccessMcpGate(WITH_BEARER)).resolves.toEqual({
+      kind: "user",
+      userId: "u1",
+      userEmail: "person@example.com",
+    });
+  });
+
+  it("reads preferred_username when email claim is missing", async () => {
+    joseMocks.jwtVerify.mockImplementation(
+      async (_t: unknown, _k: unknown, opts: { audience: string }) => {
+        if (opts.audience === "mcp-app-aud") {
+          return {
+            payload: { sub: "u1", preferred_username: "person@example.com" },
+          };
+        }
+        throw audMismatch();
+      },
+    );
+
+    await expect(resolveCloudflareAccessMcpGate(WITH_TOKEN)).resolves.toEqual({
+      kind: "user",
+      userId: "u1",
+      userEmail: "person@example.com",
+    });
+  });
+
+  it("ignores non-JWT Bearer tokens", async () => {
     await expect(
-      resolveCloudflareAccessMcpGate(new Headers()),
+      resolveCloudflareAccessMcpGate(
+        new Headers({ Authorization: "Bearer not-a-jwt" }),
+      ),
     ).rejects.toThrow(/No Cloudflare Access token/);
     expect(joseMocks.jwtVerify).not.toHaveBeenCalled();
+  });
+});
+
+describe("accessJwtFromHeaders", () => {
+  it("prefers Cf-Access-Jwt-Assertion over Authorization", () => {
+    const headers = new Headers({
+      "cf-access-jwt-assertion": "assert.tok.en",
+      Authorization: "Bearer bear.er.tok",
+    });
+    expect(accessJwtFromHeaders(headers)).toBe("assert.tok.en");
   });
 });
 

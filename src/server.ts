@@ -27,6 +27,7 @@ import {
 import { requestWithPublicOrigin } from "@/server/mcp/public-origin";
 import { MCP_ROUTE } from "@/server/mcp/context";
 import { handleSelfHostedOpenSeoMcpRequest } from "@/server/mcp/transport";
+import { asAppError } from "@/server/lib/errors";
 import { withPgClient } from "@/db";
 import {
   AUTUMN_WEBHOOK_PATH,
@@ -43,8 +44,9 @@ const openSeoOAuthProvider = createOpenSeoOAuthProvider(appFetch);
 // the self-host Env must carry OAUTH_KV. Fails tsc if the binding is removed.
 type Assert<T extends true> = T;
 // Intentionally unreferenced: instantiating it IS the assertion.
-type _EnvCarriesOAuthKv =
-  Assert<Env extends Pick<OpenSeoOAuthEnv, "OAUTH_KV"> ? true : never>;
+type _EnvCarriesOAuthKv = Assert<
+  Env extends Pick<OpenSeoOAuthEnv, "OAUTH_KV"> ? true : never
+>;
 
 // Authorize an onboarding-chat connection in the Worker, before it reaches the
 // Durable Object. The DO instance name is the projectId (set client-side); we
@@ -232,29 +234,60 @@ async function handleFetch(
     (authMode === "cloudflare_access" || authMode === "local_noauth") &&
     pathname === MCP_ROUTE
   ) {
-    if (authMode === "cloudflare_access" && publicRequest.method !== "OPTIONS") {
+    if (
+      authMode === "cloudflare_access" &&
+      publicRequest.method !== "OPTIONS"
+    ) {
       // The gate is Access JWT verification only (remote JWKS, NO database) —
       // safe outside any pooled-client scope (see the MCP-surface bypass in
       // fetch). The workspace context (DB) gets its own short client scope,
       // taken AFTER the network wait, never held across it.
-      const gate = await resolveCloudflareAccessMcpGate(publicRequest.headers);
-      if (gate.kind === "service_token") {
-        return openSeoOAuthProvider.fetch(
-          publicRequest,
-          env as OpenSeoOAuthEnv,
-          ctx,
+      //
+      // Catch AppError here: an unhandled throw becomes Cloudflare Error 1101
+      // ("Worker threw exception"), which makes MCP clients wipe OAuth tokens
+      // and force another Allow loop.
+      try {
+        const gate = await resolveCloudflareAccessMcpGate(
+          publicRequest.headers,
         );
+        if (gate.kind === "service_token") {
+          return openSeoOAuthProvider.fetch(
+            publicRequest,
+            env as OpenSeoOAuthEnv,
+            ctx,
+          );
+        }
+        const accessContext = await withPgClient(() =>
+          resolveSharedWorkspaceContext(gate.userId, gate.userEmail),
+        );
+        return handleSelfHostedOpenSeoMcpRequest(
+          publicRequest,
+          authMode,
+          env,
+          ctx,
+          accessContext,
+        );
+      } catch (error) {
+        const appError = asAppError(error);
+        if (appError) {
+          const origin = new URL(publicRequest.url).origin;
+          const description =
+            appError.message !== appError.code
+              ? appError.message
+              : appError.code === "UNAUTHENTICATED"
+                ? "Missing or invalid access token"
+                : appError.code;
+          return Response.json(
+            {
+              error: "invalid_token",
+              error_description: description,
+              resource_metadata: `${origin}/.well-known/cloudflare-access-protected-resource/mcp`,
+            },
+            { status: 401 },
+          );
+        }
+        throw error;
       }
-      const accessContext = await withPgClient(() =>
-        resolveSharedWorkspaceContext(gate.userId, gate.userEmail),
-      );
-      return handleSelfHostedOpenSeoMcpRequest(
-        publicRequest,
-        authMode,
-        env,
-        ctx,
-        accessContext,
-      );
     }
 
     return handleSelfHostedOpenSeoMcpRequest(

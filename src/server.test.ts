@@ -72,6 +72,7 @@ vi.mock("@/server/features/audit/AuditScratchpad", () => ({
 }));
 
 import handler from "./server";
+import { AppError } from "@/server/lib/errors";
 
 const ctx = { waitUntil: () => {} } as unknown as ExecutionContext;
 const env = { AUTH_MODE: "cloudflare_access" } as unknown as Env;
@@ -139,6 +140,24 @@ describe("server /mcp routing under cloudflare_access", () => {
     );
     expect(await response.text()).toBe("mcp user handler");
     expect(mocks.providerFetch).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 JSON instead of throwing when the Access gate rejects (avoids Cloudflare 1101 auth loops)", async () => {
+    mocks.gate.mockRejectedValue(new AppError("UNAUTHENTICATED"));
+
+    const response = await handler.fetch(mcpRequest(), env, ctx);
+    const body = (await response.json()) as {
+      error: string;
+      error_description: string;
+      resource_metadata: string;
+    };
+
+    expect(response.status).toBe(401);
+    expect(body.error).toBe("invalid_token");
+    expect(body.resource_metadata).toContain(
+      "cloudflare-access-protected-resource/mcp",
+    );
+    expect(mocks.transport).not.toHaveBeenCalled();
   });
 
   it("passes OPTIONS preflight to the user handler with an explicit null context, without calling the gate", async () => {
