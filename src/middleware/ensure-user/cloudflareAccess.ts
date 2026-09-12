@@ -96,15 +96,46 @@ export type CloudflareAccessMcpGate =
   // keeps the remote JWKS verification out of any pooled-client scope.
   | { kind: "user"; userId: string; userEmail: string };
 
+function userEmailFromAccessPayload(payload: JWTPayload): string | null {
+  if (typeof payload.email === "string" && payload.email.includes("@")) {
+    return payload.email;
+  }
+  // Some Access / Managed OAuth shapes put the address here instead of `email`.
+  if (
+    typeof payload.preferred_username === "string" &&
+    payload.preferred_username.includes("@")
+  ) {
+    return payload.preferred_username;
+  }
+  return null;
+}
+
 function userGateFromAccessPayload(
   payload: JWTPayload,
 ): Extract<CloudflareAccessMcpGate, { kind: "user" }> {
   const userId = typeof payload.sub === "string" ? payload.sub : null;
-  const userEmail = typeof payload.email === "string" ? payload.email : null;
+  const userEmail = userEmailFromAccessPayload(payload);
   if (!userId || !userEmail) {
     throw new AppError("UNAUTHENTICATED");
   }
   return { kind: "user", userId, userEmail };
+}
+
+/**
+ * Cursor Managed OAuth sends `Authorization: Bearer <Access JWT>`.
+ * Browser/session traffic uses `Cf-Access-Jwt-Assertion`. Accept either.
+ */
+export function accessJwtFromHeaders(headers: Headers): string | null {
+  const assertion = headers.get("cf-access-jwt-assertion");
+  if (assertion) return assertion;
+  const auth = headers.get("authorization");
+  if (!auth) return null;
+  const match = /^Bearer\s+(\S+)/i.exec(auth);
+  if (!match) return null;
+  const token = match[1];
+  // Access JWTs are compact JWS (three base64url segments).
+  if (token.split(".").length !== 3) return null;
+  return token;
 }
 
 export async function resolveCloudflareAccessMcpGate(
@@ -130,7 +161,7 @@ export async function resolveCloudflareAccessMcpGate(
     );
   }
 
-  const token = headers.get("cf-access-jwt-assertion");
+  const token = accessJwtFromHeaders(headers);
 
   if (!token) {
     throw new AppError(
