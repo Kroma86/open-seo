@@ -11,15 +11,9 @@ import {
 } from "@/server/mcp/transport";
 
 const selfHostedAuthMocks = vi.hoisted(() => ({
-  resolveCloudflareAccessContext: vi.fn(),
   resolveLocalNoAuthContext: vi.fn(),
   createOpenSeoMcpServer: vi.fn(),
   createMcpHandler: vi.fn(),
-}));
-
-vi.mock("@/middleware/ensure-user/cloudflareAccess", () => ({
-  resolveCloudflareAccessContext:
-    selfHostedAuthMocks.resolveCloudflareAccessContext,
 }));
 
 vi.mock("@/middleware/ensure-user/delegated", () => ({
@@ -118,16 +112,19 @@ function hostedProps(scopes: string[] = ["mcp"]) {
 }
 
 describe("handleSelfHostedOpenSeoMcpRequest", () => {
+  const cloudflareAccessContext = {
+    userId: "cloudflare-user",
+    userEmail: "person@example.com",
+    organizationId: "delegated-cloudflare-user",
+    emailVerified: true,
+  };
+
   beforeEach(() => {
     selfHostedAuthMocks.resolveLocalNoAuthContext.mockResolvedValue({
       userId: "local-admin",
       userEmail: "admin@localhost",
       organizationId: "delegated-local-admin",
-    });
-    selfHostedAuthMocks.resolveCloudflareAccessContext.mockResolvedValue({
-      userId: "cloudflare-user",
-      userEmail: "person@example.com",
-      organizationId: "delegated-cloudflare-user",
+      emailVerified: true,
     });
   });
 
@@ -137,6 +134,7 @@ describe("handleSelfHostedOpenSeoMcpRequest", () => {
       "local_noauth",
       {},
       ctx,
+      null,
     );
 
     expect(response.status).toBe(200);
@@ -161,18 +159,16 @@ describe("handleSelfHostedOpenSeoMcpRequest", () => {
     );
   });
 
-  it("accepts Cloudflare Access MCP requests through the existing Access resolver", async () => {
+  it("accepts Cloudflare Access MCP requests with a pre-resolved Access context", async () => {
     const response = await handleSelfHostedOpenSeoMcpRequest(
       createMcpRequest(),
       "cloudflare_access",
       {},
       ctx,
+      cloudflareAccessContext,
     );
 
     expect(response.status).toBe(200);
-    expect(
-      selfHostedAuthMocks.resolveCloudflareAccessContext,
-    ).toHaveBeenCalledWith(expect.any(Headers));
     expect(selfHostedAuthMocks.createOpenSeoMcpServer).toHaveBeenCalledWith({
       [MCP_AUTH_CONTEXT_PROP]: {
         userId: "cloudflare-user",
@@ -189,13 +185,11 @@ describe("handleSelfHostedOpenSeoMcpRequest", () => {
       "cloudflare_access",
       {},
       ctx,
+      null,
     );
 
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("");
-    expect(
-      selfHostedAuthMocks.resolveCloudflareAccessContext,
-    ).not.toHaveBeenCalled();
     expect(selfHostedAuthMocks.createOpenSeoMcpServer).not.toHaveBeenCalled();
   });
 });

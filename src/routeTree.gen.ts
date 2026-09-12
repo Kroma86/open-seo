@@ -25,10 +25,24 @@ import { Route as AuthSignInRouteImport } from './routes/_auth.sign-in'
 import { Route as AppSupportRouteImport } from './routes/_app/support'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppProjectsRouteImport } from './routes/_app/projects'
+import { Route as AppOperationsRouteImport } from './routes/_app/operations'
 import { Route as AppBillingRouteImport } from './routes/_app/billing'
 import { Route as AppAiRouteImport } from './routes/_app/ai'
 import { Route as Char91DotwellKnownChar93OpenaiAppsChallengeRouteImport } from './routes/[.well-known]/openai-apps-challenge'
 import { Route as AuthenticatedOnboardingIndexRouteImport } from './routes/_authenticated.onboarding.index'
+import { Route as ApiInternalTriggerSamLoopsRouteImport } from './routes/api/internal/trigger-sam-loops'
+import { Route as ApiInternalTrackerRouteImport } from './routes/api/internal/tracker'
+import { Route as ApiInternalProjectsRouteImport } from './routes/api/internal/projects'
+import { Route as ApiInternalLoopsEnabledRouteImport } from './routes/api/internal/loops-enabled'
+import { Route as ApiInternalGscRouteImport } from './routes/api/internal/gsc'
+import { Route as ApiInternalGa4RouteImport } from './routes/api/internal/ga4'
+import { Route as ApiInternalAuditsRouteImport } from './routes/api/internal/audits'
+import { Route as ApiInternalAgencyScoreInputsRouteImport } from './routes/api/internal/agency-score-inputs'
+import { Route as ApiInternalAgencyOttoProposalsRouteImport } from './routes/api/internal/agency-otto-proposals'
+import { Route as ApiInternalAgencyOttoPageInputsRouteImport } from './routes/api/internal/agency-otto-page-inputs'
+import { Route as ApiInternalAgencyOpsArtifactsRouteImport } from './routes/api/internal/agency-ops-artifacts'
+import { Route as ApiInternalAgencyMonthlyExportRouteImport } from './routes/api/internal/agency-monthly-export'
+import { Route as ApiInternalAgencyLoopReportsRouteImport } from './routes/api/internal/agency-loop-reports'
 import { Route as ApiAutumnSplatRouteImport } from './routes/api/autumn/$'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AuthenticatedOnboardingChatRouteImport } from './routes/_authenticated.onboarding.chat'
@@ -44,11 +58,13 @@ import { Route as ProjectPProjectIdSavedRouteImport } from './routes/_project/p/
 import { Route as ProjectPProjectIdSamRouteImport } from './routes/_project/p/$projectId/sam'
 import { Route as ProjectPProjectIdRankTrackingRouteImport } from './routes/_project/p/$projectId/rank-tracking'
 import { Route as ProjectPProjectIdPromptExplorerRouteImport } from './routes/_project/p/$projectId/prompt-explorer'
+import { Route as ProjectPProjectIdLoopsRouteImport } from './routes/_project/p/$projectId/loops'
 import { Route as ProjectPProjectIdKeywordsRouteImport } from './routes/_project/p/$projectId/keywords'
 import { Route as ProjectPProjectIdDomainRouteImport } from './routes/_project/p/$projectId/domain'
 import { Route as ProjectPProjectIdBrandLookupRouteImport } from './routes/_project/p/$projectId/brand-lookup'
 import { Route as ProjectPProjectIdBacklinksRouteImport } from './routes/_project/p/$projectId/backlinks'
 import { Route as ProjectPProjectIdAuditRouteImport } from './routes/_project/p/$projectId/audit'
+import { Route as ProjectPProjectIdAiVisibilityRouteImport } from './routes/_project/p/$projectId/ai-visibility'
 import { Route as ProjectPProjectIdSettingsIndexRouteImport } from './routes/_project/p/$projectId/settings/index'
 import { Route as ProjectPProjectIdRankTrackingIndexRouteImport } from './routes/_project/p/$projectId/rank-tracking/index'
 import { Route as ProjectPProjectIdAuditIndexRouteImport } from './routes/_project/p/$projectId/audit/index'
@@ -134,6 +150,11 @@ const AppProjectsRoute = AppProjectsRouteImport.update({
   path: '/projects',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppOperationsRoute = AppOperationsRouteImport.update({
+  id: '/operations',
+  path: '/operations',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppBillingRoute = AppBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
@@ -155,6 +176,78 @@ const AuthenticatedOnboardingIndexRoute =
     id: '/onboarding/',
     path: '/onboarding/',
     getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const ApiInternalTriggerSamLoopsRoute =
+  ApiInternalTriggerSamLoopsRouteImport.update({
+    id: '/api/internal/trigger-sam-loops',
+    path: '/api/internal/trigger-sam-loops',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiInternalTrackerRoute = ApiInternalTrackerRouteImport.update({
+  id: '/api/internal/tracker',
+  path: '/api/internal/tracker',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalProjectsRoute = ApiInternalProjectsRouteImport.update({
+  id: '/api/internal/projects',
+  path: '/api/internal/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalLoopsEnabledRoute = ApiInternalLoopsEnabledRouteImport.update({
+  id: '/api/internal/loops-enabled',
+  path: '/api/internal/loops-enabled',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalGscRoute = ApiInternalGscRouteImport.update({
+  id: '/api/internal/gsc',
+  path: '/api/internal/gsc',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalGa4Route = ApiInternalGa4RouteImport.update({
+  id: '/api/internal/ga4',
+  path: '/api/internal/ga4',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalAuditsRoute = ApiInternalAuditsRouteImport.update({
+  id: '/api/internal/audits',
+  path: '/api/internal/audits',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalAgencyScoreInputsRoute =
+  ApiInternalAgencyScoreInputsRouteImport.update({
+    id: '/api/internal/agency-score-inputs',
+    path: '/api/internal/agency-score-inputs',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiInternalAgencyOttoProposalsRoute =
+  ApiInternalAgencyOttoProposalsRouteImport.update({
+    id: '/api/internal/agency-otto-proposals',
+    path: '/api/internal/agency-otto-proposals',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiInternalAgencyOttoPageInputsRoute =
+  ApiInternalAgencyOttoPageInputsRouteImport.update({
+    id: '/api/internal/agency-otto-page-inputs',
+    path: '/api/internal/agency-otto-page-inputs',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiInternalAgencyOpsArtifactsRoute =
+  ApiInternalAgencyOpsArtifactsRouteImport.update({
+    id: '/api/internal/agency-ops-artifacts',
+    path: '/api/internal/agency-ops-artifacts',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiInternalAgencyMonthlyExportRoute =
+  ApiInternalAgencyMonthlyExportRouteImport.update({
+    id: '/api/internal/agency-monthly-export',
+    path: '/api/internal/agency-monthly-export',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiInternalAgencyLoopReportsRoute =
+  ApiInternalAgencyLoopReportsRouteImport.update({
+    id: '/api/internal/agency-loop-reports',
+    path: '/api/internal/agency-loop-reports',
+    getParentRoute: () => rootRouteImport,
   } as any)
 const ApiAutumnSplatRoute = ApiAutumnSplatRouteImport.update({
   id: '/api/autumn/$',
@@ -236,6 +329,11 @@ const ProjectPProjectIdPromptExplorerRoute =
     path: '/prompt-explorer',
     getParentRoute: () => ProjectPProjectIdRouteRoute,
   } as any)
+const ProjectPProjectIdLoopsRoute = ProjectPProjectIdLoopsRouteImport.update({
+  id: '/loops',
+  path: '/loops',
+  getParentRoute: () => ProjectPProjectIdRouteRoute,
+} as any)
 const ProjectPProjectIdKeywordsRoute =
   ProjectPProjectIdKeywordsRouteImport.update({
     id: '/keywords',
@@ -264,6 +362,12 @@ const ProjectPProjectIdAuditRoute = ProjectPProjectIdAuditRouteImport.update({
   path: '/audit',
   getParentRoute: () => ProjectPProjectIdRouteRoute,
 } as any)
+const ProjectPProjectIdAiVisibilityRoute =
+  ProjectPProjectIdAiVisibilityRouteImport.update({
+    id: '/ai-visibility',
+    path: '/ai-visibility',
+    getParentRoute: () => ProjectPProjectIdRouteRoute,
+  } as any)
 const ProjectPProjectIdSettingsIndexRoute =
   ProjectPProjectIdSettingsIndexRouteImport.update({
     id: '/',
@@ -315,6 +419,7 @@ export interface FileRoutesByFullPath {
   '/.well-known/openai-apps-challenge': typeof Char91DotwellKnownChar93OpenaiAppsChallengeRoute
   '/ai': typeof AppAiRoute
   '/billing': typeof AppBillingRoute
+  '/operations': typeof AppOperationsRoute
   '/projects': typeof AppProjectsRoute
   '/settings': typeof AppSettingsRoute
   '/support': typeof AppSupportRoute
@@ -329,12 +434,27 @@ export interface FileRoutesByFullPath {
   '/onboarding/chat': typeof AuthenticatedOnboardingChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/autumn/$': typeof ApiAutumnSplatRoute
+  '/api/internal/agency-loop-reports': typeof ApiInternalAgencyLoopReportsRoute
+  '/api/internal/agency-monthly-export': typeof ApiInternalAgencyMonthlyExportRoute
+  '/api/internal/agency-ops-artifacts': typeof ApiInternalAgencyOpsArtifactsRoute
+  '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
+  '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
+  '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
+  '/api/internal/audits': typeof ApiInternalAuditsRoute
+  '/api/internal/ga4': typeof ApiInternalGa4Route
+  '/api/internal/gsc': typeof ApiInternalGscRoute
+  '/api/internal/loops-enabled': typeof ApiInternalLoopsEnabledRoute
+  '/api/internal/projects': typeof ApiInternalProjectsRoute
+  '/api/internal/tracker': typeof ApiInternalTrackerRoute
+  '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/onboarding/': typeof AuthenticatedOnboardingIndexRoute
+  '/p/$projectId/ai-visibility': typeof ProjectPProjectIdAiVisibilityRoute
   '/p/$projectId/audit': typeof ProjectPProjectIdAuditRouteWithChildren
   '/p/$projectId/backlinks': typeof ProjectPProjectIdBacklinksRoute
   '/p/$projectId/brand-lookup': typeof ProjectPProjectIdBrandLookupRoute
   '/p/$projectId/domain': typeof ProjectPProjectIdDomainRoute
   '/p/$projectId/keywords': typeof ProjectPProjectIdKeywordsRoute
+  '/p/$projectId/loops': typeof ProjectPProjectIdLoopsRoute
   '/p/$projectId/prompt-explorer': typeof ProjectPProjectIdPromptExplorerRoute
   '/p/$projectId/rank-tracking': typeof ProjectPProjectIdRankTrackingRouteWithChildren
   '/p/$projectId/sam': typeof ProjectPProjectIdSamRoute
@@ -360,6 +480,7 @@ export interface FileRoutesByTo {
   '/.well-known/openai-apps-challenge': typeof Char91DotwellKnownChar93OpenaiAppsChallengeRoute
   '/ai': typeof AppAiRoute
   '/billing': typeof AppBillingRoute
+  '/operations': typeof AppOperationsRoute
   '/projects': typeof AppProjectsRoute
   '/settings': typeof AppSettingsRoute
   '/support': typeof AppSupportRoute
@@ -373,11 +494,26 @@ export interface FileRoutesByTo {
   '/onboarding/chat': typeof AuthenticatedOnboardingChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/autumn/$': typeof ApiAutumnSplatRoute
+  '/api/internal/agency-loop-reports': typeof ApiInternalAgencyLoopReportsRoute
+  '/api/internal/agency-monthly-export': typeof ApiInternalAgencyMonthlyExportRoute
+  '/api/internal/agency-ops-artifacts': typeof ApiInternalAgencyOpsArtifactsRoute
+  '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
+  '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
+  '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
+  '/api/internal/audits': typeof ApiInternalAuditsRoute
+  '/api/internal/ga4': typeof ApiInternalGa4Route
+  '/api/internal/gsc': typeof ApiInternalGscRoute
+  '/api/internal/loops-enabled': typeof ApiInternalLoopsEnabledRoute
+  '/api/internal/projects': typeof ApiInternalProjectsRoute
+  '/api/internal/tracker': typeof ApiInternalTrackerRoute
+  '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/onboarding': typeof AuthenticatedOnboardingIndexRoute
+  '/p/$projectId/ai-visibility': typeof ProjectPProjectIdAiVisibilityRoute
   '/p/$projectId/backlinks': typeof ProjectPProjectIdBacklinksRoute
   '/p/$projectId/brand-lookup': typeof ProjectPProjectIdBrandLookupRoute
   '/p/$projectId/domain': typeof ProjectPProjectIdDomainRoute
   '/p/$projectId/keywords': typeof ProjectPProjectIdKeywordsRoute
+  '/p/$projectId/loops': typeof ProjectPProjectIdLoopsRoute
   '/p/$projectId/prompt-explorer': typeof ProjectPProjectIdPromptExplorerRoute
   '/p/$projectId/sam': typeof ProjectPProjectIdSamRoute
   '/p/$projectId/saved': typeof ProjectPProjectIdSavedRoute
@@ -405,6 +541,7 @@ export interface FileRoutesById {
   '/.well-known/openai-apps-challenge': typeof Char91DotwellKnownChar93OpenaiAppsChallengeRoute
   '/_app/ai': typeof AppAiRoute
   '/_app/billing': typeof AppBillingRoute
+  '/_app/operations': typeof AppOperationsRoute
   '/_app/projects': typeof AppProjectsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/support': typeof AppSupportRoute
@@ -420,12 +557,27 @@ export interface FileRoutesById {
   '/_authenticated/onboarding/chat': typeof AuthenticatedOnboardingChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/autumn/$': typeof ApiAutumnSplatRoute
+  '/api/internal/agency-loop-reports': typeof ApiInternalAgencyLoopReportsRoute
+  '/api/internal/agency-monthly-export': typeof ApiInternalAgencyMonthlyExportRoute
+  '/api/internal/agency-ops-artifacts': typeof ApiInternalAgencyOpsArtifactsRoute
+  '/api/internal/agency-otto-page-inputs': typeof ApiInternalAgencyOttoPageInputsRoute
+  '/api/internal/agency-otto-proposals': typeof ApiInternalAgencyOttoProposalsRoute
+  '/api/internal/agency-score-inputs': typeof ApiInternalAgencyScoreInputsRoute
+  '/api/internal/audits': typeof ApiInternalAuditsRoute
+  '/api/internal/ga4': typeof ApiInternalGa4Route
+  '/api/internal/gsc': typeof ApiInternalGscRoute
+  '/api/internal/loops-enabled': typeof ApiInternalLoopsEnabledRoute
+  '/api/internal/projects': typeof ApiInternalProjectsRoute
+  '/api/internal/tracker': typeof ApiInternalTrackerRoute
+  '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/_authenticated/onboarding/': typeof AuthenticatedOnboardingIndexRoute
+  '/_project/p/$projectId/ai-visibility': typeof ProjectPProjectIdAiVisibilityRoute
   '/_project/p/$projectId/audit': typeof ProjectPProjectIdAuditRouteWithChildren
   '/_project/p/$projectId/backlinks': typeof ProjectPProjectIdBacklinksRoute
   '/_project/p/$projectId/brand-lookup': typeof ProjectPProjectIdBrandLookupRoute
   '/_project/p/$projectId/domain': typeof ProjectPProjectIdDomainRoute
   '/_project/p/$projectId/keywords': typeof ProjectPProjectIdKeywordsRoute
+  '/_project/p/$projectId/loops': typeof ProjectPProjectIdLoopsRoute
   '/_project/p/$projectId/prompt-explorer': typeof ProjectPProjectIdPromptExplorerRoute
   '/_project/p/$projectId/rank-tracking': typeof ProjectPProjectIdRankTrackingRouteWithChildren
   '/_project/p/$projectId/sam': typeof ProjectPProjectIdSamRoute
@@ -453,6 +605,7 @@ export interface FileRouteTypes {
     | '/.well-known/openai-apps-challenge'
     | '/ai'
     | '/billing'
+    | '/operations'
     | '/projects'
     | '/settings'
     | '/support'
@@ -467,12 +620,27 @@ export interface FileRouteTypes {
     | '/onboarding/chat'
     | '/api/auth/$'
     | '/api/autumn/$'
+    | '/api/internal/agency-loop-reports'
+    | '/api/internal/agency-monthly-export'
+    | '/api/internal/agency-ops-artifacts'
+    | '/api/internal/agency-otto-page-inputs'
+    | '/api/internal/agency-otto-proposals'
+    | '/api/internal/agency-score-inputs'
+    | '/api/internal/audits'
+    | '/api/internal/ga4'
+    | '/api/internal/gsc'
+    | '/api/internal/loops-enabled'
+    | '/api/internal/projects'
+    | '/api/internal/tracker'
+    | '/api/internal/trigger-sam-loops'
     | '/onboarding/'
+    | '/p/$projectId/ai-visibility'
     | '/p/$projectId/audit'
     | '/p/$projectId/backlinks'
     | '/p/$projectId/brand-lookup'
     | '/p/$projectId/domain'
     | '/p/$projectId/keywords'
+    | '/p/$projectId/loops'
     | '/p/$projectId/prompt-explorer'
     | '/p/$projectId/rank-tracking'
     | '/p/$projectId/sam'
@@ -498,6 +666,7 @@ export interface FileRouteTypes {
     | '/.well-known/openai-apps-challenge'
     | '/ai'
     | '/billing'
+    | '/operations'
     | '/projects'
     | '/settings'
     | '/support'
@@ -511,11 +680,26 @@ export interface FileRouteTypes {
     | '/onboarding/chat'
     | '/api/auth/$'
     | '/api/autumn/$'
+    | '/api/internal/agency-loop-reports'
+    | '/api/internal/agency-monthly-export'
+    | '/api/internal/agency-ops-artifacts'
+    | '/api/internal/agency-otto-page-inputs'
+    | '/api/internal/agency-otto-proposals'
+    | '/api/internal/agency-score-inputs'
+    | '/api/internal/audits'
+    | '/api/internal/ga4'
+    | '/api/internal/gsc'
+    | '/api/internal/loops-enabled'
+    | '/api/internal/projects'
+    | '/api/internal/tracker'
+    | '/api/internal/trigger-sam-loops'
     | '/onboarding'
+    | '/p/$projectId/ai-visibility'
     | '/p/$projectId/backlinks'
     | '/p/$projectId/brand-lookup'
     | '/p/$projectId/domain'
     | '/p/$projectId/keywords'
+    | '/p/$projectId/loops'
     | '/p/$projectId/prompt-explorer'
     | '/p/$projectId/sam'
     | '/p/$projectId/saved'
@@ -542,6 +726,7 @@ export interface FileRouteTypes {
     | '/.well-known/openai-apps-challenge'
     | '/_app/ai'
     | '/_app/billing'
+    | '/_app/operations'
     | '/_app/projects'
     | '/_app/settings'
     | '/_app/support'
@@ -557,12 +742,27 @@ export interface FileRouteTypes {
     | '/_authenticated/onboarding/chat'
     | '/api/auth/$'
     | '/api/autumn/$'
+    | '/api/internal/agency-loop-reports'
+    | '/api/internal/agency-monthly-export'
+    | '/api/internal/agency-ops-artifacts'
+    | '/api/internal/agency-otto-page-inputs'
+    | '/api/internal/agency-otto-proposals'
+    | '/api/internal/agency-score-inputs'
+    | '/api/internal/audits'
+    | '/api/internal/ga4'
+    | '/api/internal/gsc'
+    | '/api/internal/loops-enabled'
+    | '/api/internal/projects'
+    | '/api/internal/tracker'
+    | '/api/internal/trigger-sam-loops'
     | '/_authenticated/onboarding/'
+    | '/_project/p/$projectId/ai-visibility'
     | '/_project/p/$projectId/audit'
     | '/_project/p/$projectId/backlinks'
     | '/_project/p/$projectId/brand-lookup'
     | '/_project/p/$projectId/domain'
     | '/_project/p/$projectId/keywords'
+    | '/_project/p/$projectId/loops'
     | '/_project/p/$projectId/prompt-explorer'
     | '/_project/p/$projectId/rank-tracking'
     | '/_project/p/$projectId/sam'
@@ -593,6 +793,19 @@ export interface RootRouteChildren {
   ApiHealthRoute: typeof ApiHealthRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiAutumnSplatRoute: typeof ApiAutumnSplatRoute
+  ApiInternalAgencyLoopReportsRoute: typeof ApiInternalAgencyLoopReportsRoute
+  ApiInternalAgencyMonthlyExportRoute: typeof ApiInternalAgencyMonthlyExportRoute
+  ApiInternalAgencyOpsArtifactsRoute: typeof ApiInternalAgencyOpsArtifactsRoute
+  ApiInternalAgencyOttoPageInputsRoute: typeof ApiInternalAgencyOttoPageInputsRoute
+  ApiInternalAgencyOttoProposalsRoute: typeof ApiInternalAgencyOttoProposalsRoute
+  ApiInternalAgencyScoreInputsRoute: typeof ApiInternalAgencyScoreInputsRoute
+  ApiInternalAuditsRoute: typeof ApiInternalAuditsRoute
+  ApiInternalGa4Route: typeof ApiInternalGa4Route
+  ApiInternalGscRoute: typeof ApiInternalGscRoute
+  ApiInternalLoopsEnabledRoute: typeof ApiInternalLoopsEnabledRoute
+  ApiInternalProjectsRoute: typeof ApiInternalProjectsRoute
+  ApiInternalTrackerRoute: typeof ApiInternalTrackerRoute
+  ApiInternalTriggerSamLoopsRoute: typeof ApiInternalTriggerSamLoopsRoute
   ApiGa4OauthCallbackRoute: typeof ApiGa4OauthCallbackRoute
   ApiGscOauthCallbackRoute: typeof ApiGscOauthCallbackRoute
 }
@@ -711,6 +924,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/_app/operations': {
+      id: '/_app/operations'
+      path: '/operations'
+      fullPath: '/operations'
+      preLoaderRoute: typeof AppOperationsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_app/billing': {
       id: '/_app/billing'
       path: '/billing'
@@ -738,6 +958,97 @@ declare module '@tanstack/react-router' {
       fullPath: '/onboarding/'
       preLoaderRoute: typeof AuthenticatedOnboardingIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/api/internal/trigger-sam-loops': {
+      id: '/api/internal/trigger-sam-loops'
+      path: '/api/internal/trigger-sam-loops'
+      fullPath: '/api/internal/trigger-sam-loops'
+      preLoaderRoute: typeof ApiInternalTriggerSamLoopsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/tracker': {
+      id: '/api/internal/tracker'
+      path: '/api/internal/tracker'
+      fullPath: '/api/internal/tracker'
+      preLoaderRoute: typeof ApiInternalTrackerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/projects': {
+      id: '/api/internal/projects'
+      path: '/api/internal/projects'
+      fullPath: '/api/internal/projects'
+      preLoaderRoute: typeof ApiInternalProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/loops-enabled': {
+      id: '/api/internal/loops-enabled'
+      path: '/api/internal/loops-enabled'
+      fullPath: '/api/internal/loops-enabled'
+      preLoaderRoute: typeof ApiInternalLoopsEnabledRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/gsc': {
+      id: '/api/internal/gsc'
+      path: '/api/internal/gsc'
+      fullPath: '/api/internal/gsc'
+      preLoaderRoute: typeof ApiInternalGscRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/ga4': {
+      id: '/api/internal/ga4'
+      path: '/api/internal/ga4'
+      fullPath: '/api/internal/ga4'
+      preLoaderRoute: typeof ApiInternalGa4RouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/audits': {
+      id: '/api/internal/audits'
+      path: '/api/internal/audits'
+      fullPath: '/api/internal/audits'
+      preLoaderRoute: typeof ApiInternalAuditsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/agency-score-inputs': {
+      id: '/api/internal/agency-score-inputs'
+      path: '/api/internal/agency-score-inputs'
+      fullPath: '/api/internal/agency-score-inputs'
+      preLoaderRoute: typeof ApiInternalAgencyScoreInputsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/agency-otto-proposals': {
+      id: '/api/internal/agency-otto-proposals'
+      path: '/api/internal/agency-otto-proposals'
+      fullPath: '/api/internal/agency-otto-proposals'
+      preLoaderRoute: typeof ApiInternalAgencyOttoProposalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/agency-otto-page-inputs': {
+      id: '/api/internal/agency-otto-page-inputs'
+      path: '/api/internal/agency-otto-page-inputs'
+      fullPath: '/api/internal/agency-otto-page-inputs'
+      preLoaderRoute: typeof ApiInternalAgencyOttoPageInputsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/agency-ops-artifacts': {
+      id: '/api/internal/agency-ops-artifacts'
+      path: '/api/internal/agency-ops-artifacts'
+      fullPath: '/api/internal/agency-ops-artifacts'
+      preLoaderRoute: typeof ApiInternalAgencyOpsArtifactsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/agency-monthly-export': {
+      id: '/api/internal/agency-monthly-export'
+      path: '/api/internal/agency-monthly-export'
+      fullPath: '/api/internal/agency-monthly-export'
+      preLoaderRoute: typeof ApiInternalAgencyMonthlyExportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/agency-loop-reports': {
+      id: '/api/internal/agency-loop-reports'
+      path: '/api/internal/agency-loop-reports'
+      fullPath: '/api/internal/agency-loop-reports'
+      preLoaderRoute: typeof ApiInternalAgencyLoopReportsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/autumn/$': {
       id: '/api/autumn/$'
@@ -844,6 +1155,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectPProjectIdPromptExplorerRouteImport
       parentRoute: typeof ProjectPProjectIdRouteRoute
     }
+    '/_project/p/$projectId/loops': {
+      id: '/_project/p/$projectId/loops'
+      path: '/loops'
+      fullPath: '/p/$projectId/loops'
+      preLoaderRoute: typeof ProjectPProjectIdLoopsRouteImport
+      parentRoute: typeof ProjectPProjectIdRouteRoute
+    }
     '/_project/p/$projectId/keywords': {
       id: '/_project/p/$projectId/keywords'
       path: '/keywords'
@@ -877,6 +1195,13 @@ declare module '@tanstack/react-router' {
       path: '/audit'
       fullPath: '/p/$projectId/audit'
       preLoaderRoute: typeof ProjectPProjectIdAuditRouteImport
+      parentRoute: typeof ProjectPProjectIdRouteRoute
+    }
+    '/_project/p/$projectId/ai-visibility': {
+      id: '/_project/p/$projectId/ai-visibility'
+      path: '/ai-visibility'
+      fullPath: '/p/$projectId/ai-visibility'
+      preLoaderRoute: typeof ProjectPProjectIdAiVisibilityRouteImport
       parentRoute: typeof ProjectPProjectIdRouteRoute
     }
     '/_project/p/$projectId/settings/': {
@@ -934,6 +1259,7 @@ declare module '@tanstack/react-router' {
 interface AppRouteRouteChildren {
   AppAiRoute: typeof AppAiRoute
   AppBillingRoute: typeof AppBillingRoute
+  AppOperationsRoute: typeof AppOperationsRoute
   AppProjectsRoute: typeof AppProjectsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppSupportRoute: typeof AppSupportRoute
@@ -945,6 +1271,7 @@ interface AppRouteRouteChildren {
 const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppAiRoute: AppAiRoute,
   AppBillingRoute: AppBillingRoute,
+  AppOperationsRoute: AppOperationsRoute,
   AppProjectsRoute: AppProjectsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppSupportRoute: AppSupportRoute,
@@ -1013,11 +1340,13 @@ const ProjectPProjectIdSettingsRouteWithChildren =
   )
 
 interface ProjectPProjectIdRouteRouteChildren {
+  ProjectPProjectIdAiVisibilityRoute: typeof ProjectPProjectIdAiVisibilityRoute
   ProjectPProjectIdAuditRoute: typeof ProjectPProjectIdAuditRouteWithChildren
   ProjectPProjectIdBacklinksRoute: typeof ProjectPProjectIdBacklinksRoute
   ProjectPProjectIdBrandLookupRoute: typeof ProjectPProjectIdBrandLookupRoute
   ProjectPProjectIdDomainRoute: typeof ProjectPProjectIdDomainRoute
   ProjectPProjectIdKeywordsRoute: typeof ProjectPProjectIdKeywordsRoute
+  ProjectPProjectIdLoopsRoute: typeof ProjectPProjectIdLoopsRoute
   ProjectPProjectIdPromptExplorerRoute: typeof ProjectPProjectIdPromptExplorerRoute
   ProjectPProjectIdRankTrackingRoute: typeof ProjectPProjectIdRankTrackingRouteWithChildren
   ProjectPProjectIdSamRoute: typeof ProjectPProjectIdSamRoute
@@ -1029,11 +1358,13 @@ interface ProjectPProjectIdRouteRouteChildren {
 
 const ProjectPProjectIdRouteRouteChildren: ProjectPProjectIdRouteRouteChildren =
   {
+    ProjectPProjectIdAiVisibilityRoute: ProjectPProjectIdAiVisibilityRoute,
     ProjectPProjectIdAuditRoute: ProjectPProjectIdAuditRouteWithChildren,
     ProjectPProjectIdBacklinksRoute: ProjectPProjectIdBacklinksRoute,
     ProjectPProjectIdBrandLookupRoute: ProjectPProjectIdBrandLookupRoute,
     ProjectPProjectIdDomainRoute: ProjectPProjectIdDomainRoute,
     ProjectPProjectIdKeywordsRoute: ProjectPProjectIdKeywordsRoute,
+    ProjectPProjectIdLoopsRoute: ProjectPProjectIdLoopsRoute,
     ProjectPProjectIdPromptExplorerRoute: ProjectPProjectIdPromptExplorerRoute,
     ProjectPProjectIdRankTrackingRoute:
       ProjectPProjectIdRankTrackingRouteWithChildren,
@@ -1105,6 +1436,19 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHealthRoute: ApiHealthRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiAutumnSplatRoute: ApiAutumnSplatRoute,
+  ApiInternalAgencyLoopReportsRoute: ApiInternalAgencyLoopReportsRoute,
+  ApiInternalAgencyMonthlyExportRoute: ApiInternalAgencyMonthlyExportRoute,
+  ApiInternalAgencyOpsArtifactsRoute: ApiInternalAgencyOpsArtifactsRoute,
+  ApiInternalAgencyOttoPageInputsRoute: ApiInternalAgencyOttoPageInputsRoute,
+  ApiInternalAgencyOttoProposalsRoute: ApiInternalAgencyOttoProposalsRoute,
+  ApiInternalAgencyScoreInputsRoute: ApiInternalAgencyScoreInputsRoute,
+  ApiInternalAuditsRoute: ApiInternalAuditsRoute,
+  ApiInternalGa4Route: ApiInternalGa4Route,
+  ApiInternalGscRoute: ApiInternalGscRoute,
+  ApiInternalLoopsEnabledRoute: ApiInternalLoopsEnabledRoute,
+  ApiInternalProjectsRoute: ApiInternalProjectsRoute,
+  ApiInternalTrackerRoute: ApiInternalTrackerRoute,
+  ApiInternalTriggerSamLoopsRoute: ApiInternalTriggerSamLoopsRoute,
   ApiGa4OauthCallbackRoute: ApiGa4OauthCallbackRoute,
   ApiGscOauthCallbackRoute: ApiGscOauthCallbackRoute,
 }

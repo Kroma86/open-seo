@@ -21,6 +21,17 @@ import {
   getAuditStatusTool,
   runSiteAuditTool,
 } from "@/server/mcp/tools/site-audit-tools";
+import { getAgencyOttoPageInputsTool } from "@/server/mcp/tools/get-agency-otto-page-inputs";
+import {
+  listHomegrownOttoProposalsTool,
+  proposeHomegrownOttoFixesTool,
+} from "@/server/mcp/tools/homegrown-otto-tools";
+import {
+  getSamLoopRunsTool,
+  listSamLoopsTool,
+} from "@/server/mcp/tools/sam-loop-tools";
+import { getNiceseoOpsStatusTool } from "@/server/mcp/tools/get-niceseo-ops-status";
+import { getAgencyScoreInputsTool } from "@/server/mcp/tools/get-agency-score-inputs";
 import { listSavedKeywordsTool } from "@/server/mcp/tools/list-saved-keywords";
 import { buildUpdateProjectContextTool } from "@/server/mcp/tools/project-context";
 import {
@@ -35,6 +46,13 @@ import {
   getGoogleAnalyticsTrafficAcquisitionTool,
   getSearchOpportunitiesTool,
 } from "@/server/mcp/tools/google-analytics-tools";
+import {
+  exploreAiPromptTool,
+  getAiBrandVisibilityTool,
+} from "@/server/mcp/tools/ai-search-tools";
+import { getAiVisibilityTrendTool } from "@/server/mcp/tools/get-ai-visibility-trend";
+import { manageAiVisibilityTrackingTool } from "@/server/mcp/tools/manage-ai-visibility-tracking";
+import { runAiVisibilityCheckTool } from "@/server/mcp/tools/run-ai-visibility-check";
 import {
   findSerpCompetitorsTool,
   getGoogleBusinessQuestionsTool,
@@ -367,6 +385,11 @@ export function buildSamMcpTools(
     list_business_categories: adaptTool(listBusinessCategoriesTool),
     get_local_rank_grid: adaptTool(getLocalRankGridTool),
     get_keyword_metrics: adaptTool(getKeywordMetricsTool),
+    get_ai_brand_visibility: adaptTool(getAiBrandVisibilityTool),
+    explore_ai_prompt: adaptTool(exploreAiPromptTool),
+    get_ai_visibility_trend: adaptTool(getAiVisibilityTrendTool),
+    run_ai_visibility_check: adaptTool(runAiVisibilityCheckTool),
+    manage_ai_visibility_tracking: adaptTool(manageAiVisibilityTrackingTool),
     get_search_console_performance: adaptTool(getSearchConsolePerformanceTool),
     inspect_urls: adaptTool(inspectUrlsTool),
     // Unconditional like the MCP server's registrations — the GA4 launch gate
@@ -403,5 +426,12 @@ export function buildSamMcpTools(
     get_audit_status: waitingAuditStatusTool(adaptTool),
     get_audit_issues: adaptTool(getAuditIssuesTool),
     get_audit_pages: adaptTool(getAuditPagesTool),
+    get_agency_otto_page_inputs: adaptTool(getAgencyOttoPageInputsTool),
+    propose_homegrown_otto_fixes: adaptTool(proposeHomegrownOttoFixesTool),
+    list_homegrown_otto_proposals: adaptTool(listHomegrownOttoProposalsTool),
+    get_niceseo_ops_status: adaptTool(getNiceseoOpsStatusTool),
+    get_agency_score_inputs: adaptTool(getAgencyScoreInputsTool),
+    list_sam_loops: adaptTool(listSamLoopsTool),
+    get_sam_loop_runs: adaptTool(getSamLoopRunsTool),
   };
 }

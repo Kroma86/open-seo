@@ -20,6 +20,7 @@ declare namespace Cloudflare {
     BYPASS_EMAIL_VERIFICATION?: string;
     TEAM_DOMAIN?: string;
     POLICY_AUD?: string;
+    MCP_POLICY_AUD?: string;
     POSTHOG_PUBLIC_KEY?: string;
     POSTHOG_HOST?: string;
     BETTER_AUTH_SECRET?: string;
@@ -38,6 +39,14 @@ declare namespace Cloudflare {
     // HMAC secret for the operator-only GDPR storage-erasure endpoint.
     GDPR_ERASURE_SECRET?: string;
 
+    // Bearer token for GET /api/internal/agency-score-inputs (Hermes machine export).
+    AGENCY_SCORE_EXPORT_TOKEN?: string;
+    // Optional override for the Sam loop daily run cap (1..1000; default 40).
+    SAM_LOOP_DAILY_RUN_CAP?: string;
+    // Agency board metrics for SAM pixel/OTTO status.
+    AGENCY_METRICS_URL?: string;
+    AGENCY_DASH_TOKEN?: string;
+
     // Cloudflare Turnstile — signup captcha (hosted only). Secret verifies
     // tokens server-side; site key is public and inlined into the client build.
     TURNSTILE_SECRET_KEY?: string;
@@ -50,6 +59,10 @@ declare namespace Cloudflare {
     OPENROUTER_API_KEY?: string;
     // Optional OpenRouter model slug override (defaults in openrouter.ts).
     OPENROUTER_MODEL?: string;
+    // Optional. Default true. Set "false" to allow non-ZDR providers (e.g. Anthropic).
+    OPENROUTER_ZDR?: string;
+    // Optional. Default true. Set "false" to disable Anthropic prompt caching.
+    OPENROUTER_PROMPT_CACHE?: string;
   }
 }
 

@@ -9,7 +9,7 @@ import {
 } from "@modelcontextprotocol/server";
 import { getHostedBaseUrl } from "@/lib/auth";
 import { MCP_SCOPE } from "@/lib/oauth-resource";
-import { resolveCloudflareAccessContext } from "@/middleware/ensure-user/cloudflareAccess";
+import type { EnsuredUserContext } from "@/middleware/ensure-user/types";
 import { resolveLocalNoAuthContext } from "@/middleware/ensure-user/delegated";
 import {
   createWorkersOAuthMcpProps,
@@ -181,6 +181,10 @@ export async function handleSelfHostedOpenSeoMcpRequest(
   authMode: "cloudflare_access" | "local_noauth",
   env: unknown,
   ctx: ExecutionContext,
+  // Explicitly nullable: cloudflare_access callers must pass the resolved
+  // gate context; local_noauth / OPTIONS callers pass null (identity is
+  // resolved or unused inside). Forgetting the argument is a type error.
+  accessContext: EnsuredUserContext | null,
 ): Promise<Response> {
   // Preflight does not carry an authenticated application context.
   if (request.method === "OPTIONS") {
@@ -190,7 +194,10 @@ export async function handleSelfHostedOpenSeoMcpRequest(
   const identity =
     authMode === "local_noauth"
       ? await resolveLocalNoAuthContext()
-      : await resolveCloudflareAccessContext(request.headers);
+      : accessContext;
+  if (!identity) {
+    throw new Error("Cloudflare Access context is required for MCP requests");
+  }
   const props = createWorkersOAuthMcpProps({
     userId: identity.userId,
     userEmail: identity.userEmail,

@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -253,13 +254,22 @@ export function ChatComposer({
   busy,
   onSend,
   placeholder = "Ask Sam about your strategy or OpenSEO…",
+  initialValue = "",
+  autoFocus = false,
 }: {
   busy: boolean;
   onSend: (text: string) => void;
   placeholder?: string;
+  initialValue?: string;
+  autoFocus?: boolean;
 }) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialValue);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    textareaRef.current?.focus();
+  }, [autoFocus]);
 
   // Auto-grow the textarea up to a few lines, then scroll. Resetting height to
   // `auto` first lets it shrink as well as grow.

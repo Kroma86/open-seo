@@ -30,6 +30,11 @@
       "binding": "RANK_CHECK_WORKFLOW",
       "class_name": "RankCheckWorkflow",
     },
+    {
+      "name": "sam-loop-workflow",
+      "binding": "SAM_LOOP_WORKFLOW",
+      "class_name": "SamLoopWorkflow",
+    },
   ],
   // Durable Object backing the onboarding strategy chat (Agents SDK
   // AIChatAgent). One instance per project; messages persist in the DO's

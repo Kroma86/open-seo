@@ -172,12 +172,21 @@ const resolveSelfHostAccess = (
   stage: string,
   provision: boolean,
   workersSubdomain: string,
+  customDomain: string,
 ) =>
   Effect.gen(function* () {
     let teamDomain = yield* optionalVar("TEAM_DOMAIN");
     let policyAud: Alchemy.Input<string> = yield* optionalVar("POLICY_AUD");
+    let mcpPolicyAud: Alchemy.Input<string> | undefined = yield* optionalVar(
+      "MCP_POLICY_AUD",
+    );
+    // A hand-set TEAM_DOMAIN+POLICY_AUD short-circuits ALL Access
+    // provisioning — including the MCP service-auth app (never created on
+    // this path) and any comparison of a hand-set MCP_POLICY_AUD against a
+    // provisioned app (there is none to compare). The manual path gets no
+    // MCP service auth; let alchemy provision to get it.
     if (!provision || (teamDomain && policyAud)) {
-      return { teamDomain, policyAud };
+      return { teamDomain, policyAud, mcpPolicyAud };
     }
     const { accountId } = yield* yield* Cloudflare.CloudflareEnvironment;
 
@@ -241,18 +250,60 @@ const resolveSelfHostAccess = (
       const allowedEmails = yield* requireAllowedEmails(
         "Set ACCESS_ALLOWED_EMAILS to the comma-separated emails allowed through Cloudflare Access — or set TEAM_DOMAIN and POLICY_AUD to manage the Access application yourself.",
       );
-      const application = yield* emailAccessGate({
+      const workersHostname = `${workerName(stage)}.${subdomain}`;
+      // Prefer the public custom domain as the primary Access hostname when set,
+      // and keep workers.dev protected too so old bookmarks stay gated.
+      // Path bypass on /api/internal lets Hermes through Access; the Worker
+      // still requires AGENCY_SCORE_EXPORT_TOKEN on those routes.
+      // Service Auth on /mcp lets Grok Bot through Access; the Worker still
+      // requires OpenSEO OAuth on MCP routes.
+      const gate = yield* emailAccessGate({
         policyId: "SelfHostAllowUsers",
         applicationId: "SelfHostAccess",
         policyName: `open-seo ${stage} self-host users`,
-        applicationName: `open-seo ${stage}`,
-        domain: `${workerName(stage)}.${subdomain}`,
+        applicationName: customDomain
+          ? `open-seo ${stage} (${customDomain})`
+          : `open-seo ${stage}`,
+        domain: customDomain || workersHostname,
+        extraDomains: customDomain ? [workersHostname] : [],
         emails: allowedEmails,
+        internalApiBypass: {
+          policyId: "SelfHostInternalBypass",
+          applicationId: "SelfHostInternalAccess",
+          policyName: `open-seo ${stage} internal API bypass`,
+          applicationName: customDomain
+            ? `open-seo ${stage} internal (${customDomain})`
+            : `open-seo ${stage} internal`,
+        },
+        mcpServiceAuth: {
+          serviceTokenId: "GrokBotMcpServiceToken",
+          serviceTokenName: "grok-bot-openseo-mcp",
+          policyId: "SelfHostMcpServiceAuth",
+          applicationId: "SelfHostMcpAccess",
+          policyName: `open-seo ${stage} MCP service auth`,
+          applicationName: customDomain
+            ? `open-seo ${stage} mcp (${customDomain})`
+            : `open-seo ${stage} mcp`,
+        },
+        mcpDiscoveryBypass: {
+          policyId: "SelfHostMcpDiscoveryBypass",
+          applicationId: "SelfHostMcpDiscoveryAccess",
+          policyName: `open-seo ${stage} MCP discovery bypass`,
+          applicationName: customDomain
+            ? `open-seo ${stage} mcp discovery (${customDomain})`
+            : `open-seo ${stage} mcp discovery`,
+        },
       });
-      policyAud = application.aud;
+      policyAud = gate.application.aud;
+      if (!mcpPolicyAud) {
+        // Leave undefined when the gate did not provision one: the Worker
+        // binding stays absent and the service-token branch is visibly off,
+        // never silently degraded to an empty-string AUD.
+        mcpPolicyAud = gate.mcpPolicyAud;
+      }
     }
 
-    return { teamDomain, policyAud };
+    return { teamDomain, policyAud, mcpPolicyAud };
   });
 
 // Secrets/vars resolve from the env file passed to `alchemy deploy`
@@ -269,6 +320,12 @@ const dataEnv = {
   GOOGLE_CLIENT_SECRET: optionalSecret("GOOGLE_CLIENT_SECRET"),
   OPENROUTER_API_KEY: optionalSecret("OPENROUTER_API_KEY"),
   OPENROUTER_MODEL: optionalVar("OPENROUTER_MODEL"),
+  // "false" / "0" / "off" disables request-level ZDR (needed for first-party
+  // Anthropic Opus when no ZDR endpoints exist for that model).
+  OPENROUTER_ZDR: optionalVar("OPENROUTER_ZDR"),
+  // "false" / "0" / "off" disables Anthropic prompt-cache breakpoints on
+  // anthropic/* chat-agent models (default on).
+  OPENROUTER_PROMPT_CACHE: optionalVar("OPENROUTER_PROMPT_CACHE"),
   AUTUMN_SECRET_KEY: optionalSecret("AUTUMN_SECRET_KEY"),
   AUTUMN_WEBHOOK_SECRET: optionalSecret("AUTUMN_WEBHOOK_SECRET"),
   GDPR_ERASURE_SECRET: optionalSecret("GDPR_ERASURE_SECRET"),
@@ -286,6 +343,13 @@ const dataEnv = {
   // Alchemy reconciles worker vars on every deploy, so the telemetry opt-out
   // must live in the env file — a dashboard-set var would be wiped.
   OPENSEO_TELEMETRY_DISABLED: optionalVar("OPENSEO_TELEMETRY_DISABLED"),
+  // Machine export for NiceSEO agency board + HomeGrown OTTO (Hermes bearer).
+  AGENCY_SCORE_EXPORT_TOKEN: optionalSecret("AGENCY_SCORE_EXPORT_TOKEN"),
+  // Sam loop daily run cap (scheduled + manual); unset keeps the code default.
+  SAM_LOOP_DAILY_RUN_CAP: optionalVar("SAM_LOOP_DAILY_RUN_CAP"),
+  // Agency board metrics (pixel status for SAM get_niceseo_ops_status).
+  AGENCY_METRICS_URL: optionalVar("AGENCY_METRICS_URL"),
+  AGENCY_DASH_TOKEN: optionalSecret("AGENCY_DASH_TOKEN"),
 };
 
 export default Alchemy.Stack(
@@ -308,6 +372,11 @@ export default Alchemy.Stack(
     );
     const databaseProvider = yield* optionalVar("DATABASE_PROVIDER");
     const workersSubdomain = yield* readWorkersSubdomain({ required: false });
+    // Public hostname for self-host (e.g. seo.niceseo.ai). Must be a zone on
+    // this Cloudflare account. Kept behind Cloudflare Access with workers.dev.
+    const customDomain = (
+      yield* optionalVar("SELFHOST_CUSTOM_DOMAIN")
+    ).toLowerCase();
 
     // Auth needs an absolute BETTER_AUTH_URL. Prod sets it explicitly;
     // previews always derive it from the deterministic worker name — a wrong
@@ -331,6 +400,8 @@ export default Alchemy.Stack(
           ),
         );
       }
+    } else if (customDomain) {
+      authUrl = `https://${customDomain}`;
     } else if (workersSubdomain) {
       authUrl = `https://${workerName(stage)}.${workersSubdomain}`;
     } else if (authMode === "hosted") {
@@ -349,12 +420,18 @@ export default Alchemy.Stack(
       stage,
       authMode === "cloudflare_access" && !prod,
       workersSubdomain,
+      customDomain,
     );
 
     const app = yield* Cloudflare.Worker("open-seo", {
       name: workerName(stage),
-      // Prod serves the real domains; the zone is inferred from the hostname.
-      domain: prod ? ["app.openseo.so", "www.app.openseo.so"] : undefined,
+      // Prod serves the real domains; self-host may attach a custom domain
+      // (zone inferred from the hostname). workers.dev stays enabled either way.
+      domain: prod
+        ? ["app.openseo.so", "www.app.openseo.so"]
+        : customDomain
+          ? [customDomain]
+          : undefined,
       // Prebuilt worker from `vite build` (@cloudflare/vite-plugin). The entry
       // exports the DO + WorkflowEntrypoint classes (re-exported by
       // src/server.ts), which `bundle: false` requires. Sibling chunks under
@@ -371,10 +448,12 @@ export default Alchemy.Stack(
       // Site audits parse and persist batches of HTML inside Workflow steps.
       // Paid Workers permit up to five minutes; keep headroom for unusually
       // link-heavy sites after bounding page bodies and bulk-writing links.
-      // Configurable CPU limits are a paid-plan feature, and self-host
-      // deploys (cloudflare_access) may run on the free plan — which rejects
-      // them — so those get the plan default instead.
-      ...(authMode === "cloudflare_access"
+      // Configurable CPU limits are a paid-plan feature. The plan default
+      // (30 s) is not enough to parse page-heavy sites such as Wix (audits
+      // failed with "Worker exceeded CPU time limit"), so the limit is set
+      // for every deploy; a free-plan self-host, which rejects it, opts out
+      // with WORKER_CPU_LIMIT=off.
+      ...(process.env.WORKER_CPU_LIMIT === "off"
         ? {}
         : { limits: { cpuMs: 300_000 } }),
       observability: {
@@ -393,6 +472,11 @@ export default Alchemy.Stack(
         BETTER_AUTH_URL: authUrl,
         TEAM_DOMAIN: access.teamDomain,
         POLICY_AUD: access.policyAud,
+        // Absent entirely when no MCP app was provisioned — the Worker's
+        // service-token branch is visibly off, never an empty-string AUD.
+        ...(access.mcpPolicyAud
+          ? { MCP_POLICY_AUD: access.mcpPolicyAud }
+          : {}),
 
         // Prod-only: pooled Postgres via the existing Hyperdrive config.
         ...(prod ? { HYPERDRIVE: makeHyperdrive() } : {}),

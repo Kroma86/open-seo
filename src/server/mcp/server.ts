@@ -42,6 +42,13 @@ import {
 } from "@/server/mcp/tools/project-context";
 import { listSavedKeywordsTool } from "@/server/mcp/tools/list-saved-keywords";
 import {
+  exploreAiPromptTool,
+  getAiBrandVisibilityTool,
+} from "@/server/mcp/tools/ai-search-tools";
+import { getAiVisibilityTrendTool } from "@/server/mcp/tools/get-ai-visibility-trend";
+import { manageAiVisibilityTrackingTool } from "@/server/mcp/tools/manage-ai-visibility-tracking";
+import { runAiVisibilityCheckTool } from "@/server/mcp/tools/run-ai-visibility-check";
+import {
   findSerpCompetitorsTool,
   getGoogleBusinessQuestionsTool,
   getKeywordMetricsTool,
@@ -69,6 +76,17 @@ import {
   runSiteAuditTool,
 } from "@/server/mcp/tools/site-audit-tools";
 import { whoamiTool } from "@/server/mcp/tools/whoami";
+import { getAgencyScoreInputsTool } from "@/server/mcp/tools/get-agency-score-inputs";
+import { getAgencyOttoPageInputsTool } from "@/server/mcp/tools/get-agency-otto-page-inputs";
+import { getNiceseoOpsStatusTool } from "@/server/mcp/tools/get-niceseo-ops-status";
+import {
+  listHomegrownOttoProposalsTool,
+  proposeHomegrownOttoFixesTool,
+} from "@/server/mcp/tools/homegrown-otto-tools";
+import {
+  getSamLoopRunsTool,
+  listSamLoopsTool,
+} from "@/server/mcp/tools/sam-loop-tools";
 
 type ToolSchema = z.ZodType | z.ZodRawShape;
 
@@ -153,6 +171,13 @@ export function createOpenSeoMcpServer(authProps: McpProps) {
   ) => registerOpenSeoTool(server, tool, authProps);
 
   register(whoamiTool);
+  register(getAgencyScoreInputsTool);
+  register(getAgencyOttoPageInputsTool);
+  register(proposeHomegrownOttoFixesTool);
+  register(listHomegrownOttoProposalsTool);
+  register(getNiceseoOpsStatusTool);
+  register(listSamLoopsTool);
+  register(getSamLoopRunsTool);
   register(listProjectsTool);
   register(createProjectTool);
   register(getProjectContextTool);
@@ -182,6 +207,11 @@ export function createOpenSeoMcpServer(authProps: McpProps) {
   register(listBusinessCategoriesTool);
   register(getLocalRankGridTool);
   register(getKeywordMetricsTool);
+  register(getAiBrandVisibilityTool);
+  register(exploreAiPromptTool);
+  register(getAiVisibilityTrendTool);
+  register(runAiVisibilityCheckTool);
+  register(manageAiVisibilityTrackingTool);
   register(getSearchConsolePerformanceTool);
   register(inspectUrlsTool);
   register(getGoogleAnalyticsOrganicLandingPagesTool);

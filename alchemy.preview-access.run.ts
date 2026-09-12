@@ -31,7 +31,7 @@ export default Alchemy.Stack(
     );
 
     const hostname = previewWildcard(subdomain);
-    const application = yield* emailAccessGate({
+    const gate = yield* emailAccessGate({
       policyId: "PreviewAllowTeam",
       applicationId: "PreviewAccess",
       policyName: "open-seo preview team",
@@ -42,8 +42,8 @@ export default Alchemy.Stack(
 
     return {
       hostname,
-      applicationId: application.applicationId,
-      aud: application.aud,
+      applicationId: gate.application.applicationId,
+      aud: gate.application.aud,
     };
   }),
 );

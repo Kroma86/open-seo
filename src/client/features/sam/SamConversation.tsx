@@ -2,7 +2,7 @@ import { useAgent } from "agents/react";
 // Think speaks the same chat protocol as @cloudflare/ai-chat, but its hook
 // variant skips the client->server transcript sync Think doesn't support.
 import { useAgentChat } from "@cloudflare/think/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChatComposer } from "@/client/features/onboarding/OnboardingChatParts";
 import { invalidateSamSessions } from "@/client/features/sam/samQueries";
 import {
@@ -19,6 +19,18 @@ const SUGGESTIONS = [
   "Find quick-win keywords I already rank for",
 ];
 
+/** Read + clear the Ask-Sam handoff from Sam loops (sessionStorage). */
+function takeSamLoopsAskDraft(projectId: string): string {
+  try {
+    const key = `sam-loops-ask:${projectId}`;
+    const draft = sessionStorage.getItem(key)?.trim() ?? "";
+    sessionStorage.removeItem(key);
+    return draft;
+  } catch {
+    return "";
+  }
+}
+
 export function SamConversation({
   projectId,
   sessionId,
@@ -32,6 +44,9 @@ export function SamConversation({
   const agent = useAgent({ agent: "sam-chat", name: sessionId });
   const { messages, sendMessage, setMessages, clearHistory, status } =
     useAgentChat({ agent });
+
+  // Prefill once on mount from Sam loops "Ask Sam" — do not auto-send.
+  const [askPrefill] = useState(() => takeSamLoopsAskDraft(projectId));
 
   const isBusy = status === "submitted" || status === "streaming";
   const { scrollRef, onScroll, pinToBottom } = useStickToBottom(
@@ -185,6 +200,8 @@ export function SamConversation({
             busy={isBusy}
             onSend={sendText}
             placeholder="Ask SAM to research, analyze, or track anything…"
+            initialValue={askPrefill}
+            autoFocus={Boolean(askPrefill)}
           />
         </div>
       </div>

@@ -1,0 +1,383 @@
+import { createClient, type Client } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import type * as AgencyOpsArtifactsServiceModule from "./AgencyOpsArtifactsService";
+
+vi.mock("cloudflare:workers", () => ({
+  env: { DATABASE_PROVIDER: "d1" },
+}));
+
+let client: Client;
+let AgencyOpsArtifactsService: typeof AgencyOpsArtifactsServiceModule.AgencyOpsArtifactsService;
+
+beforeAll(async () => {
+  client = createClient({ url: "file::memory:" });
+  const testDb = drizzle(client);
+  vi.doMock("@/db", () => ({ db: testDb }));
+
+  await client.executeMultiple(`
+    CREATE TABLE agency_ops_artifacts (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      domain TEXT,
+      date TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      content TEXT NOT NULL,
+      source_key TEXT NOT NULL,
+      received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX agency_ops_artifacts_kind_source_key_idx
+      ON agency_ops_artifacts (kind, source_key);
+  `);
+
+  ({ AgencyOpsArtifactsService } = await import("./AgencyOpsArtifactsService"));
+});
+
+afterAll(() => {
+  client.close();
+});
+
+beforeEach(async () => {
+  await client.execute("DELETE FROM agency_ops_artifacts");
+});
+
+const baseInput = {
+  kind: "alert-cycle" as const,
+  domain: "example.com",
+  date: "2026-08-31",
+  contentType: "json" as const,
+  // Shape matches what the box actually writes: snake_case keys.
+  content: JSON.stringify({
+    generated_at: "2026-08-31T12:00:00.000Z",
+    counts_by_severity: { high: 2, medium: 1 },
+    alerts: [
+      {
+        severity: "high",
+        type: "rank_drop",
+        domain: "a.com",
+        message: "Dropped 5 positions",
+      },
+      {
+        severity: "HIGH",
+        type: "crawl_error",
+        domain: null,
+        message: "5xx spike",
+      },
+      { severity: "medium", type: "info", domain: "c.com", message: "note" },
+    ],
+  }),
+  sourceKey: "alerts-2026-08-31.json",
+};
+
+describe("AgencyOpsArtifactsService", () => {
+  it("inserts a new artifact", async () => {
+    const result = await AgencyOpsArtifactsService.ingest(baseInput);
+    expect(result.deduped).toBe(false);
+    expect(result.id).toBeTruthy();
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.sourceKey).toBe(baseInput.sourceKey);
+  });
+
+  it("dedupes on repeat kind + sourceKey", async () => {
+    const first = await AgencyOpsArtifactsService.ingest(baseInput);
+    const second = await AgencyOpsArtifactsService.ingest(baseInput);
+    expect(second).toEqual({ id: first.id, deduped: true });
+  });
+
+  it("lists metadata ordered by receivedAt desc without content", async () => {
+    const first = await AgencyOpsArtifactsService.ingest({
+      ...baseInput,
+      sourceKey: "older.json",
+      date: "2026-08-30",
+    });
+    const second = await AgencyOpsArtifactsService.ingest({
+      ...baseInput,
+      sourceKey: "newer.json",
+      date: "2026-08-31",
+    });
+    await client.execute({
+      sql: "UPDATE agency_ops_artifacts SET received_at = ? WHERE id = ?",
+      args: ["2026-08-30T00:00:00.000Z", first.id],
+    });
+    await client.execute({
+      sql: "UPDATE agency_ops_artifacts SET received_at = ? WHERE id = ?",
+      args: ["2026-08-31T00:00:00.000Z", second.id],
+    });
+
+    const listed = await AgencyOpsArtifactsService.listArtifacts({ limit: 10 });
+    expect(listed).toHaveLength(2);
+    expect(listed[0]?.sourceKey).toBe("newer.json");
+    expect(listed[1]?.sourceKey).toBe("older.json");
+    for (const row of listed) {
+      expect(row).not.toHaveProperty("content");
+    }
+  });
+
+  it("filters list by kind", async () => {
+    await AgencyOpsArtifactsService.ingest(baseInput);
+    await AgencyOpsArtifactsService.ingest({
+      ...baseInput,
+      kind: "digest",
+      sourceKey: "digest.md",
+      contentType: "markdown",
+      content: "# Digest",
+    });
+
+    const alerts = await AgencyOpsArtifactsService.listArtifacts({
+      kind: "alert-cycle",
+    });
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]?.kind).toBe("alert-cycle");
+  });
+
+  it("accepts an index-watchdog artifact (json, per-domain)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "index-watchdog",
+      domain: "example.com",
+      date: "2026-09-01",
+      contentType: "json",
+      content: JSON.stringify({ indexable: true, status: 200 }),
+      sourceKey: "index-watchdog-example.com-2026-09-01.json",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("index-watchdog");
+    expect(row?.domain).toBe("example.com");
+  });
+
+  it("accepts a schema-proposals artifact (md, fleet-wide)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "schema-proposals",
+      domain: null,
+      date: "2026-09-01",
+      contentType: "md",
+      content: "# Schema proposals\n\n- Add FAQPage to /faq",
+      sourceKey: "schema-proposals-2026-09.md",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("schema-proposals");
+    expect(row?.domain).toBeNull();
+    // "md" is the wire spelling; stored contentType is the canonical one.
+    expect(row?.contentType).toBe("markdown");
+  });
+
+  it("stores canonical contentType markdown unchanged", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "monthly-report",
+      domain: null,
+      date: "2026-09-01",
+      contentType: "markdown",
+      content: "# Monthly report",
+      sourceKey: "monthly-report-2026-09.md",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.contentType).toBe("markdown");
+  });
+
+  it("accepts a citations artifact (md, fleet-wide)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "citations",
+      domain: null,
+      date: "2026-09-01",
+      contentType: "md",
+      content: "# Citations\n\nAll consistent.",
+      sourceKey: "citations-2026-09-01.md",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("citations");
+    expect(row?.contentType).toBe("markdown");
+  });
+
+  it("accepts a monthly-export artifact (json, per-domain)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "monthly-export",
+      domain: "example.com",
+      date: "2026-09-01",
+      contentType: "json",
+      content: JSON.stringify({ client: "example.com", score: 82 }),
+      sourceKey: "monthly-export-example.com-2026-09.json",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("monthly-export");
+    expect(row?.domain).toBe("example.com");
+    expect(row?.contentType).toBe("json");
+  });
+
+  it("accepts a monthly-export index artifact (json, fleet-wide)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "monthly-export",
+      domain: null,
+      date: "2026-09-01",
+      contentType: "json",
+      content: JSON.stringify({ clients: ["a.com", "b.com"] }),
+      sourceKey: "export-index-2026-09.json",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("monthly-export");
+    expect(row?.domain).toBeNull();
+  });
+
+  it("accepts a fix-changelog artifact (markdown, per-domain)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "fix-changelog",
+      domain: "example.com",
+      date: "2026-09-01",
+      contentType: "md",
+      content: "# Fix changelog\n\n- Updated title tags",
+      sourceKey: "fix-changelog-example.com-2026-09.md",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("fix-changelog");
+    expect(row?.contentType).toBe("markdown");
+  });
+
+  it("accepts a client-sync artifact (markdown, fleet-wide)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "client-sync",
+      domain: null,
+      date: "2026-09-01",
+      contentType: "markdown",
+      content: "# Client list check\n\nAll clients accounted for.",
+      sourceKey: "client-sync-2026-09.md",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("client-sync");
+    expect(row?.domain).toBeNull();
+  });
+
+  it("accepts a gbp-audit artifact (markdown, domain optional)", async () => {
+    const result = await AgencyOpsArtifactsService.ingest({
+      kind: "gbp-audit",
+      domain: "example.com",
+      date: "2026-09-01",
+      contentType: "md",
+      content: "# GBP audit\n\nNAP consistent.",
+      sourceKey: "gbp-audit-example.com-2026-09.md",
+    });
+    expect(result.deduped).toBe(false);
+
+    const row = await AgencyOpsArtifactsService.getArtifact(result.id);
+    expect(row?.kind).toBe("gbp-audit");
+    expect(row?.contentType).toBe("markdown");
+  });
+
+  it("still rejects unknown kinds with kind_invalid", async () => {
+    await expect(
+      AgencyOpsArtifactsService.ingest({ ...baseInput, kind: "rank-report" }),
+    ).rejects.toThrow("kind_invalid");
+  });
+
+  it("latestAlertCycle parses the box's snake_case shape, case-insensitive severity, null domain", async () => {
+    await AgencyOpsArtifactsService.ingest(baseInput);
+    const latest = await AgencyOpsArtifactsService.latestAlertCycle();
+    expect(latest).toMatchObject({
+      generatedAt: "2026-08-31T12:00:00.000Z",
+      countsBySeverity: { high: 2, medium: 1 },
+      highCount: 2,
+      highAlerts: [
+        { type: "rank_drop", domain: "a.com", message: "Dropped 5 positions" },
+        { type: "crawl_error", domain: null, message: "5xx spike" },
+      ],
+    });
+  });
+
+  it("latestAlertCycle counts all high-tier alerts beyond the 10-item cap", async () => {
+    const manyHigh = Array.from({ length: 14 }, (_, i) => ({
+      severity: i % 2 === 0 ? "high" : "critical",
+      type: "rank_drop",
+      domain: `d${i}.com`,
+      message: `drop ${i}`,
+    }));
+    await AgencyOpsArtifactsService.ingest({
+      ...baseInput,
+      content: JSON.stringify({
+        generated_at: "2026-08-31T12:00:00.000Z",
+        counts_by_severity: { high: 14 },
+        alerts: manyHigh,
+      }),
+    });
+    const latest = await AgencyOpsArtifactsService.latestAlertCycle();
+    expect(latest).toMatchObject({ highCount: 14 });
+    if (latest && "highAlerts" in latest) {
+      expect(latest.highAlerts).toHaveLength(10);
+    } else {
+      throw new Error("expected parsed alert cycle");
+    }
+  });
+
+  it("latestAlertCycle returns parseError on malformed JSON content", async () => {
+    await AgencyOpsArtifactsService.ingest({
+      ...baseInput,
+      content: "not-json",
+    });
+    const latest = await AgencyOpsArtifactsService.latestAlertCycle();
+    expect(latest).toMatchObject({ parseError: true });
+    expect(latest?.receivedAt).toBeTruthy();
+  });
+
+  it("latestAlertCycle sums severity counts that collide after lowercasing", async () => {
+    await AgencyOpsArtifactsService.ingest({
+      ...baseInput,
+      content: JSON.stringify({
+        counts_by_severity: { High: 1, high: 2 },
+        alerts: [],
+      }),
+    });
+    const latest = await AgencyOpsArtifactsService.latestAlertCycle();
+    expect(latest).toMatchObject({ countsBySeverity: { high: 3 } });
+  });
+
+  it("latestAlertCycle returns parseError when the root is a JSON array", async () => {
+    await AgencyOpsArtifactsService.ingest({
+      ...baseInput,
+      content: "[]",
+    });
+    const latest = await AgencyOpsArtifactsService.latestAlertCycle();
+    expect(latest).toMatchObject({ parseError: true });
+  });
+
+  it("ingest rejects invalid bodies with the contract error strings", async () => {
+    await expect(
+      AgencyOpsArtifactsService.ingest({ ...baseInput, kind: "nope" }),
+    ).rejects.toThrow("kind_invalid");
+    await expect(
+      AgencyOpsArtifactsService.ingest({ ...baseInput, date: "31-08-2026" }),
+    ).rejects.toThrow("date_invalid");
+    await expect(
+      AgencyOpsArtifactsService.ingest({
+        ...baseInput,
+        content: "x".repeat(262_145),
+      }),
+    ).rejects.toThrow("content_invalid");
+    await expect(
+      AgencyOpsArtifactsService.ingest({ ...baseInput, sourceKey: "" }),
+    ).rejects.toThrow("sourceKey_invalid");
+    await expect(
+      AgencyOpsArtifactsService.ingest({ ...baseInput, domain: 42 }),
+    ).rejects.toThrow("domain_invalid");
+  });
+});

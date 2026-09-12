@@ -1,4 +1,5 @@
 import {
+  Activity,
   Bookmark,
   Bot,
   ClipboardCheck,
@@ -6,6 +7,7 @@ import {
   LayoutDashboard,
   Link2,
   MessageSquare,
+  Repeat,
   Search,
   Sparkles,
   TrendingUp,
@@ -38,6 +40,11 @@ const projectNavItems = [
     icon: TrendingUp,
   },
   {
+    to: "/p/$projectId/ai-visibility" as const,
+    label: "AI Visibility",
+    icon: Sparkles,
+  },
+  {
     to: "/p/$projectId/search-performance" as const,
     label: "GSC Insights",
     icon: GoogleGlyphMuted,
@@ -58,6 +65,11 @@ const projectNavItems = [
     icon: ClipboardCheck,
   },
   {
+    to: "/p/$projectId/loops" as const,
+    label: "Sam Loops",
+    icon: Repeat,
+  },
+  {
     to: "/p/$projectId/brand-lookup" as const,
     label: "Brand Lookup",
     icon: Sparkles,
@@ -74,6 +86,18 @@ const aiNavItem = linkOptions({
   label: "AI & MCP",
   icon: Bot,
 });
+
+const operationsNavItem = linkOptions({
+  to: "/operations" as const,
+  label: "Operations",
+  icon: Activity,
+});
+
+// Org-level sidebar items (not project-scoped).
+export const orgNavGroup = {
+  label: "Agency",
+  items: [operationsNavItem],
+};
 
 // Always-visible sidebar group (not project-scoped, unlike the groups below).
 export const connectNavGroup = {
@@ -118,8 +142,10 @@ export function getProjectNavGroups(projectId: string) {
       items: [
         byPath("/p/$projectId/search-performance"),
         byPath("/p/$projectId/rank-tracking"),
+        byPath("/p/$projectId/ai-visibility"),
         byPath("/p/$projectId/saved"),
         byPath("/p/$projectId/audit"),
+        byPath("/p/$projectId/loops"),
       ],
     },
   ];

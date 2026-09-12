@@ -3,14 +3,24 @@ import {
   defaultStreamHandler,
 } from "@tanstack/react-start/server";
 import { routeAgentRequest } from "agents";
+import { resolveCloudflareAccessMcpGate } from "@/middleware/ensure-user/cloudflareAccess";
+import { resolveSharedWorkspaceContext } from "@/middleware/ensure-user/delegated";
 import { resolveUserContextFromHeaders } from "@/middleware/ensure-user/resolve";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import { SamSessionRepository } from "@/server/features/sam/SamSessionRepository";
 import { runScheduledRankChecks } from "@/server/features/rank-tracking/services/scheduledRankChecks";
+import { reconcileStuckRankCheckRuns } from "@/server/features/rank-tracking/services/rankCheckReconciler";
+import { runScheduledAiVisibilityChecks } from "@/server/features/ai-visibility/services/scheduledAiVisibilityChecks";
+import { runScheduledSamLoops } from "@/server/features/sam-loops/services/scheduledSamLoops";
 import { reconcileStaleAudits } from "@/server/features/audit/services/auditReconciler";
+import { reconcileStaleAiVisibilityRuns } from "@/server/features/ai-visibility/services/aiVisibilityReconciler";
 import { getOrCreateOrganizationCustomer } from "@/server/billing/subscription";
 import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
 import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
+import {
+  isSelfHostedMcpOAuthDiscoveryPath,
+  isUnderSelfhostOAuthDiscoveryPrefix,
+} from "@/lib/oauth-resource";
 import {
   createOpenSeoOAuthProvider,
   type OpenSeoOAuthEnv,
@@ -29,6 +39,12 @@ import { GDPR_STORAGE_ERASURE_PATH } from "@/shared/gdpr-erasure";
 
 const appFetch = createStartHandler(defaultStreamHandler);
 const openSeoOAuthProvider = createOpenSeoOAuthProvider(appFetch);
+
+// Compile-time guard for the `env as OpenSeoOAuthEnv` casts in this file:
+// the self-host Env must carry OAUTH_KV. Fails tsc if the binding is removed.
+type Assert<T extends true> = T;
+type _EnvCarriesOAuthKv =
+  Assert<Env extends Pick<OpenSeoOAuthEnv, "OAUTH_KV"> ? true : never>;
 
 // Authorize an onboarding-chat connection in the Worker, before it reaches the
 // Durable Object. The DO instance name is the projectId (set client-side); we
@@ -131,16 +147,32 @@ function fetch(
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> {
+  // The MCP surface (OAuth discovery paths + /mcp) does Access JWT
+  // verification — a remote JWKS round-trip — before any database work, and
+  // its handlers scope their own DB clients where needed. Keep it OUT of the
+  // request-wide pg scope: a pooled client must never be held across that
+  // network wait (pool exhaustion under burst after cold start / key rotation).
+  const pathname = new URL(request.url).pathname;
+  const authMode = getAuthMode(env.AUTH_MODE);
+  const isMcpSurface =
+    authMode === "cloudflare_access"
+      ? isSelfHostedMcpOAuthDiscoveryPath(pathname) ||
+        isUnderSelfhostOAuthDiscoveryPrefix(pathname) ||
+        pathname === MCP_ROUTE
+      : authMode === "local_noauth" && pathname === MCP_ROUTE;
+  if (isMcpSurface) {
+    return Promise.resolve(handleFetch(request, env, ctx));
+  }
   // Scope a per-request Postgres client (no-op in D1 mode). The client isn't
   // closed here — the Workers↔Hyperdrive socket is reclaimed at invocation end.
   return withPgClient(() => Promise.resolve(handleFetch(request, env, ctx)));
 }
 
-function handleFetch(
+async function handleFetch(
   request: Request,
   env: Env,
   ctx: ExecutionContext,
-): Response | Promise<Response> {
+): Promise<Response> {
   ctx.waitUntil(maybeSendSelfHostHeartbeat());
 
   const authMode = getAuthMode(env.AUTH_MODE);
@@ -168,10 +200,68 @@ function handleFetch(
   }
 
   if (
+    authMode === "cloudflare_access" &&
+    isSelfHostedMcpOAuthDiscoveryPath(pathname)
+  ) {
+    let oauthRequest = publicRequest;
+    if (pathname === "/.well-known/oauth-authorization-server/mcp") {
+      const rewritten = new URL(publicRequest.url);
+      rewritten.pathname = "/.well-known/oauth-authorization-server";
+      oauthRequest = new Request(rewritten, publicRequest);
+    }
+    return openSeoOAuthProvider.fetch(
+      oauthRequest,
+      env as OpenSeoOAuthEnv,
+      ctx,
+    );
+  }
+
+  // The edge bypass for the discovery paths is PREFIX-matched; the Worker
+  // allowlist above is exact. Anything else under those prefixes is a 404,
+  // never the app — the edge must never admit more than the Worker serves.
+  if (
+    authMode === "cloudflare_access" &&
+    isUnderSelfhostOAuthDiscoveryPrefix(pathname)
+  ) {
+    return new Response(null, { status: 404 });
+  }
+
+  if (
     (authMode === "cloudflare_access" || authMode === "local_noauth") &&
     pathname === MCP_ROUTE
   ) {
-    return handleSelfHostedOpenSeoMcpRequest(publicRequest, authMode, env, ctx);
+    if (authMode === "cloudflare_access" && publicRequest.method !== "OPTIONS") {
+      // The gate is Access JWT verification only (remote JWKS, NO database) —
+      // safe outside any pooled-client scope (see the MCP-surface bypass in
+      // fetch). The workspace context (DB) gets its own short client scope,
+      // taken AFTER the network wait, never held across it.
+      const gate = await resolveCloudflareAccessMcpGate(publicRequest.headers);
+      if (gate.kind === "service_token") {
+        return openSeoOAuthProvider.fetch(
+          publicRequest,
+          env as OpenSeoOAuthEnv,
+          ctx,
+        );
+      }
+      const accessContext = await withPgClient(() =>
+        resolveSharedWorkspaceContext(gate.userId, gate.userEmail),
+      );
+      return handleSelfHostedOpenSeoMcpRequest(
+        publicRequest,
+        authMode,
+        env,
+        ctx,
+        accessContext,
+      );
+    }
+
+    return handleSelfHostedOpenSeoMcpRequest(
+      publicRequest,
+      authMode,
+      env,
+      ctx,
+      null,
+    );
   }
 
   return appFetch(request);
@@ -180,6 +270,7 @@ function handleFetch(
 // Export Workflow classes as named exports
 export { SiteAuditWorkflow } from "./server/workflows/SiteAuditWorkflow";
 export { RankCheckWorkflow } from "./server/workflows/RankCheckWorkflow";
+export { SamLoopWorkflow } from "./server/workflows/SamLoopWorkflow";
 // Durable Object class for the onboarding strategy chat (Agents SDK).
 export { OnboardingChatAgent } from "./server/features/onboarding/OnboardingChatAgent";
 // Durable Object class for the SAM in-app agent (Agents SDK).
@@ -221,12 +312,16 @@ export default {
     let watchdogError: unknown;
     try {
       await withPgClient(() => reconcileStaleAudits());
+      await withPgClient(() => reconcileStaleAiVisibilityRuns());
+      await withPgClient(() => reconcileStuckRankCheckRuns());
     } catch (err) {
       watchdogError = err;
       console.error("[cron] Stale-audit reconcile failed:", err);
     }
     // Scope a per-request Postgres client for the cron run (no-op in D1 mode).
     await withPgClient(() => runScheduledRankChecks(env));
+    await withPgClient(() => runScheduledAiVisibilityChecks(env));
+    await withPgClient(() => runScheduledSamLoops(env));
     if (watchdogError) throw watchdogError;
   },
 };

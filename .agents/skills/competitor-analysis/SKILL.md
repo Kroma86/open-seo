@@ -1,6 +1,6 @@
 ---
 name: competitor-analysis
-description: "Analyze one competitor's organic footprint, ranking keywords, content themes, backlinks, and gaps."
+description: "Analyze one competitor's organic footprint, ranking keywords, content themes, backlinks, and gaps. Search Atlas: SEO Research — Analyze Organic Competitors."
 ---
 
 # OpenSEO Competitor Analysis

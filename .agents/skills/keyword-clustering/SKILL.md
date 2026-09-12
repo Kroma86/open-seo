@@ -1,6 +1,6 @@
 ---
 name: keyword-clustering
-description: Cluster keywords by intent and map them to existing or proposed pages.
+description: "Cluster keywords by intent and map them to existing or proposed pages. Search Atlas: Analyze Keyword Portfolio (mapping half)."
 ---
 
 # OpenSEO Keyword Clustering

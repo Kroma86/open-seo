@@ -295,6 +295,72 @@ describe("better-auth required indexes (CLI omits them; re-apply after auth:gene
   }
 });
 
+describe("partial unique index predicates (onConflict invariants)", () => {
+  // schema parity above only asserts "|partial" presence; runaway controls
+  // also need matching WHERE status IN (...) text across dialects + migrations.
+  const REQUIRED_ONE_INFLIGHT: {
+    table: string;
+    index: string;
+    where: string;
+  }[] = [
+    {
+      table: "sam_loop_runs",
+      index: "sam_loop_runs_one_inflight_idx",
+      where: "\"sam_loop_runs\".\"status\" IN ('pending', 'running')",
+    },
+    {
+      table: "ai_visibility_runs",
+      index: "ai_visibility_runs_one_inflight_idx",
+      where: "\"ai_visibility_runs\".\"status\" IN ('pending', 'running')",
+    },
+  ];
+
+  function hasPartialUnique(
+    table: Table,
+    dialect: Dialect,
+    indexName: string,
+  ): boolean {
+    const config = getConfig(table, dialect);
+    return config.indexes.some(
+      (index) =>
+        index.config.unique &&
+        index.config.name === indexName &&
+        Boolean(index.config.where),
+    );
+  }
+
+  for (const req of REQUIRED_ONE_INFLIGHT) {
+    it(`${req.index} exists as a partial unique on both schemas`, () => {
+      const sqliteTable = sqliteAppTables.get(req.table);
+      const pgTable = pgAppTables.get(req.table);
+      expect(sqliteTable, `missing sqlite table ${req.table}`).toBeDefined();
+      expect(pgTable, `missing pg table ${req.table}`).toBeDefined();
+      if (!sqliteTable || !pgTable) return;
+      expect(hasPartialUnique(sqliteTable, "sqlite", req.index)).toBe(true);
+      expect(hasPartialUnique(pgTable, "pg", req.index)).toBe(true);
+    });
+  }
+
+  it("SQLite and Postgres migrations share identical one-inflight WHERE predicates", () => {
+    const sqliteMigration = readFileSync(
+      join("drizzle", "0043_sweet_tenebrous.sql"),
+      "utf8",
+    );
+    const pgMigration = readFileSync(
+      join("drizzle-pg", "0021_tired_the_executioner.sql"),
+      "utf8",
+    );
+    for (const req of REQUIRED_ONE_INFLIGHT) {
+      // Predicates are dialect-quoted the same way in both generators:
+      // WHERE "table"."status" IN ('pending', 'running')
+      expect(sqliteMigration).toContain(`WHERE ${req.where}`);
+      expect(pgMigration).toContain(`WHERE ${req.where}`);
+      expect(sqliteMigration).toContain(req.index);
+      expect(pgMigration).toContain(req.index);
+    }
+  });
+});
+
 describe("no direct db.batch (must use runBatch)", () => {
   // `db.batch` only exists on the D1 driver; on Postgres it throws. All atomic
   // multi-statement writes must go through `runBatch`, which is the only file

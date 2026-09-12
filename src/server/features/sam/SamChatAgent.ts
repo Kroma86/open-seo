@@ -24,7 +24,11 @@ import { ProjectRepository } from "@/server/features/projects/repositories/Proje
 import { buildSamMcpTools } from "@/server/features/sam/samChatTools";
 import { buildSamSkillSource } from "@/server/features/sam/samSkills";
 import { buildSamSystemPrompt } from "@/server/features/sam/samSystemPrompt";
-import { buildChatAgentModel } from "@/server/lib/openrouter";
+import {
+  buildChatAgentModel,
+  parseOpenRouterPromptCacheFlag,
+  parseOpenRouterZdrFlag,
+} from "@/server/lib/openrouter";
 import {
   getEnvValueSync,
   isHostedServerAuthMode,
@@ -133,6 +137,14 @@ export class SamChatAgent extends Think {
     return buildChatAgentModel(
       apiKey,
       getEnvValueSync(this.env, "OPENROUTER_MODEL"),
+      {
+        zdr: parseOpenRouterZdrFlag(
+          getEnvValueSync(this.env, "OPENROUTER_ZDR"),
+        ),
+        promptCache: parseOpenRouterPromptCacheFlag(
+          getEnvValueSync(this.env, "OPENROUTER_PROMPT_CACHE"),
+        ),
+      },
     );
   }
 
