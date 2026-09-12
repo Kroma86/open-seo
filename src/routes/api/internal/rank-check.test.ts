@@ -132,6 +132,10 @@ describe("internal rank-check handlePost", () => {
     });
     expect(res.status).toBe(202);
     expect(await res.json()).toEqual({ started: true, runId: "run-1" });
+    expect(getProjectForOrganization).toHaveBeenCalledWith(
+      "shared-workspace",
+      PROJECT_ID,
+    );
     expect(triggerCheck).toHaveBeenCalledWith(
       expect.objectContaining({
         configId: CONFIG_ID,
@@ -144,6 +148,55 @@ describe("internal rank-check handlePost", () => {
         }),
       }),
     );
+  });
+
+  it("returns 403 on hosted auth mode and does not spend", async () => {
+    mockEnv.AUTH_MODE = "hosted";
+    const res = await post({
+      projectId: PROJECT_ID,
+      configId: CONFIG_ID,
+      maxCostCredits: 180,
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "unsupported_auth_mode" });
+    expect(triggerCheck).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when maxCostCredits missing and does not spend", async () => {
+    const res = await post({
+      projectId: PROJECT_ID,
+      configId: CONFIG_ID,
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_body" });
+    expect(triggerCheck).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when maxCostCredits is zero and does not spend", async () => {
+    const res = await post({
+      projectId: PROJECT_ID,
+      configId: CONFIG_ID,
+      maxCostCredits: 0,
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_body" });
+    expect(triggerCheck).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when project not found and does not spend", async () => {
+    getProjectForOrganization.mockResolvedValue(null);
+    const res = await post({
+      projectId: PROJECT_ID,
+      configId: CONFIG_ID,
+      maxCostCredits: 180,
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "project_not_found" });
+    expect(getProjectForOrganization).toHaveBeenCalledWith(
+      "shared-workspace",
+      PROJECT_ID,
+    );
+    expect(triggerCheck).not.toHaveBeenCalled();
   });
 
   it("returns 409 when already running", async () => {
