@@ -157,7 +157,7 @@ describe("resolveCloudflareAccessMcpGate", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("rejects a user-shaped JWT verified against the MCP audience (no common_name)", async () => {
+  it("classifies a user-shaped JWT at the MCP audience as user (Managed OAuth for /mcp)", async () => {
     joseMocks.jwtVerify.mockImplementation(
       async (_t: unknown, _k: unknown, opts: { audience: string }) => {
         if (opts.audience === "mcp-app-aud") {
@@ -167,9 +167,11 @@ describe("resolveCloudflareAccessMcpGate", () => {
       },
     );
 
-    await expect(resolveCloudflareAccessMcpGate(WITH_TOKEN)).rejects.toThrow(
-      /UNAUTHENTICATED/,
-    );
+    await expect(resolveCloudflareAccessMcpGate(WITH_TOKEN)).resolves.toEqual({
+      kind: "user",
+      userId: "u1",
+      userEmail: "person@example.com",
+    });
   });
 
   it("rejects with audience-mismatch guidance when both audiences fail", async () => {

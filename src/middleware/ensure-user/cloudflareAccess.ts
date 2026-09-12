@@ -96,6 +96,17 @@ export type CloudflareAccessMcpGate =
   // keeps the remote JWKS verification out of any pooled-client scope.
   | { kind: "user"; userId: string; userEmail: string };
 
+function userGateFromAccessPayload(
+  payload: JWTPayload,
+): Extract<CloudflareAccessMcpGate, { kind: "user" }> {
+  const userId = typeof payload.sub === "string" ? payload.sub : null;
+  const userEmail = typeof payload.email === "string" ? payload.email : null;
+  if (!userId || !userEmail) {
+    throw new AppError("UNAUTHENTICATED");
+  }
+  return { kind: "user", userId, userEmail };
+}
+
 export async function resolveCloudflareAccessMcpGate(
   headers: Headers,
 ): Promise<CloudflareAccessMcpGate> {
@@ -129,18 +140,23 @@ export async function resolveCloudflareAccessMcpGate(
   }
 
   if (mcpPolicyAud) {
-    const servicePayload = await verifyAccessTokenForAudience(
+    const mcpPayload = await verifyAccessTokenForAudience(
       token,
       teamDomain,
       mcpPolicyAud,
     );
-    if (servicePayload) {
+    if (mcpPayload) {
       // Audience alone does not prove kind — assert the claim shape too:
       // service-token JWTs carry common_name; user JWTs never do.
-      if (typeof servicePayload.common_name !== "string") {
-        throw new AppError("UNAUTHENTICATED");
+      //
+      // Managed OAuth for the /mcp Access app issues *user* JWTs at this
+      // audience (Cursor/Claude after Allow). Treating those as
+      // UNAUTHENTICATED throws out of fetch → Cloudflare Error 1101 → the
+      // client wipes tokens and forces another Allow loop.
+      if (typeof mcpPayload.common_name === "string") {
+        return { kind: "service_token" };
       }
-      return { kind: "service_token" };
+      return userGateFromAccessPayload(mcpPayload);
     }
   }
 
@@ -165,15 +181,7 @@ export async function resolveCloudflareAccessMcpGate(
     throw new AppError("UNAUTHENTICATED");
   }
 
-  const userId = typeof userPayload.sub === "string" ? userPayload.sub : null;
-  const userEmail =
-    typeof userPayload.email === "string" ? userPayload.email : null;
-
-  if (!userId || !userEmail) {
-    throw new AppError("UNAUTHENTICATED");
-  }
-
-  return { kind: "user", userId, userEmail };
+  return userGateFromAccessPayload(userPayload);
 }
 
 export async function resolveCloudflareAccessContext(
