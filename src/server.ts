@@ -44,8 +44,9 @@ const openSeoOAuthProvider = createOpenSeoOAuthProvider(appFetch);
 // the self-host Env must carry OAUTH_KV. Fails tsc if the binding is removed.
 type Assert<T extends true> = T;
 // Intentionally unreferenced: instantiating it IS the assertion.
-type _EnvCarriesOAuthKv =
-  Assert<Env extends Pick<OpenSeoOAuthEnv, "OAUTH_KV"> ? true : never>;
+type _EnvCarriesOAuthKv = Assert<
+  Env extends Pick<OpenSeoOAuthEnv, "OAUTH_KV"> ? true : never
+>;
 
 // Authorize an onboarding-chat connection in the Worker, before it reaches the
 // Durable Object. The DO instance name is the projectId (set client-side); we
@@ -233,7 +234,10 @@ async function handleFetch(
     (authMode === "cloudflare_access" || authMode === "local_noauth") &&
     pathname === MCP_ROUTE
   ) {
-    if (authMode === "cloudflare_access" && publicRequest.method !== "OPTIONS") {
+    if (
+      authMode === "cloudflare_access" &&
+      publicRequest.method !== "OPTIONS"
+    ) {
       // The gate is Access JWT verification only (remote JWKS, NO database) —
       // safe outside any pooled-client scope (see the MCP-surface bypass in
       // fetch). The workspace context (DB) gets its own short client scope,

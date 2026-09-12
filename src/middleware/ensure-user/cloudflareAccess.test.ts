@@ -125,9 +125,7 @@ describe("resolveCloudflareAccessMcpGate", () => {
     });
     // The gate must not touch the database — keeping the remote JWKS verify
     // out of any pooled-client scope depends on it.
-    expect(
-      delegatedMocks.resolveSharedWorkspaceContext,
-    ).not.toHaveBeenCalled();
+    expect(delegatedMocks.resolveSharedWorkspaceContext).not.toHaveBeenCalled();
   });
 
   it("rejects a service-token-shaped JWT at the USER audience (the C1 hole: kind must not follow audience alone)", async () => {
@@ -152,9 +150,7 @@ describe("resolveCloudflareAccessMcpGate", () => {
     await expect(resolveCloudflareAccessMcpGate(WITH_TOKEN)).rejects.toThrow(
       /UNAUTHENTICATED/,
     );
-    expect(
-      delegatedMocks.resolveSharedWorkspaceContext,
-    ).not.toHaveBeenCalled();
+    expect(delegatedMocks.resolveSharedWorkspaceContext).not.toHaveBeenCalled();
   });
 
   it("classifies a user-shaped JWT at the MCP audience as user (Managed OAuth for /mcp)", async () => {
@@ -206,9 +202,9 @@ describe("resolveCloudflareAccessMcpGate", () => {
   });
 
   it("rejects when the request carries no Access token", async () => {
-    await expect(
-      resolveCloudflareAccessMcpGate(new Headers()),
-    ).rejects.toThrow(/No Cloudflare Access token/);
+    await expect(resolveCloudflareAccessMcpGate(new Headers())).rejects.toThrow(
+      /No Cloudflare Access token/,
+    );
     expect(joseMocks.jwtVerify).not.toHaveBeenCalled();
   });
 });
