@@ -18,6 +18,7 @@ import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
 import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
 import {
   isSelfHostedMcpOAuthDiscoveryPath,
+  isSelfHostedMcpOAuthProtocolPath,
   isUnderSelfhostOAuthDiscoveryPrefix,
 } from "@/lib/oauth-resource";
 import {
@@ -159,6 +160,7 @@ function fetch(
   const isMcpSurface =
     authMode === "cloudflare_access"
       ? isSelfHostedMcpOAuthDiscoveryPath(pathname) ||
+        isSelfHostedMcpOAuthProtocolPath(pathname) ||
         isUnderSelfhostOAuthDiscoveryPrefix(pathname) ||
         pathname === MCP_ROUTE
       : authMode === "local_noauth" && pathname === MCP_ROUTE;
@@ -203,7 +205,8 @@ async function handleFetch(
 
   if (
     authMode === "cloudflare_access" &&
-    isSelfHostedMcpOAuthDiscoveryPath(pathname)
+    (isSelfHostedMcpOAuthDiscoveryPath(pathname) ||
+      isSelfHostedMcpOAuthProtocolPath(pathname))
   ) {
     let oauthRequest = publicRequest;
     if (pathname === "/.well-known/oauth-authorization-server/mcp") {

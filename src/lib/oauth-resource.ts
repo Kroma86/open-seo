@@ -2,11 +2,14 @@ import {
   OAUTH_AUTHORIZATION_SERVER_PATH,
   OAUTH_PROTECTED_RESOURCE_PATH,
   SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES,
+  isSelfHostedMcpOAuthProtocolPath,
 } from "@/shared/mcp-discovery-paths";
 
 const MCP_RESOURCE_PATH = "/mcp";
 export const MCP_SCOPE = "mcp";
 export const MCP_OAUTH_SCOPES = ["offline_access", MCP_SCOPE];
+
+export { isSelfHostedMcpOAuthProtocolPath };
 
 export function getMcpResource(baseUrl: string) {
   return new URL(MCP_RESOURCE_PATH, baseUrl).toString();
