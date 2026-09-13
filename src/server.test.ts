@@ -208,6 +208,29 @@ describe("server OAuth discovery routing under cloudflare_access", () => {
   });
 });
 
+describe("server MCP OAuth protocol routing under cloudflare_access", () => {
+  it.each([
+    "/api/auth/oauth2/authorize",
+    "/api/auth/oauth2/token",
+    "/api/auth/oauth2/register",
+    "/api/oauth/consent",
+  ])("routes %s to the OAuth provider, never the app 404 handler", async (path) => {
+    mocks.providerFetch.mockResolvedValue(
+      new Response("oauth-protocol", { status: 200 }),
+    );
+
+    const response = await handler.fetch(mcpRequest("GET", path), env, ctx);
+
+    expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
+    const [routedRequest] = mocks.providerFetch.mock.calls[0] as [Request];
+    expect(new URL(routedRequest.url).pathname).toBe(path);
+    expect(await response.text()).toBe("oauth-protocol");
+    expect(mocks.appFetch).not.toHaveBeenCalled();
+    expect(mocks.gate).not.toHaveBeenCalled();
+    expect(mocks.transport).not.toHaveBeenCalled();
+  });
+});
+
 describe("server fallthrough", () => {
   it("passes unrelated paths to the app handler", async () => {
     const response = await handler.fetch(
@@ -219,6 +242,18 @@ describe("server fallthrough", () => {
     expect(mocks.appFetch).toHaveBeenCalledTimes(1);
     expect(await response.text()).toBe("app");
     expect(mocks.gate).not.toHaveBeenCalled();
+    expect(mocks.providerFetch).not.toHaveBeenCalled();
+  });
+
+  it("does not treat /api/auth/oauth2 as a prefix (authorize sibling /revoke stays on the app)", async () => {
+    const response = await handler.fetch(
+      mcpRequest("POST", "/api/auth/oauth2/revoke"),
+      env,
+      ctx,
+    );
+
+    expect(mocks.appFetch).toHaveBeenCalledTimes(1);
+    expect(await response.text()).toBe("app");
     expect(mocks.providerFetch).not.toHaveBeenCalled();
   });
 });

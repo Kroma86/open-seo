@@ -12,7 +12,7 @@ import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
-import { SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES } from "./src/shared/mcp-discovery-paths.ts";
+import { SELFHOST_OAUTH_PUBLIC_PATH_PREFIXES } from "./src/shared/mcp-discovery-paths.ts";
 
 const WORKER_PREFIX = "open-seo";
 
@@ -78,10 +78,13 @@ export const requireAllowedEmails = (remedy: string) =>
  * to get past Access; the Worker still requires OpenSEO OAuth on MCP routes.
  *
  * When `mcpDiscoveryBypass` is set, also provisions a Bypass (everyone)
- * application for the OAuth discovery paths (`/.well-known/oauth-*`):
- * discovery metadata is public by design (RFC 8414) and both machine clients
- * and user agents must reach it — the hostname-wide email gate would
- * otherwise 302 them. The Worker serves metadata only on those paths.
+ * application for the public OAuth surface:
+ * - discovery metadata (`/.well-known/oauth-*`, RFC 8414)
+ * - token + register (`/api/auth/oauth2/token`, `/register`) for remint
+ *   code-exchange and refresh from Node, which have no Access cookie
+ * Authorize and consent stay on the hostname-wide email gate so the Worker
+ * still receives `Cf-Access-Jwt-Assertion`. The Worker serves only the
+ * exact paths in this list; extra prefix members 404.
  */
 export const emailAccessGate = (options: {
   policyId: string;
@@ -170,12 +173,12 @@ export const emailAccessGate = (options: {
           include: [{ everyone: {} }],
         },
       );
-      // OAuth discovery metadata is public (RFC 8414) and must be reachable
-      // by machine clients AND user agents — the hostname-wide email gate
-      // would otherwise 302 them. Path-scoped apps beat the hostname-wide
-      // gate for /.well-known/oauth-*; the Worker serves metadata only there.
+      // Public OAuth surface (RFC 8414 discovery + token/register). Path-
+      // scoped apps beat the hostname-wide email gate. Authorize is NOT in
+      // this list — it needs the Access JWT. Token/register are, because
+      // remint/refresh are Node fetches with no Access cookie.
       const discoveryPaths = hostnames.flatMap((hostname) =>
-        SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES.map(
+        SELFHOST_OAUTH_PUBLIC_PATH_PREFIXES.map(
           (prefix) => `${hostname}${prefix}`,
         ),
       );
