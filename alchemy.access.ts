@@ -12,7 +12,7 @@ import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
-import { SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES } from "./src/shared/mcp-discovery-paths";
+import { SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES } from "./src/shared/mcp-discovery-paths.ts";
 
 const WORKER_PREFIX = "open-seo";
 
