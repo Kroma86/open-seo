@@ -12,6 +12,11 @@ import { getOrCreateOrganizationCustomer } from "@/server/billing/subscription";
 import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
 import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
 import {
+  isSelfHostedMcpOAuthDiscoveryPath,
+  isSelfHostedMcpOAuthProtocolPath,
+  isUnderSelfhostOAuthDiscoveryPrefix,
+} from "@/lib/oauth-resource";
+import {
   createOpenSeoOAuthProvider,
   type OpenSeoOAuthEnv,
 } from "@/server/mcp/oauth-provider";
@@ -165,6 +170,34 @@ function handleFetch(
       env as OpenSeoOAuthEnv,
       ctx,
     );
+  }
+
+  if (
+    authMode === "cloudflare_access" &&
+    (isSelfHostedMcpOAuthDiscoveryPath(pathname) ||
+      isSelfHostedMcpOAuthProtocolPath(pathname))
+  ) {
+    let oauthRequest = publicRequest;
+    if (pathname === "/.well-known/oauth-authorization-server/mcp") {
+      const rewritten = new URL(publicRequest.url);
+      rewritten.pathname = "/.well-known/oauth-authorization-server";
+      oauthRequest = new Request(rewritten, publicRequest);
+    }
+    return openSeoOAuthProvider.fetch(
+      oauthRequest,
+      env as OpenSeoOAuthEnv,
+      ctx,
+    );
+  }
+
+  // The edge bypass for the discovery paths is PREFIX-matched; the Worker
+  // allowlist above is exact. Anything else under those prefixes is a 404,
+  // never the app — the edge must never admit more than the Worker serves.
+  if (
+    authMode === "cloudflare_access" &&
+    isUnderSelfhostOAuthDiscoveryPrefix(pathname)
+  ) {
+    return new Response(null, { status: 404 });
   }
 
   if (
