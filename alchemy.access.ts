@@ -11,6 +11,7 @@
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
+import { SELFHOST_OAUTH_PUBLIC_PATH_PREFIXES } from "./src/shared/mcp-discovery-paths.ts";
 
 const WORKER_PREFIX = "open-seo";
 
@@ -57,7 +58,14 @@ export const requireAllowedEmails = (remedy: string) =>
     return emails;
   });
 
-/** The gate itself: an email allow-policy on a self-hosted Access application. */
+/**
+ * The gate itself: an email allow-policy on a self-hosted Access application.
+ *
+ * When `mcpOAuthPublicBypass` is set, also provisions a Bypass (everyone)
+ * application for OAuth discovery metadata and machine token/register
+ * endpoints. Path-scoped apps beat the hostname-wide gate; the Worker still
+ * serves only the exact paths it allowlists.
+ */
 export const emailAccessGate = (options: {
   policyId: string;
   applicationId: string;
@@ -65,8 +73,41 @@ export const emailAccessGate = (options: {
   applicationName: string;
   domain: string;
   emails: string[];
+  mcpOAuthPublicBypass?: {
+    policyId: string;
+    applicationId: string;
+    policyName: string;
+    applicationName: string;
+  };
 }) =>
   Effect.gen(function* () {
+    if (options.mcpOAuthPublicBypass) {
+      const oauthBypass = yield* Cloudflare.Access.Policy(
+        options.mcpOAuthPublicBypass.policyId,
+        {
+          name: options.mcpOAuthPublicBypass.policyName,
+          decision: "bypass",
+          include: [{ everyone: {} }],
+        },
+      );
+      const oauthPublicPaths = SELFHOST_OAUTH_PUBLIC_PATH_PREFIXES.map(
+        (prefix) => `${options.domain}${prefix}`,
+      );
+      yield* Cloudflare.Access.Application(
+        options.mcpOAuthPublicBypass.applicationId,
+        {
+          type: "self_hosted",
+          name: options.mcpOAuthPublicBypass.applicationName,
+          domain: oauthPublicPaths[0],
+          destinations: oauthPublicPaths.map((uri) => ({
+            type: "public" as const,
+            uri,
+          })),
+          policies: [oauthBypass.policyId],
+        },
+      );
+    }
+
     const allow = yield* Cloudflare.Access.Policy(options.policyId, {
       name: options.policyName,
       decision: "allow",

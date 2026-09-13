@@ -248,6 +248,12 @@ const resolveSelfHostAccess = (
         applicationName: `open-seo ${stage}`,
         domain: `${workerName(stage)}.${subdomain}`,
         emails: allowedEmails,
+        mcpOAuthPublicBypass: {
+          policyId: "SelfHostMcpOAuthPublicBypass",
+          applicationId: "SelfHostMcpOAuthPublicAccess",
+          policyName: `open-seo ${stage} MCP OAuth public bypass`,
+          applicationName: `open-seo ${stage} mcp oauth public`,
+        },
       });
       policyAud = application.aud;
     }
