@@ -91,6 +91,7 @@ export async function getContentVelocity(
   );
 
   for (const run of runs) {
+    if (!run.finishedAt) continue;
     const monthKey = run.finishedAt.slice(0, 7);
     if (!monthSet.has(monthKey)) continue;
     const entry = byLoopId.get(run.loopId);

@@ -377,7 +377,7 @@ describe("runHeadlessSamLoop", () => {
   it.each(["Monthly content", "Keyword portfolio"])("does not require crawl data for %s", async name => {
     mocks.getProjectById.mockResolvedValue({domain:"example.com",loopsEnabled:true,archivedAt:null});
     mocks.getLatestAuditForProject.mockResolvedValue(null);
-    await runHeadlessSamLoop({...input("example.com"),sourceType:"custom",skillName:null,customPrompt:DEFAULT_SAM_LOOP_TEMPLATES.find(t=>t.name===name)!.customPrompt!});
+    await runHeadlessSamLoop({...input("example.com"),sourceType:"custom",skillName:null,customPrompt:(DEFAULT_SAM_LOOP_TEMPLATES.find(t=>t.name===name) as {customPrompt?: string}).customPrompt!});
     expect(mocks.getLatestAuditForProject).not.toHaveBeenCalled();
     expect(mocks.generateText).toHaveBeenCalledTimes(1);
   });

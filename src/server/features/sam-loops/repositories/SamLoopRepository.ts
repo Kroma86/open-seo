@@ -238,10 +238,10 @@ async function getContentVelocityForProject(
 
   return Promise.all(rows.map(async (row) => ({
     loopId: row.loopId,
-    name: row.name,
-    skillName: row.skillName,
+    loopName: row.loopName,
     cadence: row.cadence,
-    finishedAt: row.finishedAt,
+    isEnabled: row.isEnabled,
+    finishedAt: row.finishedAt!,
     hasDraft: await hasVerifiedMonthlyDraft(row.report),
   })));
 }
