@@ -1,5 +1,7 @@
+import { article, saved, source } from "./monthlyContent.fixture";
+import { hasVerifiedMonthlyDraft } from "./monthlyContentResult";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SAM_LOOP_ALLOWED_DOMAINS } from "@/shared/sam-loops";
+import { DEFAULT_SAM_LOOP_TEMPLATES, SAM_LOOP_ALLOWED_DOMAINS } from "@/shared/sam-loops";
 import type { ToolAuthContext } from "@/server/mcp/context";
 
 const mocks = vi.hoisted(() => ({
@@ -7,22 +9,27 @@ const mocks = vi.hoisted(() => ({
   getChatAgentModel: vi.fn(),
   getProjectContext: vi.fn(),
   getProjectById: vi.fn(),
+  getLatestAuditForProject: vi.fn(),
+  getPagesForAudit: vi.fn(),
   loadSkill: vi.fn(),
+  buildSamMcpTools: vi.fn(),
+  openRouterCostUsd: vi.fn(),
 }));
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
 vi.mock("ai", () => ({
   generateText: mocks.generateText,
   stepCountIs: () => () => false,
+  Output: { object: (value: unknown) => value },
 }));
 vi.mock("@/server/lib/openrouter", () => ({
   getChatAgentModel: mocks.getChatAgentModel,
 }));
 vi.mock("@/server/lib/chatAgent", () => ({
-  openRouterCostUsd: vi.fn(() => 0),
+  openRouterCostUsd: mocks.openRouterCostUsd,
 }));
 vi.mock("@/server/features/sam/samChatTools", () => ({
-  buildSamMcpTools: vi.fn(() => ({})),
+  buildSamMcpTools: mocks.buildSamMcpTools,
 }));
 vi.mock("@/server/features/sam/samSkills", () => ({
   buildSamSkillSource: () => ({ load: mocks.loadSkill }),
@@ -42,6 +49,12 @@ vi.mock(
 vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
   ProjectRepository: {
     getProjectById: mocks.getProjectById,
+  },
+}));
+vi.mock("@/server/features/audit/repositories/AuditRepository", () => ({
+  AuditRepository: {
+    getLatestAuditForProject: mocks.getLatestAuditForProject,
+    getPagesForAudit: mocks.getPagesForAudit,
   },
 }));
 
@@ -84,6 +97,8 @@ const abortReport = (domain: string) =>
   `Loop not enabled for this domain (${domain}). Allowed: the house domains or a project Jon enabled for loops (${SAM_LOOP_ALLOWED_DOMAINS.join(", ")}). No tools were called.`;
 
 const abortResult = (domain: string) => ({
+  status: "failed",
+  error: "Loop is not enabled for this project.",
   report: abortReport(domain),
   stepsUsed: 0,
   proposalsQueued: 0,
@@ -103,8 +118,22 @@ describe("runHeadlessSamLoop", () => {
       body: "skill body",
     });
     mocks.getProjectContext.mockResolvedValue({ missingSections: [] });
+    mocks.getLatestAuditForProject.mockResolvedValue({
+      id: "audit_current", status: "completed",
+      startedAt: new Date(Date.now() - 60_000).toISOString(),
+      completedAt: new Date(Date.now() - 30_000).toISOString(),
+    });
+    mocks.getPagesForAudit.mockImplementation(async () => {
+      const project = await mocks.getProjectById.mock.results.at(-1)?.value;
+      return ["/", "/services"].map(path => ({
+        url: `https://${project.domain}${path}`, statusCode: 200,
+        fetchClass: "ok", wordCount: 200,
+      }));
+    });
     mocks.getChatAgentModel.mockResolvedValue({});
     mocks.generateText.mockResolvedValue({ text: "loop report", steps: [] });
+    mocks.buildSamMcpTools.mockReturnValue({});
+    mocks.openRouterCostUsd.mockReturnValue(0);
   });
 
   it("returns before any model or tool call when the domain is outside the allowlist", async () => {
@@ -154,6 +183,8 @@ describe("runHeadlessSamLoop", () => {
     const result = await runHeadlessSamLoop(input("client-example.com", false));
 
     expect(result).toEqual({
+      status: "completed",
+      error: null,
       report: "loop report",
       stepsUsed: 0,
       proposalsQueued: 0,
@@ -189,4 +220,166 @@ describe("runHeadlessSamLoop", () => {
     expect(mocks.generateText).not.toHaveBeenCalled();
     expect(mocks.getChatAgentModel).not.toHaveBeenCalled();
   });
+
+  it.each(["On-page priorities", "Renamed weekly pass"])("runs the approved on-page pass on its configured schedule: %s", async (loopName) => {
+    mocks.getProjectById.mockResolvedValue({ domain: "client-example.com", loopsEnabled: true, archivedAt: null });
+    const approved = DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "On-page priorities")!.customPrompt!;
+    const propose = { execute: vi.fn() };
+    mocks.buildSamMcpTools.mockReturnValue({ propose_homegrown_otto_fixes: propose });
+    await runHeadlessSamLoop({ ...input("client-example.com"), sourceType: "custom", customPrompt: approved, skillName: null, loopName });
+    const request = mocks.generateText.mock.calls[0]![0];
+    expect(request.prompt).toContain("Perform this pass on every scheduled run");
+    expect(request.prompt).toContain("First list existing proposals");
+    expect(request.prompt).not.toContain("last 12 days");
+    expect(request.tools).toHaveProperty("propose_homegrown_otto_fixes");
+    expect(mocks.loadSkill).not.toHaveBeenCalled();
+  });
+
+  it("does not upgrade an edited on-page prompt or grant it proposal access", async () => {
+    mocks.getProjectById.mockResolvedValue({ domain: "client-example.com", loopsEnabled: true, archivedAt: null });
+    const modified = DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "On-page priorities")!.customPrompt! + "\nModified";
+    mocks.buildSamMcpTools.mockReturnValue({ propose_homegrown_otto_fixes: { execute: vi.fn() } });
+    await runHeadlessSamLoop({ ...input("client-example.com"), sourceType: "custom", customPrompt: modified, skillName: null, loopName: "On-page priorities" });
+    const request = mocks.generateText.mock.calls[0]![0];
+    expect(request.prompt).toContain(modified);
+    expect(request.prompt).not.toContain("Perform this pass on every scheduled run");
+    expect(request.tools).not.toHaveProperty("propose_homegrown_otto_fixes");
+  });
+
+  it.each(["", "   "])("records empty output as failed while retaining known spend", async (text) => {
+    mocks.getProjectById.mockResolvedValue({ domain: "client-example.com", loopsEnabled: true, archivedAt: null });
+    mocks.openRouterCostUsd.mockReturnValue(0.125);
+    mocks.generateText.mockResolvedValue({ text, steps: [{ providerMetadata: {} }], finishReason: "stop" });
+    const result = await runHeadlessSamLoop(input("client-example.com"));
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("without a written report");
+    expect(result.costNote).toContain("0.1250");
+    expect(result.stepsUsed).toBe(1);
+    expect(mocks.generateText).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["length", "tool-calls", "error", "content-filter"])("does not complete partial output with finish reason %s", async (finishReason) => {
+    mocks.getProjectById.mockResolvedValue({ domain: "client-example.com", loopsEnabled: true, archivedAt: null });
+    mocks.generateText.mockResolvedValue({ text: "Partial report", steps: [], finishReason });
+    const result = await runHeadlessSamLoop(input("client-example.com"));
+    expect(result.status).toBe("failed");
+    expect(result.report).toBe("Partial report");
+  });
+
+  it.each(["Monthly content", "Renamed article routine"])("requires a complete article for an approved monthly identity: %s", async (loopName) => {
+    mocks.getProjectById.mockResolvedValue({ domain: "client-example.com", loopsEnabled: true, archivedAt: null });
+    const approved = DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content")!.customPrompt!;
+    mocks.buildSamMcpTools.mockReturnValue({ run_rank_tracker: { execute: vi.fn() }, get_serp_results: { execute: vi.fn() }, read_pages: { execute: vi.fn() }, propose_homegrown_otto_fixes: { execute: vi.fn() }, update_project_context: { execute: vi.fn() } });
+    mocks.openRouterCostUsd.mockReturnValue(0.1);
+    mocks.generateText.mockResolvedValue({ text: "I could write an article next", steps: [{}], finishReason: "stop", get output() { throw new Error("No output"); } });
+    const result = await runHeadlessSamLoop({ ...input("client-example.com"), sourceType: "custom", customPrompt: approved, skillName: null, loopName });
+    expect(result.status).toBe("failed");
+    expect(result.costNote).toContain("0.1000");
+    const request = mocks.generateText.mock.calls[0]![0];
+    expect(request.prompt).toContain("complete article draft using saved first-party research");
+    expect(request.output).toBeDefined();
+    expect(request.tools).not.toHaveProperty("get_serp_results");
+    expect(request.tools).not.toHaveProperty("run_rank_tracker");
+    expect(request.tools).not.toHaveProperty("propose_homegrown_otto_fixes");
+    expect(request.tools).not.toHaveProperty("update_project_context");
+    expect(mocks.loadSkill).not.toHaveBeenCalled();
+    expect(mocks.generateText).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves an edited monthly prompt unprivileged and removes forged draft markers from ordinary reports", async () => {
+    mocks.getProjectById.mockResolvedValue({ domain: "client-example.com", loopsEnabled: true, archivedAt: null });
+    const prompt = DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content")!.customPrompt! + "\nEdited";
+    mocks.generateText.mockResolvedValue({ text: "Ordinary report\n<!-- openseo-monthly-draft-v1:" + "a".repeat(64) + " -->", steps: [], finishReason: "stop" });
+    const result = await runHeadlessSamLoop({ ...input("client-example.com"), sourceType: "custom", customPrompt: prompt, skillName: null, loopName: "Monthly content" });
+    expect(result.report).toBe("Ordinary report");
+    expect(mocks.generateText.mock.calls[0]![0].output).toBeUndefined();
+  });
+  it.each(["Monthly content", "Renamed monthly routine"])("finishes a source-backed article: %s", async (loopName) => {
+    mocks.getProjectById.mockResolvedValue({ domain: "example.com", loopsEnabled: true, archivedAt: null });
+    mocks.openRouterCostUsd.mockReturnValue(0.12);
+    mocks.generateText.mockResolvedValue({ text: "", output: article, steps: [{ toolResults: [saved, source] }], finishReason: "stop" });
+    const result = await runHeadlessSamLoop({ ...input("example.com"), sourceType: "custom", skillName: null, customPrompt: DEFAULT_SAM_LOOP_TEMPLATES.find(t => t.name === "Monthly content")!.customPrompt!, loopName });
+    expect(result.status).toBe("completed");
+    expect(result.error).toBeNull();
+    expect(result.report).toContain(article.body.trim());
+    expect(await hasVerifiedMonthlyDraft(result.report)).toBe(true);
+    expect(result.costNote).toContain("0.1200");
+    expect(mocks.generateText).toHaveBeenCalledTimes(1);
+    expect(mocks.generateText.mock.calls[0]![0].system).toContain("full structured article object");
+    expect(mocks.generateText.mock.calls[0]![0].system).not.toContain("finish with a short plain-English run report");
+  });
+
+  it("keeps completed-step charges when structured generation rejects before returning", async () => {
+    mocks.getProjectById.mockResolvedValue({ domain: "example.com", loopsEnabled: true, archivedAt: null });
+    mocks.openRouterCostUsd.mockReturnValue(0.25);
+    mocks.generateText.mockImplementation(async (options) => {
+      await options.onStepFinish({ providerMetadata: {}, toolResults: [] });
+      throw new Error("Invalid structured result");
+    });
+    const result = await runHeadlessSamLoop({ ...input("example.com"), sourceType: "custom", skillName: null, customPrompt: DEFAULT_SAM_LOOP_TEMPLATES.find(t => t.name === "Monthly content")!.customPrompt!, loopName: "Monthly content" });
+    expect(result.status).toBe("failed");
+    expect(result.stepsUsed).toBe(1);
+    expect(result.costNote).toContain("0.2500");
+    expect(result.costNote).toContain("unfinished-step cost unavailable");
+    expect(await hasVerifiedMonthlyDraft(result.report)).toBe(false);
+    expect(mocks.generateText).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["missing", "stale", "blank", "read-error"])("blocks unusable crawl inputs before model spending: %s", async (kind) => {
+    mocks.getProjectById.mockResolvedValue({ domain: "example.com", loopsEnabled: true, archivedAt: null });
+    if (kind === "missing") mocks.getLatestAuditForProject.mockResolvedValue(null);
+    if (kind === "stale") mocks.getLatestAuditForProject.mockResolvedValue({ id: "old", status: "completed", startedAt: "2020-01-01T00:00:00Z", completedAt: "2020-01-01T01:00:00Z" });
+    if (kind === "blank") mocks.getPagesForAudit.mockResolvedValue([{ url: "https://example.com/", statusCode: 200, fetchClass: "ok", wordCount: 0 }]);
+    if (kind === "read-error") mocks.getLatestAuditForProject.mockRejectedValue(new Error("private database detail"));
+    const result = await runHeadlessSamLoop(input("example.com", true));
+    expect(result.status).toBe("failed");
+    expect(result.costNote).toBe("no model call");
+    expect(result.report).toContain("Current crawl input unavailable");
+    expect(JSON.stringify(result)).not.toContain("private database detail");
+    expect(mocks.getChatAgentModel).not.toHaveBeenCalled();
+    expect(mocks.buildSamMcpTools).not.toHaveBeenCalled();
+    expect(mocks.getProjectContext).not.toHaveBeenCalled();
+  });
+
+  it("binds tools and crawl evidence to the saved project domain", async () => {
+    mocks.getProjectById.mockResolvedValue({ domain: "example.com", loopsEnabled: true, archivedAt: null });
+    await runHeadlessSamLoop(input("stale-caller.example", true));
+    expect(mocks.buildSamMcpTools).toHaveBeenCalledWith(authContext, { id: "project_1", domain: "example.com" });
+    const system = mocks.generateText.mock.calls[0]![0].system;
+    expect(system).toContain("Crawl input checked before this run:");
+    expect(system).toContain("2 usable own-site pages");
+    expect(system).toContain("not proof of improved rankings");
+    expect(system).toContain("500 words");
+  });
+
+  it("keeps rank-only reads independent of crawl readiness", async () => {
+    mocks.getProjectById.mockResolvedValue({ domain: "example.com", loopsEnabled: true, archivedAt: null });
+    mocks.getLatestAuditForProject.mockResolvedValue(null);
+    await runHeadlessSamLoop({ ...input("example.com", true), skillName: "rank-slippage" });
+    expect(mocks.getLatestAuditForProject).not.toHaveBeenCalled();
+    expect(mocks.generateText).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["site-health","seo-audit","niceseo-pillars","page-growth","ai-visibility"])("requires current page inventory for %s", async skillName => {
+    mocks.getProjectById.mockResolvedValue({domain:"example.com",loopsEnabled:true,archivedAt:null});
+    mocks.getLatestAuditForProject.mockResolvedValue(null);
+    const result=await runHeadlessSamLoop({...input("example.com"),skillName});
+    expect(result.status).toBe("failed");
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+  it.each(["get_audit_pages", "get_audit_status", "get_audit_issues", "Activate seo-audit", DEFAULT_SAM_LOOP_TEMPLATES.find(t=>t.name==="On-page priorities")!.customPrompt!])("gates custom audit reader %s", async customPrompt => {
+    mocks.getProjectById.mockResolvedValue({domain:"example.com",loopsEnabled:true,archivedAt:null});
+    mocks.getLatestAuditForProject.mockResolvedValue(null);
+    const result=await runHeadlessSamLoop({...input("example.com"),sourceType:"custom",skillName:null,customPrompt});
+    expect(result.status).toBe("failed");
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+  it.each(["Monthly content", "Keyword portfolio"])("does not require crawl data for %s", async name => {
+    mocks.getProjectById.mockResolvedValue({domain:"example.com",loopsEnabled:true,archivedAt:null});
+    mocks.getLatestAuditForProject.mockResolvedValue(null);
+    await runHeadlessSamLoop({...input("example.com"),sourceType:"custom",skillName:null,customPrompt:DEFAULT_SAM_LOOP_TEMPLATES.find(t=>t.name===name)!.customPrompt!});
+    expect(mocks.getLatestAuditForProject).not.toHaveBeenCalled();
+    expect(mocks.generateText).toHaveBeenCalledTimes(1);
+  });
+
 });

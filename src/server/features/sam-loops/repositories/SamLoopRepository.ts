@@ -2,6 +2,7 @@ import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lte, or } from "
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
 import { projects, samLoopRuns, samLoops } from "@/db/schema";
+import { hasVerifiedMonthlyDraft } from "../services/monthlyContentResult";
 import {
   CONTENT_LOOP_SKILL_NAMES,
   DEFAULT_SAM_LOOP_TEMPLATES,
@@ -225,20 +226,24 @@ async function getContentVelocityForProject(
         isNotNull(samLoopRuns.finishedAt),
         gte(samLoopRuns.finishedAt, sinceIso),
         or(
+          and(
+            eq(samLoops.sourceType, "custom"),
+            eq(samLoops.customPrompt, DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content")!.customPrompt!),
+          ),
           eq(samLoops.name, "Monthly content"),
           inArray(samLoops.skillName, [...CONTENT_LOOP_SKILL_NAMES]),
         ),
       ),
     );
 
-  return rows.map((row) => ({
+  return Promise.all(rows.map(async (row) => ({
     loopId: row.loopId,
-    loopName: row.loopName,
+    name: row.name,
+    skillName: row.skillName,
     cadence: row.cadence,
-    isEnabled: row.isEnabled,
-    finishedAt: row.finishedAt!,
-    hasReport: row.report !== null && row.report !== "",
-  }));
+    finishedAt: row.finishedAt,
+    hasDraft: await hasVerifiedMonthlyDraft(row.report),
+  })));
 }
 
 /**

@@ -153,8 +153,12 @@ export const CONTENT_LOOP_SKILL_NAMES = [
 export function isSamContentLoop(loop: {
   name: string;
   skillName: string | null;
+  sourceType?: string;
+  customPrompt?: string | null;
 }): boolean {
   return (
+    (loop.sourceType === "custom" && !!loop.customPrompt && loop.customPrompt ===
+      DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content")?.customPrompt) ||
     loop.name === "Monthly content" ||
     (loop.skillName !== null &&
       (CONTENT_LOOP_SKILL_NAMES as readonly string[]).includes(loop.skillName))
