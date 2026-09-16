@@ -15,6 +15,8 @@ import type { ToolAuthContext } from "@/server/mcp/context";
 import { buildScopedLoopTools } from "@/server/features/sam-loops/services/loopToolFilter";
 import { countProposalsQueued } from "@/server/features/sam-loops/services/countProposalsQueued";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
+import { AuditRepository } from "@/server/features/audit/repositories/AuditRepository";
+import { checkAuditReadiness } from "./loopFreshness";
 import {
   DEFAULT_SAM_LOOP_TEMPLATES,
   isSamLoopProjectAllowed,
@@ -31,6 +33,9 @@ const LOOP_REPORT_INSTRUCTION = [
   "If you spend paid credits, say so in the report. End with the report as",
   "your final message — no tool calls after the synthesis.",
   "Do the loop work for this project's own domain.",
+  "Keep the final report under 500 words and any table to at most 8 rows.",
+  "State each source's measurement date. Saved context is background, not a current measurement.",
+  "A baseline alone is not proof of improved rankings or AI visibility; comparisons need matching dated samples.",
 ].join(" ");
 
 export type HeadlessSamLoopInput = {
@@ -90,6 +95,34 @@ export async function runHeadlessSamLoop(
     };
   }
 
+  const monthlyTemplate = DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content");
+  const monthly = input.sourceType === "custom" && !!input.customPrompt && input.customPrompt === monthlyTemplate?.customPrompt;
+  const needsAudit = !monthly && (
+    (input.sourceType === "skill" && ["site-health", "seo-audit", "niceseo-pillars", "page-growth", "ai-visibility"].includes(input.skillName ?? "")) ||
+    (input.sourceType === "custom" && /\bget_audit_(?:status|pages|issues)\b|\bseo-audit\b/i.test(input.customPrompt ?? ""))
+  );
+  let crawlEvidence: string | null = null;
+  if (needsAudit) {
+    let readiness: ReturnType<typeof checkAuditReadiness>;
+    try {
+      const audit = await AuditRepository.getLatestAuditForProject(input.project.id);
+      const pages = audit ? await AuditRepository.getPagesForAudit(audit.id) : [];
+      readiness = checkAuditReadiness(audit, pages, row!.domain, new Date());
+    } catch {
+      readiness = { ready: false, reason: "The saved crawl could not be read." };
+    }
+    if (!readiness.ready) {
+      return {
+        status: "failed",
+        error: `Current crawl input unavailable: ${readiness.reason}`,
+        report: `Current crawl input unavailable: ${readiness.reason} Refresh and verify the site crawl before trying again. No model or research tools were called.`,
+        stepsUsed: 0, proposalsQueued: 0, costNote: "no model call",
+        modelFailure: null,
+      };
+    }
+    crawlEvidence = `Crawl input checked before this run: measured ${readiness.measuredAt}; ${readiness.usablePages} usable own-site pages. This proves usable crawl input only, not complete site coverage or site health. Read the same current audit through the tools before drawing conclusions.`;
+  }
+
   const context = await ProjectContextService.getProjectContext(
     input.project.id,
   );
@@ -97,8 +130,6 @@ export async function runHeadlessSamLoop(
   const contextMarkdown =
     ProjectContextService.renderProjectContextMarkdown(context);
 
-  const monthlyTemplate = DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content");
-  const monthly = input.sourceType === "custom" && !!input.customPrompt && input.customPrompt === monthlyTemplate?.customPrompt;
   let taskBody: string;
   if (input.sourceType === "skill" && input.skillName) {
     const skill = await buildSamSkillSource().load(input.skillName);
@@ -137,13 +168,14 @@ export async function runHeadlessSamLoop(
       {
         projectId: input.project.id,
         projectName: input.project.name,
-        domain: input.project.domain,
+        domain: row!.domain,
         locationCode: input.project.locationCode,
         languageCode: input.project.languageCode,
       },
       { intakeMode },
     ),
     contextMarkdown ? `Project context:\n${contextMarkdown}` : null,
+    crawlEvidence,
     monthly ? [
       "You are running a scheduled monthly article task, with no chat user.",
       "For this task override chat brevity: finish with the full structured article object,",
@@ -158,7 +190,7 @@ export async function runHeadlessSamLoop(
   const tools = buildScopedLoopTools(
     buildSamMcpTools(input.authContext, {
       id: input.project.id,
-      domain: input.project.domain,
+      domain: row!.domain,
     }),
     {
       sourceType: input.sourceType,

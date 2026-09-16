@@ -23,6 +23,69 @@ describe("monthly draft evidence", () => {
     const result = await validateMonthlyContent(article, [{ toolResults: [saved, source, { toolName: "get_search_console_performance", output: { data: { ok: false, reason: "not_connected" } } }] }], "example.com");
     expect(result.error).toBeNull();
   });
+  it("keeps supporting evidence from an earlier read of the same URL", async () => {
+    const laterRead = {
+      toolName: "read_pages",
+      output: {
+        blocked: false,
+        pages: [{ url, text: "The service page has changed since the first read. It now explains how appointments are arranged and how to prepare for a visit." }],
+      },
+    };
+    const result = await validateMonthlyContent(article, [
+      { toolResults: [saved, source] },
+      { toolResults: [laterRead] },
+    ], "example.com");
+    expect(result.error).toBeNull();
+    expect(await hasVerifiedMonthlyDraft(result.report)).toBe(true);
+  });
+  it.each([
+    {
+      label: "invalid source URL",
+      source: { url: "https://elsewhere.example/drains", excerpt: article.sources[0]!.excerpt },
+      error: "A supporting source URL is invalid or does not belong to this site.",
+    },
+    {
+      label: "unread source URL",
+      source: { url: "https://example.com/unread", excerpt: article.sources[0]!.excerpt },
+      error: "A supporting source URL was not read during this run.",
+    },
+    {
+      label: "short excerpt",
+      source: { url, excerpt: "Example Plumbing" },
+      error: "A supporting source excerpt is shorter than 30 characters.",
+    },
+    {
+      label: "unsupported excerpt",
+      source: { url, excerpt: "We guarantee the cheapest price in the province." },
+      error: "A supporting source excerpt was not found in any page snapshot read during this run.",
+    },
+  ])("reports $label without exposing source or article contents", async (candidate) => {
+    const result = await validateMonthlyContent(
+      { ...article, sources: [candidate.source] },
+      [{ toolResults: [saved, source] }],
+      "example.com",
+    );
+    expect(result.error).toBe(candidate.error);
+    expect(result.report).toBe(`Monthly article not completed: ${candidate.error}`);
+    expect(await hasVerifiedMonthlyDraft(result.report)).toBe(false);
+  });
+  it("does not join separate page snapshots to manufacture a supporting excerpt", async () => {
+    const firstHalf = "A careful inspection identifies";
+    const secondHalf = " the next practical repair step.";
+    const result = await validateMonthlyContent(
+      { ...article, sources: [{ url, excerpt: firstHalf + secondHalf }] },
+      [{ toolResults: [saved, {
+        toolName: "read_pages",
+        output: { blocked: false, pages: [
+          { url, text: `${"Background information about the service. ".repeat(3)}${firstHalf}` },
+          { url, text: `${secondHalf}${" Further details explain how visits are arranged.".repeat(3)}` },
+        ] },
+      }] }],
+      "example.com",
+    );
+    expect(result.error).toBe("A supporting source excerpt was not found in any page snapshot read during this run.");
+    expect(await hasVerifiedMonthlyDraft(result.report)).toBe(false);
+  });
   it.each([
     { ...article, targetKeyword: "invented target" },
     { ...article, title: "" },

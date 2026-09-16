@@ -58,7 +58,7 @@ export async function validateMonthlyContent(output: unknown, steps: Step[], dom
   const draft = parsed.data;
   if (draft.outcome === "blocked") return fail(stripDraftEvidence(draft.reason).slice(0, 1000) || "Required research or article content was unavailable.");
   const demand = new Set<string>();
-  const pages = new Map<string, string>();
+  const pages = new Map<string, string[]>();
   for (const step of steps) {
     for (const result of step.toolResults ?? []) {
       const out = record(result.output);
@@ -78,7 +78,11 @@ export async function validateMonthlyContent(output: unknown, steps: Step[], dom
       } else if (result.toolName === "read_pages" && out.blocked === false) {
         for (const page of rows(out.pages)) {
           const url = typeof page.url === "string" ? ownUrl(page.url, domain) : null;
-          if (url && typeof page.text === "string" && page.text.trim().length >= 80) pages.set(url, page.text);
+          if (url && typeof page.text === "string" && page.text.trim().length >= 80) {
+            const snapshots = pages.get(url) ?? [];
+            snapshots.push(page.text);
+            pages.set(url, snapshots);
+          }
         }
       }
     }
@@ -92,9 +96,12 @@ export async function validateMonthlyContent(output: unknown, steps: Step[], dom
   const sources: string[] = [];
   for (const source of draft.sources) {
     const url = ownUrl(source.url, domain);
-    const page = url ? pages.get(url) : null;
+    if (!url) return fail("A supporting source URL is invalid or does not belong to this site.");
+    const snapshots = pages.get(url);
+    if (!snapshots) return fail("A supporting source URL was not read during this run.");
     const excerpt = source.excerpt.trim().replace(/\s+/g, " ");
-    if (!url || !page || excerpt.length < 30 || !page.replace(/\s+/g, " ").includes(excerpt)) return fail("A source URL or supporting excerpt could not be verified against pages read during this run.");
+    if (excerpt.length < 30) return fail("A supporting source excerpt is shorter than 30 characters.");
+    if (!snapshots.some((page) => page.replace(/\s+/g, " ").includes(excerpt))) return fail("A supporting source excerpt was not found in any page snapshot read during this run.");
     sources.push(url);
   }
   const report = [

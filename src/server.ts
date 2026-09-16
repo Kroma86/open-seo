@@ -4,11 +4,15 @@ import {
 } from "@tanstack/react-start/server";
 import { routeAgentRequest } from "agents";
 import { resolveCloudflareAccessMcpGate } from "@/middleware/ensure-user/cloudflareAccess";
-import { resolveSharedWorkspaceContext } from "@/middleware/ensure-user/delegated";
+import {
+  resolveServiceTokenWorkspaceContext,
+  resolveSharedWorkspaceContext,
+} from "@/middleware/ensure-user/delegated";
 import { resolveUserContextFromHeaders } from "@/middleware/ensure-user/resolve";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import { SamSessionRepository } from "@/server/features/sam/SamSessionRepository";
 import { runScheduledRankChecks } from "@/server/features/rank-tracking/services/scheduledRankChecks";
+import { reconcileStuckRankCheckRuns } from "@/server/features/rank-tracking/services/rankCheckReconciler";
 import { runScheduledAiVisibilityChecks } from "@/server/features/ai-visibility/services/scheduledAiVisibilityChecks";
 import { runScheduledSamLoops } from "@/server/features/sam-loops/services/scheduledSamLoops";
 import { reconcileStaleAudits } from "@/server/features/audit/services/auditReconciler";
@@ -18,6 +22,7 @@ import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
 import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
 import {
   isSelfHostedMcpOAuthDiscoveryPath,
+  isSelfHostedMcpOAuthProtocolPath,
   isUnderSelfhostOAuthDiscoveryPrefix,
 } from "@/lib/oauth-resource";
 import {
@@ -26,6 +31,8 @@ import {
 } from "@/server/mcp/oauth-provider";
 import { requestWithPublicOrigin } from "@/server/mcp/public-origin";
 import { MCP_ROUTE } from "@/server/mcp/context";
+import { asAppError } from "@/server/lib/errors";
+import { OAUTH_PROTECTED_RESOURCE_PATH } from "@/shared/mcp-discovery-paths";
 import { handleSelfHostedOpenSeoMcpRequest } from "@/server/mcp/transport";
 import { withPgClient } from "@/db";
 import {
@@ -157,6 +164,7 @@ function fetch(
   const isMcpSurface =
     authMode === "cloudflare_access"
       ? isSelfHostedMcpOAuthDiscoveryPath(pathname) ||
+        isSelfHostedMcpOAuthProtocolPath(pathname) ||
         isUnderSelfhostOAuthDiscoveryPrefix(pathname) ||
         pathname === MCP_ROUTE
       : authMode === "local_noauth" && pathname === MCP_ROUTE;
@@ -166,6 +174,86 @@ function fetch(
   // Scope a per-request Postgres client (no-op in D1 mode). The client isn't
   // closed here — the Workers↔Hyperdrive socket is reclaimed at invocation end.
   return withPgClient(() => Promise.resolve(handleFetch(request, env, ctx)));
+}
+
+/**
+ * Turn a thrown gate error into the response the client should actually get.
+ *
+ * Exported so the failure branch is testable. Before this change nothing in
+ * `src/server.test.ts` used mockRejectedValue, so the throw path had no
+ * coverage at all — which is how it stayed broken.
+ *
+ * The 401's metadata URL comes from the request's own origin because this
+ * Worker answers on two intentional hostnames and each client must be pointed
+ * at the one it actually used. getPublicOrigin only consults x-forwarded-host
+ * when the request URL is NOT https, which is the case in local dev and behind
+ * a plain-http front, not on the Cloudflare edge. If that ever stops holding,
+ * a forged x-forwarded-host would not admit anyone — the gate is unchanged —
+ * but it could advertise a metadata URL on a host the operator did not choose.
+ */
+export function mcpGateErrorResponse(
+  error: unknown,
+  publicRequest: Request,
+): Response {
+  const appError = asAppError(error);
+
+  if (appError?.code === "UNAUTHENTICATED") {
+    // 401 with the resource metadata is what an MCP client needs in order to
+    // discover the authorization server and start the OAuth flow. A 500 gives
+    // it nothing to act on. This grants no access: the request is still
+    // rejected, just in the language the protocol defines.
+    const resourceMetadata = new URL(
+      `${OAUTH_PROTECTED_RESOURCE_PATH}${MCP_ROUTE}`,
+      new URL(publicRequest.url).origin,
+    ).toString();
+    return new Response(
+      JSON.stringify({
+        error: "unauthorized",
+        error_description: "Cloudflare Access identity required for /mcp.",
+      }),
+      {
+        status: 401,
+        headers: {
+          "content-type": "application/json",
+          "WWW-Authenticate": `Bearer resource_metadata="${resourceMetadata}"`,
+        },
+      },
+    );
+  }
+
+  if (appError?.code === "AUTH_CONFIG_MISSING") {
+    // A deployment fault, not a caller fault — but /mcp is reachable without
+    // credentials, so the operator's guidance is NOT put in the body. errors.ts
+    // marks AUTH_CONFIG_MISSING messages safe for the signed-in app UI, which
+    // is a different audience from an anonymous endpoint, and nothing checks
+    // what a future message might carry. The code names the fault to the
+    // caller; the message is logged, which is the only place it now appears.
+    console.error("[mcp] Access gate misconfigured:", appError.message);
+    return new Response(JSON.stringify({ error: "server_misconfigured" }), {
+      status: 500,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  return mcpFailureResponse(error);
+}
+
+/**
+ * The answer for a fault that is NOT about the caller's identity — the OAuth
+ * provider, the MCP transport, the workspace lookup, a database outage.
+ *
+ * It is deliberately not the 401: answering a transport fault with an Access
+ * challenge would send a client off to re-authenticate over something
+ * authentication cannot fix. It exists at all because anything thrown here and
+ * left uncaught reaches the Workers runtime as an unhandled rejection, which
+ * Cloudflare renders as error 1101 — the 500 this whole change is about.
+ */
+export function mcpFailureResponse(error: unknown): Response {
+  console.error("[mcp] request failed:", error);
+  return new Response(JSON.stringify({ error: "internal_error" }), {
+    status: 500,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 async function handleFetch(
@@ -201,7 +289,8 @@ async function handleFetch(
 
   if (
     authMode === "cloudflare_access" &&
-    isSelfHostedMcpOAuthDiscoveryPath(pathname)
+    (isSelfHostedMcpOAuthDiscoveryPath(pathname) ||
+      isSelfHostedMcpOAuthProtocolPath(pathname))
   ) {
     let oauthRequest = publicRequest;
     if (pathname === "/.well-known/oauth-authorization-server/mcp") {
@@ -233,28 +322,60 @@ async function handleFetch(
     pathname === MCP_ROUTE
   ) {
     if (authMode === "cloudflare_access" && publicRequest.method !== "OPTIONS") {
+      // The gate raises AppError for its rejections — no Access JWT, an
+      // audience mismatch, TEAM_DOMAIN unset. Nothing in the chain caught them,
+      // so they reached the Workers runtime as an unhandled rejection and
+      // Cloudflare turned each one into error 1101, "Worker threw exception",
+      // which clients see as a 500. An MCP client arriving without a token got
+      // a server error instead of the 401 that tells it to authenticate, so it
+      // could never start the OAuth flow at all.
+      // Two catches with different answers. The gate gets the 401, because its
+      // failure really is about the caller's identity. Everything behind it
+      // gets a plain 500, because answering a transport or database fault with
+      // an Access challenge would send a client off to re-authenticate over
+      // something authentication cannot fix. Neither may throw: an uncaught
+      // rejection here is exactly the 1101 this change exists to remove. That covers the
+      // gate, the provider, the transport and the workspace lookup under
+      // cloudflare_access — not every exit from /mcp. The OPTIONS preflight
+      // below still calls the handler outside any try.
       // The gate is Access JWT verification only (remote JWKS, NO database) —
       // safe outside any pooled-client scope (see the MCP-surface bypass in
       // fetch). The workspace context (DB) gets its own short client scope,
       // taken AFTER the network wait, never held across it.
-      const gate = await resolveCloudflareAccessMcpGate(publicRequest.headers);
-      if (gate.kind === "service_token") {
-        return openSeoOAuthProvider.fetch(
-          publicRequest,
-          env as OpenSeoOAuthEnv,
-          ctx,
-        );
+      let gate: Awaited<ReturnType<typeof resolveCloudflareAccessMcpGate>>;
+      try {
+        gate = await resolveCloudflareAccessMcpGate(publicRequest.headers);
+      } catch (error) {
+        // Only the GATE earns the 401. It is the one call whose failure really
+        // does mean "your identity did not check out".
+        return mcpGateErrorResponse(error, publicRequest);
       }
-      const accessContext = await withPgClient(() =>
-        resolveSharedWorkspaceContext(gate.userId, gate.userEmail),
-      );
-      return handleSelfHostedOpenSeoMcpRequest(
-        publicRequest,
-        authMode,
-        env,
-        ctx,
-        accessContext,
-      );
+
+      // Everything past this point has already proved identity, so a failure is
+      // ours, not the caller's. `return await` matters: without the await the
+      // promise escapes the try and rejects into the runtime as a 1101.
+      try {
+        // A verified service token IS an identity. Cloudflare Access has
+        // already proved which machine is calling, so handing it to the OAuth
+        // provider asked a headless caller to finish a browser login it can
+        // never finish: it 401d, and the only way back was a person pasting a
+        // fresh token every fifteen minutes. Machines get their own workspace
+        // context instead, in the same shared workspace people use.
+        const accessContext = await withPgClient(() =>
+          gate.kind === "service_token"
+            ? resolveServiceTokenWorkspaceContext(gate.commonName)
+            : resolveSharedWorkspaceContext(gate.userId, gate.userEmail),
+        );
+        return await handleSelfHostedOpenSeoMcpRequest(
+          publicRequest,
+          authMode,
+          env,
+          ctx,
+          accessContext,
+        );
+      } catch (error) {
+        return mcpFailureResponse(error);
+      }
     }
 
     return handleSelfHostedOpenSeoMcpRequest(
@@ -315,6 +436,7 @@ export default {
     try {
       await withPgClient(() => reconcileStaleAudits());
       await withPgClient(() => reconcileStaleAiVisibilityRuns());
+      await withPgClient(() => reconcileStuckRankCheckRuns());
     } catch (err) {
       watchdogError = err;
       console.error("[cron] Stale-audit reconcile failed:", err);
