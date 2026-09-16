@@ -90,7 +90,12 @@ async function verifyAccessTokenForAudience(
 }
 
 export type CloudflareAccessMcpGate =
-  | { kind: "service_token" }
+  // common_name identifies WHICH service token Access verified. Carrying it
+  // out of the gate is what makes a named machine identity POSSIBLE — drop it
+  // here and every token necessarily shares one anonymous row. It is not by
+  // itself what keeps two tokens apart: that is serviceTokenIdentity's job,
+  // and it is enforced there, not asserted here.
+  | { kind: "service_token"; commonName: string }
   // Verified identity ONLY — the workspace context (DB work) is resolved by
   // the caller inside its own client scope. Keeping DB out of this function
   // keeps the remote JWKS verification out of any pooled-client scope.
@@ -129,7 +134,10 @@ export async function resolveCloudflareAccessMcpGate(
       if (typeof servicePayload.common_name !== "string") {
         throw new AppError("UNAUTHENTICATED");
       }
-      return { kind: "service_token" };
+      return {
+        kind: "service_token",
+        commonName: servicePayload.common_name,
+      };
     }
   }
 

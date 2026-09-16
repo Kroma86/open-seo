@@ -4,7 +4,10 @@ import {
 } from "@tanstack/react-start/server";
 import { routeAgentRequest } from "agents";
 import { resolveCloudflareAccessMcpGate } from "@/middleware/ensure-user/cloudflareAccess";
-import { resolveSharedWorkspaceContext } from "@/middleware/ensure-user/delegated";
+import {
+  resolveServiceTokenWorkspaceContext,
+  resolveSharedWorkspaceContext,
+} from "@/middleware/ensure-user/delegated";
 import { resolveUserContextFromHeaders } from "@/middleware/ensure-user/resolve";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import { SamSessionRepository } from "@/server/features/sam/SamSessionRepository";
@@ -349,15 +352,16 @@ async function handleFetch(
       // ours, not the caller's. `return await` matters: without the await the
       // promise escapes the try and rejects into the runtime as a 1101.
       try {
-        if (gate.kind === "service_token") {
-          return await openSeoOAuthProvider.fetch(
-            publicRequest,
-            env as OpenSeoOAuthEnv,
-            ctx,
-          );
-        }
+        // A verified service token IS an identity. Cloudflare Access has
+        // already proved which machine is calling, so handing it to the OAuth
+        // provider asked a headless caller to finish a browser login it can
+        // never finish: it 401d, and the only way back was a person pasting a
+        // fresh token every fifteen minutes. Machines get their own workspace
+        // context instead, in the same shared workspace people use.
         const accessContext = await withPgClient(() =>
-          resolveSharedWorkspaceContext(gate.userId, gate.userEmail),
+          gate.kind === "service_token"
+            ? resolveServiceTokenWorkspaceContext(gate.commonName)
+            : resolveSharedWorkspaceContext(gate.userId, gate.userEmail),
         );
         return await handleSelfHostedOpenSeoMcpRequest(
           publicRequest,
