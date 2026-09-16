@@ -71,7 +71,8 @@ vi.mock("@/server/features/audit/AuditScratchpad", () => ({
   AuditScratchpad: class {},
 }));
 
-import handler from "./server";
+import handler, { mcpGateErrorResponse } from "./server";
+import { AppError } from "@/server/lib/errors";
 
 const ctx = { waitUntil: () => {} } as unknown as ExecutionContext;
 const env = { AUTH_MODE: "cloudflare_access" } as unknown as Env;
@@ -142,12 +143,10 @@ describe("server /mcp routing under cloudflare_access", () => {
   });
 
   it("passes OPTIONS preflight to the user handler with an explicit null context, without calling the gate", async () => {
-    const response = await handler.fetch(
-      mcpRequest("OPTIONS"),
-      env,
-      ctx,
-    );
+    await handler.fetch(mcpRequest("OPTIONS"), env, ctx);
 
+    // Routing is the whole assertion here: the 200 status would come from the
+    // mocked transport, not from any real preflight logic (see M3-5).
     expect(mocks.gate).not.toHaveBeenCalled();
     expect(mocks.transport).toHaveBeenCalledWith(
       expect.any(Request),
@@ -156,7 +155,123 @@ describe("server /mcp routing under cloudflare_access", () => {
       ctx,
       null,
     );
-    expect(response.status).toBe(200);
+  });
+});
+
+describe("server /mcp gate failures become responses, not exceptions", () => {
+  // Until 2026-09-16 nothing in this file used mockRejectedValue, so the throw
+  // path had no coverage — and in production every rejection reached the
+  // Workers runtime unhandled and came back as Cloudflare error 1101, a 500.
+  it("answers a missing Access identity with 401 and the resource metadata, not a 500", async () => {
+    mocks.gate.mockRejectedValue(new AppError("UNAUTHENTICATED"));
+
+    const response = await handler.fetch(mcpRequest(), env, ctx);
+
+    expect(response.status).toBe(401);
+    // Without this header an MCP client cannot find the authorization server,
+    // so it can never start the OAuth flow — which is the whole point of
+    // answering 401 rather than 500.
+    expect(response.headers.get("WWW-Authenticate")).toBe(
+      'Bearer resource_metadata="https://open-seo.test/.well-known/oauth-protected-resource/mcp"',
+    );
+    expect(mocks.transport).not.toHaveBeenCalled();
+    expect(mocks.appFetch).not.toHaveBeenCalled();
+  });
+
+  it("names a deployment misconfiguration without putting the operator's message in the body", async () => {
+    // /mcp answers anonymous callers, so the guidance stays in the Worker log.
+    mocks.gate.mockRejectedValue(
+      new AppError("AUTH_CONFIG_MISSING", "TEAM_DOMAIN must be https://acme.cloudflareaccess.com"),
+    );
+
+    const response = await handler.fetch(mcpRequest(), env, ctx);
+
+    expect(response.status).toBe(500);
+    const body = (await response.json()) as Record<string, string>;
+    expect(body).toEqual({ error: "server_misconfigured" });
+    expect(JSON.stringify(body)).not.toContain("cloudflareaccess.com");
+  });
+
+  it("gives an unexpected AppError code the generic 500, not the Access 401", async () => {
+    mocks.gate.mockRejectedValue(new AppError("INTERNAL_ERROR"));
+
+    const response = await handler.fetch(mcpRequest(), env, ctx);
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("WWW-Authenticate")).toBeNull();
+  });
+
+  it("answers a transport failure with a plain 500, not an Access challenge", async () => {
+    // Two things at once. It must NOT become a 401 — a transport fault is not
+    // an identity problem, and a challenge would send the client off to
+    // re-authenticate over something authentication cannot fix. And it must
+    // not escape either: an uncaught rejection here is the 1101 this whole
+    // change removes. The error is UNAUTHENTICATED on purpose, so only the
+    // narrower catch keeps it out of the 401 branch.
+    mocks.gate.mockResolvedValue({ kind: "user", userId: "u1", userEmail: "p@example.com" });
+    mocks.resolveContext.mockResolvedValue(userContext);
+    mocks.transport.mockRejectedValue(new AppError("UNAUTHENTICATED"));
+
+    const response = await handler.fetch(mcpRequest(), env, ctx);
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("WWW-Authenticate")).toBeNull();
+    expect(await response.json()).toEqual({ error: "internal_error" });
+  });
+
+  it("answers an OAuth provider failure the same way", async () => {
+    mocks.gate.mockResolvedValue({ kind: "service_token" });
+    mocks.providerFetch.mockRejectedValue(new Error("provider exploded"));
+
+    const response = await handler.fetch(mcpRequest(), env, ctx);
+
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(await response.json())).not.toContain("exploded");
+  });
+
+  it("still reaches the MCP handler when the gate succeeds", async () => {
+    mocks.gate.mockResolvedValue({ kind: "user", userId: "u1", userEmail: "p@example.com" });
+    mocks.resolveContext.mockResolvedValue(userContext);
+
+    const response = await handler.fetch(mcpRequest(), env, ctx);
+
+    expect(mocks.transport).toHaveBeenCalledTimes(1);
+    expect(await response.text()).toBe("mcp user handler");
+  });
+
+  it("answers an unrecognised error with a bare 500 and leaks nothing", async () => {
+    mocks.gate.mockRejectedValue(new Error("connect ECONNREFUSED 10.0.0.1:5432"));
+
+    const response = await handler.fetch(mcpRequest(), env, ctx);
+
+    expect(response.status).toBe(500);
+    const body = (await response.json()) as Record<string, string>;
+    expect(body).toEqual({ error: "internal_error" });
+    expect(JSON.stringify(body)).not.toContain("ECONNREFUSED");
+  });
+
+  it("answers a workspace lookup failure with a 500, not an Access challenge", async () => {
+    // The gate already proved identity, so a failure here is ours, not the
+    // caller's — even when it arrives wearing an UNAUTHENTICATED code.
+    mocks.gate.mockResolvedValue({ kind: "user", userId: "u1", userEmail: "p@example.com" });
+    mocks.resolveContext.mockRejectedValue(new Error("db down"));
+
+    const response = await handler.fetch(mcpRequest(), env, ctx);
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("WWW-Authenticate")).toBeNull();
+    expect(JSON.stringify(await response.json())).not.toContain("db down");
+  });
+
+  it("builds the metadata URL from the request's own origin", () => {
+    const response = mcpGateErrorResponse(
+      new AppError("UNAUTHENTICATED"),
+      new Request("https://seo.niceseo.ai/mcp", { method: "POST" }),
+    );
+
+    expect(response.headers.get("WWW-Authenticate")).toContain(
+      "https://seo.niceseo.ai/.well-known/oauth-protected-resource/mcp",
+    );
   });
 });
 
