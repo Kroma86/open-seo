@@ -137,8 +137,13 @@ beforeEach(async () => {
   vi.useRealTimers();
   const { createOpenSeoOAuthProvider } = await import("./oauth-provider");
   provider = createOpenSeoOAuthProvider(() => new Response("app"));
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the provider touches only OAUTH_KV
-  env = { OAUTH_KV: createKvFake() } as unknown as Env;
+  // AUTH_MODE must be declared: getAuthMode() fail-closes to "cloudflare_access"
+  // when unset, and on that path the authorize route answers 401 instead of
+  // bouncing to the consent UI. These tests pin the HOSTED Better Auth flow
+  // (BASE is app.openseo.so, and authorizeAndGetCode expects a 302 to
+  // /oauth-consent), so say so rather than relying on a default.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the provider touches only OAUTH_KV and AUTH_MODE
+  env = { OAUTH_KV: createKvFake(), AUTH_MODE: "hosted" } as unknown as Env;
 });
 
 const registrationSchema = z.looseObject({

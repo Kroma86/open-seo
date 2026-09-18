@@ -108,6 +108,17 @@ export async function resolveCloudflareAccessMcpGate(
     );
   }
 
+  // The two audiences must belong to two DIFFERENT Access applications. If
+  // they are equal (a pasted-in-place misconfiguration), a user JWT verifies
+  // at the MCP audience first and dies on the claim-shape guard with a bare,
+  // undiagnosable UNAUTHENTICATED — fail at config time instead.
+  if (mcpPolicyAud && mcpPolicyAud === policyAud) {
+    throw new AppError(
+      "AUTH_CONFIG_MISSING",
+      "POLICY_AUD and MCP_POLICY_AUD are identical. They must be the AUD tags of two DIFFERENT Access applications — the hostname-wide app and the path-scoped /mcp app. Copy each tag from its own application in Zero Trust -> Access controls -> Applications -> Configure -> Additional settings.",
+    );
+  }
+
   const token = headers.get("cf-access-jwt-assertion");
 
   if (!token) {

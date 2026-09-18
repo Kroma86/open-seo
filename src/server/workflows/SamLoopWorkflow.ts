@@ -123,7 +123,8 @@ export class SamLoopWorkflow extends WorkflowEntrypoint<Env, SamLoopParams> {
 
         const nowIso = new Date().toISOString();
         await SamLoopRepository.updateRun(runId, {
-          status: "completed",
+          status: execution.status,
+          error: execution.error,
           finishedAt: nowIso,
           report: execution.report,
           proposalsQueued: execution.proposalsQueued,
@@ -135,7 +136,7 @@ export class SamLoopWorkflow extends WorkflowEntrypoint<Env, SamLoopParams> {
         });
 
         console.log(
-          `[sam-loop] ${runId} completed loop=${loopId} project=${projectId} trigger=${trigger} proposals=${execution.proposalsQueued} steps=${execution.stepsUsed}`,
+          `[sam-loop] ${runId} ${execution.status} loop=${loopId} project=${projectId} trigger=${trigger} proposals=${execution.proposalsQueued} steps=${execution.stepsUsed}`,
         );
       });
     } catch (error) {

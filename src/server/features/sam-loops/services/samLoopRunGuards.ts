@@ -151,7 +151,7 @@ export async function beginSamLoopRun(input: {
 }): Promise<SamLoopTriggerResult> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const runId = crypto.randomUUID();
-    // count-then-insert is not atomic; this narrows the race to the insert itself. Accepted residual: an overshoot bounded by the number of concurrent starters, each one loop run.
+    // Cheap early rejection; the repository repeats admission atomically at insert.
     const runsToday = await SamLoopRepository.countRunsCreatedSince(
       startOfUtcDay(),
     );
@@ -162,7 +162,7 @@ export async function beginSamLoopRun(input: {
       id: runId,
       loopId: input.loopId,
       projectId: input.projectId,
-    });
+    }, { sinceDate: startOfUtcDay(), cap: getSamLoopDailyRunCap(env) });
 
     if (created) {
       try {
@@ -190,7 +190,12 @@ export async function beginSamLoopRun(input: {
     }
 
     const blocker = await SamLoopRepository.getActiveRunForLoop(input.loopId);
-    if (!blocker) continue;
+    if (!blocker) {
+      if (await SamLoopRepository.countRunsCreatedSince(startOfUtcDay()) >= getSamLoopDailyRunCap(env)) {
+        return { ok: false, reason: "daily_cap" };
+      }
+      continue;
+    }
 
     if (attempt === 0) {
       const ageMs = Date.now() - new Date(blocker.createdAt).getTime();

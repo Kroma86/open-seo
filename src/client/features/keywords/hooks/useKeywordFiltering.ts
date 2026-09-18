@@ -8,6 +8,39 @@ import {
 } from "@/client/features/keywords/keywordResearchTypes";
 import type { SortDir, SortField } from "@/client/features/keywords/components";
 
+/** Active when the original string is truthy and Number(string) is not NaN. */
+function parseActiveBound(raw: string): number | undefined {
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function passesNumericBounds(
+  value: number | null | undefined,
+  minRaw: string,
+  maxRaw: string,
+): boolean {
+  const min = parseActiveBound(minRaw);
+  const max = parseActiveBound(maxRaw);
+  if (min === undefined && max === undefined) return true;
+  if (value == null) return false;
+  if (min !== undefined && value < min) return false;
+  if (max !== undefined && value > max) return false;
+  return true;
+}
+
+/** Missing values sort last in both directions; equal present values stay stable. */
+function compareNullableNumber(
+  a: number | null | undefined,
+  b: number | null | undefined,
+  dir: SortDir,
+): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return dir === "asc" ? a - b : b - a;
+}
+
 export function applyKeywordFiltersAndSort(params: {
   rows: KeywordResearchRow[];
   filters: KeywordFilterValues;
@@ -34,40 +67,44 @@ export function applyKeywordFiltersAndSort(params: {
       return false;
     }
 
-    const vol = row.searchVolume ?? 0;
-    const cpc = row.cpc ?? 0;
-    const kd = row.keywordDifficulty ?? 0;
-
-    if (params.filters.minVol && vol < Number(params.filters.minVol))
+    if (
+      !passesNumericBounds(
+        row.searchVolume,
+        params.filters.minVol,
+        params.filters.maxVol,
+      )
+    ) {
       return false;
-    if (params.filters.maxVol && vol > Number(params.filters.maxVol))
+    }
+    if (
+      !passesNumericBounds(
+        row.cpc,
+        params.filters.minCpc,
+        params.filters.maxCpc,
+      )
+    ) {
       return false;
-    if (params.filters.minCpc && cpc < Number(params.filters.minCpc))
+    }
+    if (
+      !passesNumericBounds(
+        row.keywordDifficulty,
+        params.filters.minKd,
+        params.filters.maxKd,
+      )
+    ) {
       return false;
-    if (params.filters.maxCpc && cpc > Number(params.filters.maxCpc))
-      return false;
-    if (params.filters.minKd && kd < Number(params.filters.minKd)) return false;
-    if (params.filters.maxKd && kd > Number(params.filters.maxKd)) return false;
+    }
     return true;
   });
 
   if (params.sortField === "keyword") {
     return sortBy(filtered, [(row) => row.keyword, params.sortDir]);
   }
-  if (params.sortField === "searchVolume") {
-    return sortBy(filtered, [(row) => row.searchVolume ?? -1, params.sortDir]);
-  }
-  if (params.sortField === "cpc") {
-    return sortBy(filtered, [(row) => row.cpc ?? -1, params.sortDir]);
-  }
-  if (params.sortField === "competition") {
-    return sortBy(filtered, [(row) => row.competition ?? -1, params.sortDir]);
-  }
 
-  return sortBy(filtered, [
-    (row) => row.keywordDifficulty ?? -1,
-    params.sortDir,
-  ]);
+  const field = params.sortField;
+  return filtered.toSorted((left, right) =>
+    compareNullableNumber(left[field], right[field], params.sortDir),
+  );
 }
 
 export function useKeywordFiltering(params: {

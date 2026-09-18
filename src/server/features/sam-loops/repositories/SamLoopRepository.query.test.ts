@@ -402,6 +402,76 @@ describe("countRunsCreatedSince", () => {
   });
 });
 
+describe("atomic daily run admission", () => {
+  it("admits only the last slot across concurrent different-loop claims and mixed date formats", async () => {
+    await seedProject();
+    await insertLoop({ id: "history", name: "History" });
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    for (const [id, createdAt] of [
+      ["earlier_sqlite", `${today} 00:01:00`],
+      ["earlier_iso", `${today}T00:02:00.000Z`],
+      ["previous_day", `${yesterday}T23:59:59.000Z`],
+    ]) {
+      await client.execute({
+        sql: `INSERT INTO sam_loop_runs
+          (id, loop_id, project_id, status, created_at)
+          VALUES (?, 'history', 'project_1', 'completed', ?)`,
+        args: [id!, createdAt!],
+      });
+    }
+    const loopIds = [
+      "candidate_a",
+      "candidate_b",
+      "candidate_c",
+      "candidate_d",
+    ];
+    for (const id of loopIds) await insertLoop({ id, name: id });
+
+    const admitted = await Promise.all(
+      loopIds.map((loopId) =>
+        SamLoopRepository.tryCreateRun(
+          { id: `run_${loopId}`, loopId, projectId: "project_1" },
+          { sinceDate: today, cap: 3 },
+        ),
+      ),
+    );
+
+    expect(admitted.filter(Boolean)).toHaveLength(1);
+    expect(await SamLoopRepository.countRunsCreatedSince(today)).toBe(3);
+    const pending = await client.execute(
+      "SELECT id FROM sam_loop_runs WHERE status = 'pending'",
+    );
+    expect(pending.rows).toHaveLength(1);
+  });
+
+  it("keeps the existing in-flight run when budget exists but its loop is already active", async () => {
+    await seedProject();
+    await insertLoop({ id: "active_loop", name: "Active loop" });
+    await insertRun({
+      id: "active_run",
+      loopId: "active_loop",
+      status: "running",
+    });
+
+    await expect(
+      SamLoopRepository.tryCreateRun(
+        { id: "duplicate_run", loopId: "active_loop", projectId: "project_1" },
+        { sinceDate: new Date().toISOString().slice(0, 10), cap: 10 },
+      ),
+    ).resolves.toBe(false);
+    expect(await SamLoopRepository.getRunById("duplicate_run")).toBeNull();
+    expect(
+      await SamLoopRepository.getActiveRunForLoop("active_loop"),
+    ).toMatchObject({
+      id: "active_run",
+      status: "running",
+    });
+  });
+});
+
 describe("validated article velocity", () => {
   it("counts the complete artifact for a renamed approved monthly identity", async () => {
     await seedProject();

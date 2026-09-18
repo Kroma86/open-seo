@@ -137,6 +137,82 @@ describe("runScheduledSamLoops", () => {
     expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
   });
 
+  it("restores a failed workflow start and still starts the next due loop", async () => {
+    mocks.getDueLoopsWithOrganization.mockResolvedValue([
+      dueLoop(), dueLoop({ id: "loop_2" }),
+    ]);
+    mocks.claimDueLoop.mockResolvedValue(true);
+    mocks.beginSamLoopRun
+      .mockRejectedValueOnce(new Error("workflow unavailable"))
+      .mockResolvedValue({ ok: true, runId: "run_2" });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await runTick();
+
+    const claim = mocks.claimDueLoop.mock.calls[0]?.[0];
+    expect(mocks.claimDueLoop.mock.calls[1]?.[0]).toEqual({
+      loopId: "loop_1", projectId: "project_1",
+      observedNextRunAt: claim?.nextRunAt,
+      nextRunAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({
+      workflowStartErrors: 1, started: 1,
+    }));
+  });
+
+  it("does not overwrite a concurrent schedule change while restoring", async () => {
+    mocks.getDueLoopsWithOrganization.mockResolvedValue([dueLoop()]);
+    mocks.claimDueLoop.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    mocks.beginSamLoopRun.mockRejectedValue(new Error("workflow unavailable"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runTick();
+
+    expect(mocks.claimDueLoop).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("changed concurrently"));
+  });
+
+  it("continues other loops when schedule restoration fails", async () => {
+    mocks.getDueLoopsWithOrganization.mockResolvedValue([
+      dueLoop(), dueLoop({ id: "loop_2" }),
+    ]);
+    mocks.claimDueLoop.mockResolvedValueOnce(true)
+      .mockRejectedValueOnce(new Error("restore unavailable"))
+      .mockResolvedValue(true);
+    mocks.beginSamLoopRun.mockRejectedValueOnce(new Error("workflow unavailable"))
+      .mockResolvedValue({ ok: true, runId: "run_2" });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await runTick();
+
+    expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({
+      workflowStartErrors: 1, loopErrors: 1, started: 1,
+    }));
+  });
+
+  it("restores the schedule and stops when admission reports the daily cap", async () => {
+    mocks.getDueLoopsWithOrganization.mockResolvedValue([
+      dueLoop(), dueLoop({ id: "loop_2" }),
+    ]);
+    mocks.claimDueLoop.mockResolvedValue(true);
+    mocks.beginSamLoopRun.mockResolvedValue({
+      ok: false, reason: "daily_cap", blockingRunId: null,
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runTick();
+
+    expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(1);
+    expect(mocks.claimDueLoop.mock.calls[1]?.[0]?.nextRunAt)
+      .toBe("2026-01-01T00:00:00.000Z");
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({
+      stoppedByCap: true, alreadyRunning: 0, started: 0,
+    }));
+  });
+
   it("does nothing when today's runs already reached the cap", async () => {
     mocks.countRunsCreatedSince.mockResolvedValue(40);
 
@@ -175,6 +251,27 @@ describe("runScheduledSamLoops", () => {
       expect.objectContaining({
         event: "sam_loops_scheduler_summary",
         domainSkips: 1,
+        started: 0,
+      }),
+    );
+  });
+
+  it("reports a refused domain deferral as a concurrent change, not a successful skip", async () => {
+    mocks.getDueLoopsWithOrganization.mockResolvedValue([
+      dueLoop({ domain: "client-example.com" }),
+    ]);
+    mocks.claimDueLoop.mockResolvedValue(false);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runTick();
+
+    expect(mocks.claimDueLoop).toHaveBeenCalledTimes(1);
+    expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "sam_loops_scheduler_summary",
+        domainSkips: 0,
+        concurrentChangeSkips: 1,
         started: 0,
       }),
     );

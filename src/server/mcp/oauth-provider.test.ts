@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   options: [] as OAuthProviderOptions<unknown>[],
   requests: [] as Request[],
   purges: [] as unknown[],
+  resolveHostedContext: vi.fn(),
+  resolveAccessGate: vi.fn(),
+  resolveSharedWorkspace: vi.fn(),
+  resolveLocalNoAuth: vi.fn(),
 }));
 
 vi.mock("cloudflare:workers", () => ({
@@ -90,7 +94,20 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/middleware/ensure-user/hosted", () => ({
-  resolveHostedContext: vi.fn(),
+  resolveHostedContext: mocks.resolveHostedContext,
+}));
+
+vi.mock("@/middleware/ensure-user/cloudflareAccess", () => ({
+  resolveCloudflareAccessMcpGate: mocks.resolveAccessGate,
+}));
+
+vi.mock("@/middleware/ensure-user/delegated", () => ({
+  resolveSharedWorkspaceContext: mocks.resolveSharedWorkspace,
+  resolveLocalNoAuthContext: mocks.resolveLocalNoAuth,
+}));
+
+vi.mock("@/db", () => ({
+  withPgClient: (fn: () => unknown) => fn(),
 }));
 
 vi.mock("@/server/features/activation/mcpActivation", () => ({
@@ -176,6 +193,10 @@ describe("OpenSEO OAuth provider configuration", () => {
     mocks.options.length = 0;
     mocks.requests.length = 0;
     mocks.purges.length = 0;
+    mocks.resolveHostedContext.mockReset();
+    mocks.resolveAccessGate.mockReset();
+    mocks.resolveSharedWorkspace.mockReset();
+    mocks.resolveLocalNoAuth.mockReset();
   });
 
   it("binds tokens and protected-resource metadata to the canonical MCP URL", async () => {
@@ -350,5 +371,81 @@ describe("OpenSEO OAuth provider configuration", () => {
         },
       ),
     ).rejects.toThrow("internal storage detail");
+  });
+
+  it("redirects hosted authorize to sign-in when Better Auth has no session", async () => {
+    mocks.resolveHostedContext.mockRejectedValue(new Error("UNAUTHENTICATED"));
+    const { createOpenSeoOAuthProvider } = await import("./oauth-provider");
+    const provider = createOpenSeoOAuthProvider(() => new Response("app"));
+    await dispatch(provider, new Request("https://app.openseo.so/health"));
+
+    const response = await invokeDefaultHandler(
+      new Request(
+        "https://app.openseo.so/api/auth/oauth2/authorize?client_id=c1",
+      ),
+      {
+        AUTH_MODE: "hosted",
+        OAUTH_PROVIDER: {
+          parseAuthRequest: () => Promise.resolve({ clientId: "c1" }),
+        },
+      },
+    );
+
+    expect(response.status).toBe(302);
+    const location = response.headers.get("Location");
+    if (!location) throw new Error("Missing sign-in redirect");
+    expect(new URL(location).pathname).toBe("/sign-in");
+    expect(mocks.resolveAccessGate).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 on self-host authorize when Access has no user JWT (no Better Auth sign-in)", async () => {
+    mocks.resolveAccessGate.mockRejectedValue(new Error("UNAUTHENTICATED"));
+    const { createOpenSeoOAuthProvider } = await import("./oauth-provider");
+    const provider = createOpenSeoOAuthProvider(() => new Response("app"));
+    await dispatch(provider, new Request("https://seo.niceseo.ai/health"));
+
+    const response = await invokeDefaultHandler(
+      new Request(
+        "https://seo.niceseo.ai/api/auth/oauth2/authorize?client_id=c1",
+      ),
+      {
+        AUTH_MODE: "cloudflare_access",
+        OAUTH_PROVIDER: {
+          parseAuthRequest: () => Promise.resolve({ clientId: "c1" }),
+        },
+      },
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.text()).toBe("Unauthorized");
+    expect(mocks.resolveHostedContext).not.toHaveBeenCalled();
+  });
+
+  it("redirects self-host authorize to consent after a user Access JWT", async () => {
+    mocks.resolveAccessGate.mockResolvedValue({
+      kind: "user",
+      userId: "u1",
+      userEmail: "support@niceapp.ai",
+    });
+    const { createOpenSeoOAuthProvider } = await import("./oauth-provider");
+    const provider = createOpenSeoOAuthProvider(() => new Response("app"));
+    await dispatch(provider, new Request("https://seo.niceseo.ai/health"));
+
+    const response = await invokeDefaultHandler(
+      new Request(
+        "https://seo.niceseo.ai/api/auth/oauth2/authorize?client_id=c1&response_type=code",
+      ),
+      {
+        AUTH_MODE: "cloudflare_access",
+        OAUTH_PROVIDER: {
+          parseAuthRequest: () => Promise.resolve({ clientId: "c1" }),
+        },
+      },
+    );
+
+    expect(response.status).toBe(302);
+    const location = response.headers.get("Location");
+    if (!location) throw new Error("Missing consent redirect");
+    expect(new URL(location).pathname).toBe("/oauth-consent");
   });
 });

@@ -10,7 +10,6 @@
 .itc {
   --canvas: var(--color-surface);
   --surface: var(--color-surface-raised);
-  --surface-2: #ebe7e1;
   --ink: var(--color-brand);
   --ink-muted: #626260;
   --ink-subtle: #7b7b78;
@@ -18,6 +17,14 @@
   --hairline: #d3cec6;
   --hairline-soft: #ebe7e1;
   --orange: var(--color-brand-accent);
+  /* Accent scale. --orange (#ff5600) is a *fill* only: white on it is 3.2:1,
+     so accent fills carry the ink label below (5.9:1). Accent as text on the
+     cream/greige surfaces needs the deeper tone to clear 4.5:1. */
+  --accent-hover: #e64d00;
+  --accent-ink: #111111;
+  --accent-text: #ad3a00;
+  --accent-soft: #fbeee6;
+  --accent-line: #f3d9c8;
   --inverse: #000000;
   --inverse-surface: #313130;
   --inverse-muted: #9c9fa5;
@@ -27,9 +34,9 @@
   --q-card-border: #d0c9bb;
   --q-text: #111111;
   --q-muted: #7b7b78;
-  --q-avatar-bg: #111111;
-  --q-avatar-fg: #ffffff;
-  --q-mark: #b8ac96;
+  --q-avatar-bg: var(--orange);
+  --q-avatar-fg: var(--accent-ink);
+  --q-mark: rgba(255, 86, 0, 0.45);
   /* Dark "emphasis" surfaces: featured pricing card + MCP terminal */
   --feat-bg: #221f1b;
   --feat-text: #ffffff;
@@ -150,7 +157,7 @@
   line-height: 1.3;
   letter-spacing: 0;
   margin: 0 0 16px;
-  color: var(--ink-muted);
+  color: var(--accent-text);
 }
 .itc-muted {
   color: var(--ink-muted);
@@ -183,7 +190,8 @@
   cursor: pointer;
   transition:
     background-color 0.15s ease,
-    border-color 0.15s ease;
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
 .itc-btn:focus-visible {
   outline: 2px solid var(--ink);
@@ -196,11 +204,11 @@
   border-radius: 10px;
 }
 .itc-btn-primary {
-  background: var(--ink);
-  color: #ffffff;
+  background: var(--orange);
+  color: var(--accent-ink);
 }
 .itc-btn-primary:hover {
-  background: #000000;
+  background: var(--accent-hover);
 }
 .itc-btn-secondary {
   background: var(--surface);
@@ -208,17 +216,15 @@
   border-color: var(--hairline);
 }
 .itc-btn-secondary:hover {
-  border-color: var(--ink);
+  border-color: var(--orange);
+  color: var(--accent-text);
 }
 .itc-btn-fin {
   background: var(--orange);
-  color: #ffffff;
+  color: var(--accent-ink);
 }
 .itc-btn-fin:hover {
-  background: #e64d00;
-}
-.itc-btn-fin:focus-visible {
-  outline-color: var(--orange);
+  background: var(--accent-hover);
 }
 .itc-arrow {
   transition: transform 0.15s ease;
@@ -297,6 +303,12 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
+  background: radial-gradient(
+    62% 52% at 50% 34%,
+    rgba(255, 86, 0, 0.1) 0%,
+    rgba(255, 86, 0, 0.045) 42%,
+    rgba(255, 86, 0, 0) 72%
+  );
   transition: background-color 0.18s ease;
 }
 .itc-hero .itc-container {
@@ -508,7 +520,7 @@
   transition: border-color 0.15s ease;
 }
 .itc-feature-card:hover {
-  border-color: var(--ink);
+  border-color: var(--orange);
 }
 .itc-feature-card:focus-visible {
   outline: 2px solid var(--ink);
@@ -533,7 +545,7 @@
   transition: border-color 0.15s ease;
 }
 .itc-feature-list-card:hover {
-  border-color: var(--ink);
+  border-color: var(--orange);
 }
 .itc-feature-list-card:focus-visible {
   outline: 2px solid var(--ink);
@@ -547,7 +559,7 @@
   margin-top: 24px;
 }
 
-/* ── MCP (the single orange moment) ── */
+/* ── MCP (deepest accent moment: orange button + terminal) ── */
 .itc-mcp-section {
   background: #eee8de;
   border-top: 1px solid var(--hairline);
@@ -594,6 +606,15 @@
   border-radius: 9999px;
   background: #313130;
 }
+.itc-terminal-dot:nth-child(1) {
+  background: #ff5f57;
+}
+.itc-terminal-dot:nth-child(2) {
+  background: #febc2e;
+}
+.itc-terminal-dot:nth-child(3) {
+  background: #28c840;
+}
 .itc-terminal-label {
   margin-left: 8px;
   font-size: 12px;
@@ -625,7 +646,8 @@
 }
 .itc-agent-icon {
   align-items: center;
-  background: var(--surface-2);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
   border-radius: 10px;
   display: inline-flex;
   height: 44px;
@@ -660,12 +682,13 @@
   border-radius: 8px !important;
 }
 .itc-newsletter input:focus {
-  border-color: var(--ink) !important;
+  border-color: var(--orange) !important;
   box-shadow: none !important;
 }
 .itc-newsletter button {
   border-radius: 8px !important;
-  background: var(--ink) !important;
+  background: var(--orange) !important;
+  color: var(--accent-ink) !important;
 }
 
 /* ── Floating Discord pill (quiet messenger-style nod) ── */

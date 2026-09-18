@@ -13,6 +13,7 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import { SELFHOST_OAUTH_PUBLIC_PATH_PREFIXES } from "./src/shared/mcp-discovery-paths.ts";
+import { CURSOR_MCP_OAUTH_ALLOWED_URIS } from "./src/shared/mcp-cursor-oauth.ts";
 
 const WORKER_PREFIX = "open-seo";
 
@@ -60,6 +61,40 @@ export const requireAllowedEmails = (remedy: string) =>
   });
 
 /**
+ * Managed OAuth settings for MCP clients (Cursor / Claude Code / Codex).
+ * Alchemy's Access.Application resource does not yet pass
+ * `oauth_configuration`, and a plain Application PUT without it turns
+ * Managed OAuth OFF — which is why every deploy used to break MCP login.
+ * Call this after the hostname-wide Access app is reconciled.
+ */
+export const SELFHOST_MANAGED_OAUTH_CONFIGURATION = {
+  enabled: true,
+  dynamicClientRegistration: {
+    enabled: true,
+    allowAnyOnLocalhost: true,
+    allowAnyOnLoopback: true,
+    // Includes Cursor HTTPS + cursor:// custom scheme (Access API allows
+    // custom schemes when listed exactly). Keep in sync with
+    // scripts/restore-openseo-managed-oauth.py.
+    allowedUris: [...CURSOR_MCP_OAUTH_ALLOWED_URIS],
+  },
+} as const;
+
+/**
+ * Re-apply Managed OAuth + Cursor HTTPS callback allow-list on an Access app.
+ * Safe to call on every deploy: GET current app, PUT with oauth merged in.
+ */
+/**
+ * Alchemy Access.Application does not pass oauth_configuration yet, so a
+ * drift-sync PUT can turn Managed OAuth OFF / drop allowed_uris on the host
+ * app and can leave /mcp Service-Auth-only (bare Forbidden 403 for Cursor).
+ * After each selfhost deploy that touches Access apps, re-apply with:
+ *   python3 scripts/restore-openseo-managed-oauth.py
+ * (host + /mcp Managed OAuth, and email Allow on /mcp).
+ * SELFHOST_MANAGED_OAUTH_CONFIGURATION is the canonical desired state.
+ */
+
+/**
  * The gate itself: an email allow-policy on a self-hosted Access application.
  *
  * When `internalApiBypass` is set, also provisions a more-specific Access
@@ -71,11 +106,13 @@ export const requireAllowedEmails = (remedy: string) =>
  *
  * When `mcpServiceAuth` is set, also provisions a Service Auth (non_identity)
  * policy bound to a named service token on a more-specific `/mcp` application
- * ONLY (whose AUD tag becomes `MCP_POLICY_AUD`). The service-token policy
- * must never attach to the hostname-wide app: there it would mint
- * user-audience JWTs for service tokens and open the user door. Grok Bot and
- * other MCP clients pass `CF-Access-Client-Id` / `CF-Access-Client-Secret`
- * to get past Access; the Worker still requires OpenSEO OAuth on MCP routes.
+ * ONLY (whose AUD tag becomes `MCP_POLICY_AUD`), and attaches the same email
+ * Allow policy so browsers / Cursor Managed OAuth are not Forbidden. The
+ * service-token policy must never attach to the hostname-wide app: there it
+ * would mint user-audience JWTs for service tokens and open the user door.
+ * Grok Bot and other MCP clients pass `CF-Access-Client-Id` /
+ * `CF-Access-Client-Secret` to get past Access; the Worker still requires
+ * OpenSEO OAuth on MCP routes.
  *
  * When `mcpDiscoveryBypass` is set, also provisions a Bypass (everyone)
  * application for the public OAuth surface:
@@ -128,6 +165,17 @@ export const emailAccessGate = (options: {
       (hostname, index, all) => hostname && all.indexOf(hostname) === index,
     );
 
+    // Create the email Allow policy first so the path-scoped /mcp app can
+    // share it. Service-token-only /mcp returns bare Forbidden 403 to browsers
+    // and Cursor Managed OAuth (seen 2026-09-11) — identity Allow must sit on
+    // /mcp alongside Service Auth. Do NOT attach Service Auth to the hostname
+    // app (C1 invariant).
+    const allow = yield* Cloudflare.Access.Policy(options.policyId, {
+      name: options.policyName,
+      decision: "allow",
+      include: options.emails.map((email) => ({ email: { email } })),
+    });
+
     let mcpPolicyAud: Alchemy.Input<string> | undefined;
     if (options.mcpServiceAuth) {
       const token = yield* Cloudflare.Access.ServiceToken(
@@ -147,6 +195,10 @@ export const emailAccessGate = (options: {
       );
       // Path-scoped apps beat the hostname-wide gate for /mcp/* and issue
       // MCP_POLICY_AUD for service-token JWT verification in the Worker.
+      // Policies: identity Allow (Cursor/browser Managed OAuth) + Service Auth
+      // (Grok Bot / desk machine callers). Alchemy still cannot pass
+      // oauth_configuration — re-run scripts/restore-openseo-managed-oauth.py
+      // after deploys that touch Access apps (host + /mcp).
       const mcpPaths = hostnames.map((hostname) => `${hostname}/mcp`);
       const mcpApplication = yield* Cloudflare.Access.Application(
         options.mcpServiceAuth.applicationId,
@@ -158,7 +210,7 @@ export const emailAccessGate = (options: {
             type: "public" as const,
             uri,
           })),
-          policies: [mcpPolicy.policyId],
+          policies: [allow.policyId, mcpPolicy.policyId],
         },
       );
       mcpPolicyAud = mcpApplication.aud;
@@ -197,11 +249,6 @@ export const emailAccessGate = (options: {
       );
     }
 
-    const allow = yield* Cloudflare.Access.Policy(options.policyId, {
-      name: options.policyName,
-      decision: "allow",
-      include: options.emails.map((email) => ({ email: { email } })),
-    });
     const application = yield* Cloudflare.Access.Application(
       options.applicationId,
       {
@@ -223,6 +270,7 @@ export const emailAccessGate = (options: {
         policies: [allow.policyId],
       },
     );
+
 
     if (options.internalApiBypass) {
       const bypass = yield* Cloudflare.Access.Policy(

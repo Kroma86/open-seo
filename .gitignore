@@ -50,3 +50,6 @@ __pycache__/
 
 # Service-token secret file produced during alchemy deploy — never commit
 .openseo-access-service-token.env
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
