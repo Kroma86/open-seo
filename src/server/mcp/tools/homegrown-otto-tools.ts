@@ -7,6 +7,23 @@ import { mcpResponse } from "@/server/mcp/formatters";
 import { optionalMetaOutputSchema } from "@/server/mcp/output-schemas";
 import { z } from "zod";
 
+// Mirrors HomegrownOttoProposal in AgencyOttoProposalsService.
+const ottoProposalShape = {
+  id: z.string(),
+  domain: z.string(),
+  projectId: z.string().nullable(),
+  status: z.enum(["pending", "pulled", "rejected"]),
+  proposedAt: z.string(),
+  proposedBy: z.enum(["sam", "mcp", "api"]),
+  path: z.string(),
+  fixes: z.record(z.string(), z.string()),
+  before: z.record(z.string(), z.unknown()),
+  humanReview: z.array(z.string()),
+  flags: z.array(z.string()),
+  rationale: z.string().nullable(),
+  pulledAt: z.string().nullable(),
+};
+
 export const proposeHomegrownOttoFixesTool = {
   name: "propose_homegrown_otto_fixes",
   config: {
@@ -33,7 +50,8 @@ export const proposeHomegrownOttoFixesTool = {
         .describe("Items that still need a human before approve."),
     },
     outputSchema: {
-      id: z.string(),
+      // schema must match what the handler returns (the whole proposal).
+      ...ottoProposalShape,
       ...optionalMetaOutputSchema,
     },
     annotations: {
@@ -104,7 +122,9 @@ export const listHomegrownOttoProposalsTool = {
       limit: z.number().int().min(1).max(100).optional(),
     },
     outputSchema: {
+      // schema must match what the handler returns.
       count: z.number(),
+      proposals: z.array(z.object(ottoProposalShape)),
       ...optionalMetaOutputSchema,
     },
     annotations: {
