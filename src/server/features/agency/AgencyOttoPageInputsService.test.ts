@@ -24,6 +24,7 @@ vi.mock("drizzle-orm", () => ({
   and: () => ({}),
   asc: () => ({}),
   eq: () => ({}),
+  inArray: () => ({}),
   isNull: () => ({}),
 }));
 vi.mock("@/db", () => ({ db: { select: () => builder() } }));
@@ -71,12 +72,39 @@ const page = (url: string) => ({
   crawlDepth: 0,
 });
 
-/** Pages arrive ordered by crawl depth then URL ascending, as the query sorts them. */
-function seed(domain: string, urls: string[], startUrl: string | null = null) {
+const ROOTS = new Set(
+  ["https://", "http://"].flatMap((s) =>
+    ["", "www."].flatMap((w) => [s + w, s + w]),
+  ),
+);
+
+function isRootUrl(url: string) {
+  try {
+    const u = new URL(url);
+    return u.pathname === "/" && !u.search;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Three queries run in order: the project row, the limited page window, then
+ * the dedicated root lookup. `windowUrls` is what the paged query returns and
+ * `allUrls` is everything the audit holds — they differ because the root sorts
+ * behind every null-depth row and falls outside the window.
+ */
+function seed(
+  domain: string,
+  windowUrls: string[],
+  startUrl: string | null = null,
+  allUrls: string[] = windowUrls,
+) {
+  void ROOTS;
   audit.startUrl = startUrl;
   queue.length = 0;
   queue.push([{ id: "p1", name: domain, domain, organizationId: null }]);
-  queue.push([...urls].sort().map(page));
+  queue.push([...windowUrls].sort().map(page));
+  queue.push(allUrls.filter(isRootUrl).map(page));
 }
 
 beforeEach(() => {
@@ -163,6 +191,30 @@ describe("homepage selection", () => {
     );
     const out = await getAgencyOttoPageInputs({ domain: "example.ca" });
     expect(out.homepage?.path).toBe("/en/");
+    expect(out.homepageReason).toBe("ok");
+  });
+
+  // The root is stored with crawlDepth 0 while every other page has a null
+  // depth. SQLite sorts nulls first on ASC, so the root sits behind all of
+  // them and never appears in the limited page window.
+  it("finds the root even when it falls outside the paged window", async () => {
+    seed(
+      "veruminnovations.com",
+      [
+        "https://veruminnovations.com/about",
+        "https://veruminnovations.com/blog",
+      ],
+      null,
+      [
+        "https://veruminnovations.com/",
+        "https://veruminnovations.com/about",
+        "https://veruminnovations.com/blog",
+      ],
+    );
+    const out = await getAgencyOttoPageInputs({
+      domain: "veruminnovations.com",
+    });
+    expect(out.homepage?.url).toBe("https://veruminnovations.com/");
     expect(out.homepageReason).toBe("ok");
   });
 

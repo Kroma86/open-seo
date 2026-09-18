@@ -2,7 +2,7 @@
  * DB-only page SEO fields for HomeGrown OTTO (scan → fixgen).
  * Never calls DataForSEO — reads the latest completed site-audit pages only.
  */
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { auditPages, projects } from "@/db/schema";
 import { AuditRepository } from "@/server/features/audit/repositories/AuditRepository";
@@ -148,6 +148,26 @@ async function findProject(
   return rows.find((project) => domainsMatch(project.name, needle)) ?? null;
 }
 
+/**
+ * Every spelling of a domain's root that a crawler might have stored.
+ *
+ * The homepage cannot be found by paging the audit: pages are ordered by
+ * `crawlDepth ASC`, only the root carries a depth (every other row is null),
+ * and SQLite sorts nulls first — so the root sits behind every other page and
+ * falls outside the row limit on any site with more than a couple of pages.
+ * It is fetched by URL instead.
+ */
+function rootUrlVariants(domain: string): string[] {
+  const bare = normalizeDomain(domain);
+  const out: string[] = [];
+  for (const scheme of ["https://", "http://"]) {
+    for (const host of [bare, `www.${bare}`]) {
+      out.push(`${scheme}${host}/`, `${scheme}${host}`);
+    }
+  }
+  return out;
+}
+
 function hostOf(url: string): string | null {
   try {
     return new URL(url).hostname;
@@ -257,7 +277,35 @@ export async function getAgencyOttoPageInputs(input: {
     .limit(limit);
 
   const pages = rows.map(toOttoPage);
-  const picked = pickHomepage(pages, audit.startUrl, domain);
+
+  const rootRows = await db
+    .select({
+      url: auditPages.url,
+      statusCode: auditPages.statusCode,
+      title: auditPages.title,
+      metaDescription: auditPages.metaDescription,
+      canonicalUrl: auditPages.canonicalUrl,
+      ogTitle: auditPages.ogTitle,
+      ogDescription: auditPages.ogDescription,
+      h1Count: auditPages.h1Count,
+      wordCount: auditPages.wordCount,
+      imagesMissingAlt: auditPages.imagesMissingAlt,
+    })
+    .from(auditPages)
+    .where(
+      and(
+        eq(auditPages.auditId, audit.id),
+        eq(auditPages.fetchClass, "ok"),
+        inArray(auditPages.url, rootUrlVariants(domain)),
+      ),
+    )
+    .limit(4);
+
+  const picked = pickHomepage(
+    [...rootRows.map(toOttoPage), ...pages],
+    audit.startUrl,
+    domain,
+  );
   return {
     domain,
     projectId: project.id,
