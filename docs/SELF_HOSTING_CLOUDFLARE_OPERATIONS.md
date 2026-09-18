@@ -119,26 +119,47 @@ marker, so takeover is gated behind `--adopt` on purpose — and planned a
 
 ### When the preflight fires
 
-1. Read the state document:
+Use the repair tool rather than editing state by hand. Hand-editing is how this
+goes wrong: the ids are the easy part, and `downstream` is the trap — the Worker
+reads the Access `aud` through it, so a repair that drops it looks like it worked
+and silently breaks the gate.
+
+1. Look at what state claims and what Cloudflare actually has:
 
    ```bash
-   curl -sS -H "Authorization: Bearer $(jq -r .authToken \
-       ~/.alchemy/credentials/default/cloudflare-state-store.json)" \
-     -H 'User-Agent: openseo-ops/1.0' \
-     "$(jq -r .url ~/.alchemy/credentials/default/cloudflare-state-store.json)\
-/state/stacks/open-seo/stages/selfhost/resources/<FQN>" | jq '.status, .attr'
+   node scripts/repair-alchemy-state.mjs --fqn SelfHostMcpAccess
    ```
 
-   The state-store Worker answers 403 (error 1010) without a `User-Agent`.
+   It prints the recorded status, application id and `downstream`, says whether
+   that application is still live, and names the live one on the domain if it is
+   not. It writes nothing without `--apply`.
 
-2. Check whether the id in `attr` still exists in Cloudflare. If it does, the
-   resource is merely stuck: settle `status` to `updated` and drop `old`.
+2. If the recorded application is still live, the resource is merely stuck. Settle
+   it:
 
-3. If it does not, find the live resource on the same domain and point `attr` at
-   it (`applicationId`, and `aud` for Access applications — the Worker reads the
-   `aud` through `downstream`). Back up the document first.
+   ```bash
+   node scripts/repair-alchemy-state.mjs --fqn SelfHostMcpAccess --apply
+   ```
 
-4. Re-run the preflight. It should report nothing.
+3. If the recorded application is gone, the tool refuses to guess and tells you
+   the live id. Confirm that is the application you mean, then:
+
+   ```bash
+   node scripts/repair-alchemy-state.mjs --fqn SelfHostMcpAccess \
+     --repoint <live-app-id> --apply
+   ```
+
+   It re-checks the id against Cloudflare, backs the document up first, carries
+   `downstream` forward from `old`, and refuses to write a document that would
+   lose it or stay unsettled.
+
+4. Re-run `node scripts/selfhost-deploy-preflight.mjs`. It should report nothing.
+
+The live check needs a Cloudflare token: `CLOUDFLARE_API_TOKEN` if set, otherwise
+the one alchemy stored at login. That one expires — refresh it by running
+`python3 scripts/restore-openseo-managed-oauth.py --dry-run`, which owns the
+refresh flow. The state-store Worker answers 403 (error 1010) to any request with
+no `User-Agent`.
 
 ### Why `--adopt` is not on by default
 
