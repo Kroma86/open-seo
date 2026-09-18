@@ -127,6 +127,33 @@ describe("HomeGrown OTTO tool output schemas", () => {
     );
     expect(result).toMatchObject({ valid: true });
   });
+
+  // Production, 2026-09-18: four of eighteen pending rows carried this. It was
+  // never in the declared type, so every list call failed the client's schema
+  // check while the text payload looked fine.
+  it("list_homegrown_otto_proposals: a proposal carrying organizationId validates", () => {
+    const result = validateAsClientWould(
+      listHomegrownOttoProposalsTool.config.outputSchema,
+      { count: 1, proposals: [{ ...proposal, organizationId: "org_abc" }] },
+    );
+    expect(result).toMatchObject({ valid: true });
+  });
+
+  it("list_homegrown_otto_proposals: organizationId is optional, not required", () => {
+    const result = validateAsClientWould(
+      listHomegrownOttoProposalsTool.config.outputSchema,
+      { count: 1, proposals: [proposal] },
+    );
+    expect(result).toMatchObject({ valid: true });
+  });
+
+  it("list_homegrown_otto_proposals: organizationId may be null", () => {
+    const result = validateAsClientWould(
+      listHomegrownOttoProposalsTool.config.outputSchema,
+      { count: 1, proposals: [{ ...proposal, organizationId: null }] },
+    );
+    expect(result).toMatchObject({ valid: true });
+  });
 });
 
 describe("the check above is not vacuous", () => {

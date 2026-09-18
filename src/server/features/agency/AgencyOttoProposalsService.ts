@@ -23,6 +23,12 @@ export type HomegrownOttoProposal = {
   flags: string[];
   rationale: string | null;
   pulledAt: string | null;
+  /**
+   * Present on records written by the agency API path. Older and
+   * MCP-written records do not carry it, so it is optional — the KV
+   * store has more than one producer and they do not agree on shape.
+   */
+  organizationId?: string | null;
 };
 
 function kv(): KVNamespace {
@@ -101,6 +107,43 @@ export async function enqueueHomegrownOttoProposal(input: {
   return proposal;
 }
 
+/**
+ * Project a stored record onto the declared shape.
+ *
+ * These rows are JSON in KV written by several producers over time, so a row
+ * can carry keys this module never declared. That is not a theory: on
+ * 2026-09-18 four of eighteen pending rows carried `organizationId`, and
+ * because the MCP tool publishes its output schema with
+ * `additionalProperties: false`, every `list_homegrown_otto_proposals` call
+ * failed client-side validation. Returning the parsed row unchanged makes the
+ * published contract only as stable as the oldest writer.
+ *
+ * Read normalizes; the pull path below still round-trips the whole record, so
+ * nothing is dropped from storage.
+ */
+function toProposal(raw: unknown): HomegrownOttoProposal | null {
+  const r = raw as Partial<HomegrownOttoProposal> | null;
+  if (!r || typeof r.id !== "string" || typeof r.domain !== "string") return null;
+  return {
+    id: r.id,
+    domain: r.domain,
+    projectId: r.projectId ?? null,
+    status: r.status ?? "pending",
+    proposedAt: r.proposedAt ?? "",
+    proposedBy: r.proposedBy ?? "api",
+    path: r.path ?? "/",
+    fixes: r.fixes ?? {},
+    before: r.before ?? {},
+    humanReview: r.humanReview ?? [],
+    flags: r.flags ?? [],
+    rationale: r.rationale ?? null,
+    pulledAt: r.pulledAt ?? null,
+    ...(r.organizationId === undefined
+      ? {}
+      : { organizationId: r.organizationId }),
+  };
+}
+
 export async function listHomegrownOttoProposals(input?: {
   status?: HomegrownOttoProposal["status"];
   domain?: string;
@@ -114,7 +157,8 @@ export async function listHomegrownOttoProposals(input?: {
     const raw = await kv().get(proposalKey(id));
     if (!raw) continue;
     try {
-      const proposal = JSON.parse(raw) as HomegrownOttoProposal;
+      const proposal = toProposal(JSON.parse(raw));
+      if (!proposal) continue;
       if (input?.status && proposal.status !== input.status) continue;
       if (
         input?.domain &&

@@ -22,6 +22,10 @@ const ottoProposalShape = {
   flags: z.array(z.string()),
   rationale: z.string().nullable(),
   pulledAt: z.string().nullable(),
+  // Written only by the agency API path. Optional because the KV store has
+  // several producers; undeclared, it broke every list call client-side,
+  // since the published schema carries `additionalProperties: false`.
+  organizationId: z.string().nullable().optional(),
 };
 
 export const proposeHomegrownOttoFixesTool = {
