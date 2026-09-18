@@ -99,3 +99,69 @@ Approval gate: do not print tokens.
 OpenSEO collects anonymized telemetry for core usage events: heartbeats with aggregate counts (installs, users, projects, feature usage) tied to a random install ID, sent every 5 minutes during the first two hours after install, then at most once daily. No URLs, keywords, prompts, emails, or IP-derived location are collected, and idle installs send nothing.
 
 To disable it, set `OPENSEO_TELEMETRY_DISABLED=1` in `.env.selfhost` and redeploy. Docker and [legacy deployments](./SELF_HOSTING_CLOUDFLARE_LEGACY.md): set it (or `DO_NOT_TRACK=1`) as an environment variable / Worker variable instead.
+
+## Alchemy state drift
+
+`pnpm deploy:selfhost` runs a preflight that refuses to deploy when a resource in
+the `open-seo/selfhost` state is left mid-reconcile. Terminal statuses between
+deploys are `created`, `updated` and `replaced`; `creating`, `updating`,
+`deleting` and `replacing` mean a previous deploy was killed before it finished
+writing state.
+
+This is what NIC-775 was. `SelfHostMcpAccess` sat at `updating` holding Access
+application `1d76ba41-…`, which no longer existed on the account, while the live
+app on `seo.niceseo.ai/mcp` was `b490d2fe-…`, created 2026-09-12. Alchemy
+observes an Access application by id, missed, fell back to a domain scan, found
+the live app but marked it *Unowned* — Access applications carry no alchemy
+marker, so takeover is gated behind `--adopt` on purpose — and planned a
+`create`. Cloudflare answered `application_already_exists` and the deploy exited
+1. It named neither id, so it read as a mystery rather than as drift.
+
+### When the preflight fires
+
+1. Read the state document:
+
+   ```bash
+   curl -sS -H "Authorization: Bearer $(jq -r .authToken \
+       ~/.alchemy/credentials/default/cloudflare-state-store.json)" \
+     -H 'User-Agent: openseo-ops/1.0' \
+     "$(jq -r .url ~/.alchemy/credentials/default/cloudflare-state-store.json)\
+/state/stacks/open-seo/stages/selfhost/resources/<FQN>" | jq '.status, .attr'
+   ```
+
+   The state-store Worker answers 403 (error 1010) without a `User-Agent`.
+
+2. Check whether the id in `attr` still exists in Cloudflare. If it does, the
+   resource is merely stuck: settle `status` to `updated` and drop `old`.
+
+3. If it does not, find the live resource on the same domain and point `attr` at
+   it (`applicationId`, and `aud` for Access applications — the Worker reads the
+   `aud` through `downstream`). Back up the document first.
+
+4. Re-run the preflight. It should report nothing.
+
+### Why `--adopt` is not on by default
+
+`pnpm deploy:selfhost` deliberately does not pass `--adopt`, though
+`deploy:postgres` does. `--adopt` lets alchemy take over any Access application
+sitting on the domain, which would have healed NIC-775 automatically — and would
+also silently seize an app nobody meant to hand over. The preflight makes the
+drift visible in seconds, which is the part that was missing; adopting stays an
+explicit choice:
+
+```bash
+pnpm alchemy deploy --env-file .env.selfhost --stage selfhost --adopt --yes
+```
+
+Run that only after step 2 or 3 has confirmed which live resource it will take.
+
+### Do not let a deploy get killed
+
+A self-host deploy takes roughly 90 seconds. Running it through anything that
+caps a command at 60 seconds kills it partway through and is the most likely way
+to write this state again. Launch it detached and poll the log:
+
+```bash
+setsid bash -c 'cd ~/Projects/open-seo && pnpm deploy:selfhost' \
+  > /tmp/deploy.log 2>&1 < /dev/null &
+```

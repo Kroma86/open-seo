@@ -94,3 +94,17 @@ if (!process.env.CLOUDFLARE_API_TOKEN) {
     );
   }
 }
+
+// State left mid-reconcile by an interrupted deploy (NIC-775). Cheap to look
+// for, and the earliest point where "alchemy holds an id Cloudflare deleted" is
+// legible — the Cloudflare conflict this turns into names neither id.
+// Best-effort like everything above: unreadable login or unreachable store is
+// silence, not a failure.
+const { checkStateSettled } = await import("./alchemy-state-health.mjs");
+const stateHealth = await checkStateSettled(
+  { stack: "open-seo", stage: "selfhost" },
+  { homedir: homedir(), readFileSync, env: process.env },
+);
+if (stateHealth.outcome === "unsettled") {
+  fail(...stateHealth.message.split("\n"));
+}

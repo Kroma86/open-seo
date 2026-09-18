@@ -5,7 +5,11 @@ export default defineConfig({
   plugins: [tsConfigPaths()],
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "alchemy.access.test.ts"],
+    include: [
+      "src/**/*.test.ts",
+      "alchemy.access.test.ts",
+      "scripts/**/*.test.mjs",
+    ],
     restoreMocks: true,
     clearMocks: true,
     server: {
