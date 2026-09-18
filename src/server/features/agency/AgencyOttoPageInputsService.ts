@@ -32,8 +32,19 @@ export type AgencyOttoPageInputs = {
   capturedAt: string | null;
   source: "openseo_audit_pages";
   homepage: AgencyOttoPage | null;
+  /**
+   * Why `homepage` is null, so a missing homepage reads as a finding rather
+   * than a blank cell. "ok" whenever homepage is non-null.
+   */
+  homepageReason: HomepageReason;
   pages: AgencyOttoPage[];
 };
+
+export type HomepageReason =
+  | "ok"
+  | "no_pages_crawled"
+  | "no_pages_on_project_domain"
+  | "root_not_in_audit";
 
 function normalizeDomain(raw: string): string {
   let host = raw.trim().toLowerCase();
@@ -137,19 +148,60 @@ async function findProject(
   return rows.find((project) => domainsMatch(project.name, needle)) ?? null;
 }
 
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
+function isRootPath(path: string): boolean {
+  return path === "/" || path === "";
+}
+
+/**
+ * The homepage is the crawled root page of the project's OWN domain.
+ *
+ * This used to fall back to `pages[0]` when no root page was found. Pages are
+ * ordered by crawl depth then URL ascending, so that fallback silently returned
+ * the alphabetically-first page and labelled it the homepage — "/about",
+ * "/blog", "/_serverless/...". Every downstream title, description and H1 check
+ * then scored the wrong page, and nothing in the output said so. It also never
+ * checked the host, so an audit that had crawled a different domain entirely
+ * was accepted without complaint.
+ *
+ * Both failures are now explicit: a homepage is returned only when it is the
+ * root of the project's own domain, and otherwise the caller gets null plus a
+ * reason. A missing homepage is a finding, not something to paper over.
+ */
 function pickHomepage(
   pages: AgencyOttoPage[],
   startUrl: string | null,
-): AgencyOttoPage | null {
-  if (pages.length === 0) return null;
-  if (startUrl) {
-    const startPath = pathOf(startUrl);
-    const match = pages.find((page) => page.path === startPath);
-    if (match) return match;
+  domain: string,
+): { homepage: AgencyOttoPage | null; reason: HomepageReason } {
+  if (pages.length === 0) {
+    return { homepage: null, reason: "no_pages_crawled" };
   }
-  return (
-    pages.find((page) => page.path === "/" || page.path === "") ?? pages[0]
+
+  const onDomain = pages.filter((page) =>
+    domainsMatch(hostOf(page.url), domain),
   );
+  if (onDomain.length === 0) {
+    return { homepage: null, reason: "no_pages_on_project_domain" };
+  }
+
+  // Honour an explicit audit start URL, but only on the project's own domain.
+  if (startUrl && domainsMatch(hostOf(startUrl), domain)) {
+    const startPath = pathOf(startUrl);
+    const match = onDomain.find((page) => page.path === startPath);
+    if (match) return { homepage: match, reason: "ok" };
+  }
+
+  const root = onDomain.find((page) => isRootPath(page.path));
+  return root
+    ? { homepage: root, reason: "ok" }
+    : { homepage: null, reason: "root_not_in_audit" };
 }
 
 export async function getAgencyOttoPageInputs(input: {
@@ -167,6 +219,7 @@ export async function getAgencyOttoPageInputs(input: {
     capturedAt: null,
     source: "openseo_audit_pages",
     homepage: null,
+    homepageReason: "no_pages_crawled",
     pages: [],
   };
 
@@ -204,6 +257,7 @@ export async function getAgencyOttoPageInputs(input: {
     .limit(limit);
 
   const pages = rows.map(toOttoPage);
+  const picked = pickHomepage(pages, audit.startUrl, domain);
   return {
     domain,
     projectId: project.id,
@@ -211,7 +265,8 @@ export async function getAgencyOttoPageInputs(input: {
     auditId: audit.id,
     capturedAt: audit.completedAt ?? audit.startedAt ?? null,
     source: "openseo_audit_pages",
-    homepage: pickHomepage(pages, audit.startUrl),
+    homepage: picked.homepage,
+    homepageReason: picked.reason,
     pages,
   };
 }
