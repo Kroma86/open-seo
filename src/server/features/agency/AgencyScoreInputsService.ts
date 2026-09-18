@@ -13,6 +13,7 @@ import { BacklinkSnapshotRepository } from "@/server/features/dashboard/reposito
 import { Ga4ConnectionRepository } from "@/server/features/ga4/repositories/Ga4ConnectionRepository";
 import { GscConnectionRepository } from "@/server/features/gsc/repositories/GscConnectionRepository";
 import { GscService } from "@/server/features/gsc/services/GscService";
+import { GscApiError, GscTokenError } from "@/server/lib/gscErrors";
 import { RankTrackingRepository } from "@/server/features/rank-tracking/repositories/RankTrackingRepository";
 import { getLatestResults } from "@/server/features/rank-tracking/services/rankTrackingResults";
 import { getAgencyExportBlock } from "@/server/features/ai-visibility/services/aiVisibilityResults";
@@ -38,6 +39,14 @@ export type GbpStatus = {
   capturedAt: string | null;
 };
 
+export type GscTotalsStatus =
+  | "ok"
+  | "not_connected"
+  | "no_rows"
+  | "token_expired"
+  | "permission_denied"
+  | "api_error";
+
 export type AgencyScoreInputs = {
   domain: string;
   projectId: string | null;
@@ -58,6 +67,13 @@ export type AgencyScoreInputs = {
     capturedAt: string | null;
     source: "google_search_console";
   } | null;
+  /** Why `gsc` is null. Without this the caller cannot tell "this client has
+   *  no impressions" from "the grant expired three weeks ago" — both arrived
+   *  as a bare null, and 32 of 34 connected clients sat in that state
+   *  undiagnosed. */
+  gscStatus: GscTotalsStatus;
+  /** The underlying error text when gscStatus is an error, for diagnosis. */
+  gscError: string | null;
   /** Top GSC queries (last 28 days, by clicks then impressions, max 25) —
    *  the real long tail the tracker's 3 keywords miss. Null when unmapped,
    *  empty, or errored. */
@@ -138,6 +154,8 @@ function emptyInputs(domain: string): AgencyScoreInputs {
     projectName: null,
     connections: { gsc: DISCONNECTED_GSC, ga4: DISCONNECTED_GA4 },
     gsc: null,
+    gscStatus: "not_connected",
+    gscError: null,
     gscTopQueries: null,
     gbp: GBP_NATIVE_GAP,
     ranks: null,
@@ -148,11 +166,38 @@ function emptyInputs(domain: string): AgencyScoreInputs {
   };
 }
 
+export type GscTotalsResult = {
+  totals: AgencyScoreInputs["gsc"];
+  status: GscTotalsStatus;
+  error: string | null;
+};
+
+/** Map a thrown GSC error to a status a human can act on. */
+function classifyGscError(error: unknown): {
+  status: GscTotalsStatus;
+  error: string;
+} {
+  const message = error instanceof Error ? error.message : String(error);
+  if (error instanceof GscTokenError) {
+    return { status: "token_expired", error: message };
+  }
+  if (error instanceof GscApiError) {
+    if (error.status === 401) return { status: "token_expired", error: message };
+    if (error.status === 403) {
+      return { status: "permission_denied", error: message };
+    }
+    return { status: "api_error", error: `${error.status}: ${message}` };
+  }
+  return { status: "api_error", error: message };
+}
+
 export async function loadGscTotals(
   projectId: string,
   connected: boolean,
-): Promise<AgencyScoreInputs["gsc"]> {
-  if (!connected) return null;
+): Promise<GscTotalsResult> {
+  if (!connected) {
+    return { totals: null, status: "not_connected", error: null };
+  }
   try {
     // Per-day rows, then sum — the default GSC dimension is ["query"], whose
     // first row is the top query, not site totals.
@@ -161,7 +206,9 @@ export async function loadGscTotals(
       dateRange: "last_28_days",
       dimensions: ["date"],
     });
-    if (result.rows.length === 0) return null;
+    if (result.rows.length === 0) {
+      return { totals: null, status: "no_rows", error: null };
+    }
     let clicks = 0;
     let impressions = 0;
     // Position is a per-row average; weight it by impressions so days with
@@ -180,18 +227,24 @@ export async function loadGscTotals(
     }
     const position = positionWeight > 0 ? positionSum / positionWeight : null;
     return {
-      clicks,
-      impressions,
-      ctr: impressions > 0 ? clicks / impressions : null,
-      position,
-      windowStart: result.request.startDate ?? null,
-      windowEnd: result.request.endDate ?? null,
-      capturedAt: result.request.endDate ?? null,
-      source: "google_search_console",
+      totals: {
+        clicks,
+        impressions,
+        ctr: impressions > 0 ? clicks / impressions : null,
+        position,
+        windowStart: result.request.startDate ?? null,
+        windowEnd: result.request.endDate ?? null,
+        capturedAt: result.request.endDate ?? null,
+        source: "google_search_console",
+      },
+      status: "ok",
+      error: null,
     };
-  } catch {
-    // Expired grant / API error → Not measured, never a fake zero.
-    return null;
+  } catch (error) {
+    // Never a fake zero — but never a silent null either. The reason travels
+    // with the null so the board can name it per client.
+    const classified = classifyGscError(error);
+    return { totals: null, ...classified };
   }
 }
 
@@ -491,12 +544,16 @@ export async function getAgencyScoreInputs(input: {
       loadConnections(project.id),
     ]);
 
+  const gscTotals = await loadGscTotals(project.id, connections.gsc.connected);
+
   return {
     domain,
     projectId: project.id,
     projectName: project.name,
     connections,
-    gsc: await loadGscTotals(project.id, connections.gsc.connected),
+    gsc: gscTotals.totals,
+    gscStatus: gscTotals.status,
+    gscError: gscTotals.error,
     gscTopQueries: await loadGscTopQueries(
       project.id,
       connections.gsc.connected,

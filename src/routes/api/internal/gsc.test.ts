@@ -226,7 +226,13 @@ beforeEach(() => {
     ]),
   );
   setSite.mockResolvedValue(CONNECTION);
-  loadGscTotals.mockResolvedValue(SNAPSHOT);
+  // loadGscTotals now returns { totals, status, error } so a null snapshot
+  // carries the reason with it. The route unwraps .totals.
+  loadGscTotals.mockResolvedValue({
+    totals: SNAPSHOT,
+    status: "ok",
+    error: null,
+  });
 });
 
 describe("internal gsc auth", () => {
