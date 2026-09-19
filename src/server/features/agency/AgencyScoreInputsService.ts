@@ -23,6 +23,11 @@ export type GscConnectionStatus = {
   connected: boolean;
   siteUrl: string | null;
   connectedAt: string | null;
+  /** Which Google account's grant this connection uses. One dead grant takes
+   *  down every project sharing it, so the account has to be nameable from the
+   *  board — otherwise a mass outage looks like N unrelated broken clients. */
+  accountEmail: string | null;
+  accountId: string | null;
 };
 
 export type Ga4ConnectionStatus = {
@@ -132,6 +137,8 @@ const DISCONNECTED_GSC: GscConnectionStatus = {
   connected: false,
   siteUrl: null,
   connectedAt: null,
+  accountEmail: null,
+  accountId: null,
 };
 
 const DISCONNECTED_GA4: Ga4ConnectionStatus = {
@@ -304,6 +311,8 @@ async function loadConnections(projectId: string): Promise<{
           connected: true,
           siteUrl: gscRow.siteUrl,
           connectedAt: gscRow.createdAt ?? null,
+          accountEmail: gscRow.connectedAccountEmail ?? null,
+          accountId: gscRow.gscAccountId ?? null,
         }
       : DISCONNECTED_GSC,
     ga4: ga4Row
