@@ -89,11 +89,24 @@ export function pluralizeCategory(category: string): string {
   return `${lower}s`;
 }
 
+/**
+ * How a customer gets to this business, which decides the verb in the prompt.
+ * "hire" — an electrician, a landscaper, a law firm.
+ * "choose" — one you pick, visit or buy from: a bakery, a bowling club, a
+ * furniture store, and also a counsellor or psychologist, whom nobody speaks
+ * of hiring. "What should I look for when hiring a pizza restaurant?" is
+ * nonsense, and no caller can infer this from the category string reliably,
+ * so it is supplied, not guessed.
+ */
+export type BusinessKind = "hire" | "choose";
+
 export type PromptSuggestionInput = {
   /** Google Business Profile primary category, e.g. "Electrician". */
   category: string;
   city: string;
   region: string;
+  /** Defaults to "hire". */
+  kind?: BusinessKind;
   /** Services the business actually sells, most distinctive first. */
   services?: string[];
 };
@@ -118,14 +131,30 @@ export function buildAiVisibilityPrompts(
   // asked "which ... offer emergency service?", which is fine for an
   // electrician and nonsense for a mortgage broker — the same category
   // mismatch that put "open on weekends" in the shipped set.
-  const prompts: string[] = [
+  const shared = [
     `Who are the best ${plural} in ${where}?`,
     `Which ${plural} in ${where} have the best reviews?`,
-    `Can you recommend ${withArticle(`reliable ${singular}`)} in ${where}?`,
-    `Who do locals use for ${withArticle(singular)} in ${where}?`,
-    `What should I look for when hiring ${withArticle(singular)} in ${where}?`,
     `Who are the top-rated ${plural} near ${where}?`,
   ];
+
+  const prompts: string[] =
+    (input.kind ?? "hire") === "choose"
+      ? [
+          shared[0]!,
+          shared[1]!,
+          `Can you recommend ${withArticle(`good ${singular}`)} in ${where}?`,
+          `Which ${singular} do locals in ${where} recommend?`,
+          `What makes ${withArticle(`good ${singular}`)} in ${where}?`,
+          shared[2]!,
+        ]
+      : [
+          shared[0]!,
+          shared[1]!,
+          `Can you recommend ${withArticle(`reliable ${singular}`)} in ${where}?`,
+          `Who do locals use for ${withArticle(singular)} in ${where}?`,
+          `What should I look for when hiring ${withArticle(singular)} in ${where}?`,
+          shared[2]!,
+        ];
 
   for (const service of input.services ?? []) {
     const clean = service.trim();

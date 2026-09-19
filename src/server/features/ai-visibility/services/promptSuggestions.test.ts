@@ -134,6 +134,35 @@ describe("buildAiVisibilityPrompts", () => {
     expect(broker.some((p) => /\ba mortgage broker\b/i.test(p))).toBe(true);
   });
 
+  it("does not ask who to HIRE for a place you go to or buy from", () => {
+    // "What should I look for when hiring a pizza restaurant in Vernon?" is
+    // the same category mismatch as the retail templates above, just pointed
+    // the other way: the stock lines assume you HIRE the business. A bowling
+    // club, a bakery and a furniture store are visited, not hired.
+    const venues = ["Pizza restaurant", "Bowling club", "Furniture store"].map(
+      (category) =>
+        buildAiVisibilityPrompts({
+          category,
+          city: "Vernon",
+          region: "British Columbia",
+          kind: "choose",
+        }),
+    );
+    for (const set of venues) {
+      expect(set.length).toBeGreaterThan(0);
+      for (const p of set) {
+        expect(p, p).not.toMatch(/\bhir(?:e|ing)\b/i);
+        expect(p, p).not.toMatch(/locals use for/i);
+      }
+    }
+  });
+
+  it("still asks what to look for when hiring a service provider", () => {
+    expect(prompts.some((p) => /when hiring an electrician/i.test(p))).toBe(
+      true,
+    );
+  });
+
   it("asks about the services the business actually sells", () => {
     expect(prompts.some((p) => /EV charger/i.test(p))).toBe(true);
   });
