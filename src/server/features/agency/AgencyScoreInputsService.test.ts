@@ -116,6 +116,9 @@ const GSC_CONNECTION = {
   siteUrl: "sc-domain:niceseo.ai",
   createdAt: "2026-08-30T00:00:00.000Z",
   updatedAt: "2026-08-30T12:00:00.000Z",
+  // One grant backs many projects, so the board records whose it is.
+  connectedAccountEmail: "design@twa.studio",
+  gscAccountId: "111395884531975100744",
 };
 
 describe("getAgencyScoreInputs connections", () => {
@@ -157,6 +160,8 @@ describe("getAgencyScoreInputs connections", () => {
       connected: false,
       siteUrl: null,
       connectedAt: null,
+      accountEmail: null,
+      accountId: null,
     });
     expect(data.connections.ga4.connected).toBe(false);
     expect(data.gsc).toBeNull();
@@ -187,6 +192,8 @@ describe("getAgencyScoreInputs connections", () => {
       connected: true,
       siteUrl: "sc-domain:niceseo.ai",
       connectedAt: "2026-08-30T00:00:00.000Z",
+      accountEmail: "design@twa.studio",
+      accountId: "111395884531975100744",
     });
     expect(data.gsc).toEqual({
       clicks: 120,
