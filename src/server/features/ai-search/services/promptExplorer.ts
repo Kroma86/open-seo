@@ -9,6 +9,10 @@ import {
   getCached,
   setCached,
 } from "@/server/lib/r2-cache";
+import {
+  citationMatchesBrand,
+  textMentionsBrand,
+} from "@/server/features/ai-search/services/brandMatch";
 import { safeHostname, safeHttpUrl } from "@/server/features/ai-search/safeUrl";
 import {
   promptExplorerModelResultSchema,
@@ -188,7 +192,11 @@ function reapplyHighlightBrand(
   if (result.status !== "success") return result;
   const citations = result.citations.map((citation) => ({
     ...citation,
-    matchedBrand: matchesBrand(citation.url, citation.title, highlightBrand),
+    matchedBrand: citationMatchesBrand(
+      citation.url,
+      citation.title,
+      highlightBrand,
+    ),
   }));
   return {
     ...result,
@@ -251,35 +259,7 @@ function computeBrandMentioned(
 ): boolean | null {
   if (!highlightBrand) return null;
   if (citations.some((c) => c.matchedBrand)) return true;
-  return mentionRegex(highlightBrand).test(text);
-}
-
-function matchesBrand(
-  url: string,
-  title: string | null | undefined,
-  highlightBrand: string | null,
-): boolean {
-  if (!highlightBrand) return false;
-  const needle = highlightBrand.toLowerCase();
-  const haystack = `${url} ${title ?? ""}`.toLowerCase();
-  return haystack.includes(needle);
-}
-
-function mentionRegex(brand: string): RegExp {
-  // Case-insensitive match on the brand string with word-boundary guards only
-  // on sides that end in a word char — otherwise \b fails for brands like
-  // "C++" or "AT&T" where the terminal char is non-word. When a boundary char
-  // is non-word we guard with a negative lookaround against that same char so
-  // "C++" doesn't match "C+++".
-  const escaped = brand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const firstEscaped = brand[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const lastEscaped = brand[brand.length - 1].replace(
-    /[.*+?^${}()|[\]\\]/g,
-    "\\$&",
-  );
-  const leading = /^\w/.test(brand) ? "\\b" : `(?<!${firstEscaped})`;
-  const trailing = /\w$/.test(brand) ? "\\b" : `(?!${lastEscaped})`;
-  return new RegExp(`${leading}${escaped}${trailing}`, "i");
+  return textMentionsBrand(text, highlightBrand);
 }
 
 function normalizePromptForCache(prompt: string): string {
