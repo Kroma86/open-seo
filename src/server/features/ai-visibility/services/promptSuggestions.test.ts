@@ -1,0 +1,126 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  buildAiVisibilityPrompts,
+  parseBusinessLocation,
+  pluralizeCategory,
+} from "@/server/features/ai-visibility/services/promptSuggestions";
+
+// Regressions from the 19 Sep 2026 audit. The shipped prompt set said
+// "Woodstock" with no province: ChatGPT refused and asked which Woodstock,
+// Perplexity answered about Woodstock, GEORGIA. A second client's set asked
+// about Alberta for a British Columbia broker.
+const BLINE = {
+  category: "Electrician",
+  city: "Woodstock",
+  region: "Ontario",
+  services: ["EV charger installation", "panel upgrades"],
+};
+
+describe("parseBusinessLocation", () => {
+  it("expands the stored 'City, XX, CC' form to a full region name", () => {
+    expect(parseBusinessLocation("Woodstock, ON, CA")).toEqual({
+      city: "Woodstock",
+      region: "Ontario",
+      country: "CA",
+    });
+  });
+
+  it("handles a British Columbia project", () => {
+    expect(parseBusinessLocation("Vernon, BC, CA")).toEqual({
+      city: "Vernon",
+      region: "British Columbia",
+      country: "CA",
+    });
+  });
+
+  it("returns null rather than guessing when there is no region", () => {
+    expect(parseBusinessLocation("Woodstock")).toBeNull();
+  });
+});
+
+describe("pluralizeCategory", () => {
+  it("uses the noun a customer types", () => {
+    expect(pluralizeCategory("Electrician")).toBe("electricians");
+    expect(pluralizeCategory("Bakery")).toBe("bakeries");
+    expect(pluralizeCategory("Massage therapist")).toBe("massage therapists");
+  });
+});
+
+describe("buildAiVisibilityPrompts", () => {
+  const prompts = buildAiVisibilityPrompts(BLINE);
+
+  it("puts the city AND region in every prompt", () => {
+    expect(prompts.length).toBeGreaterThan(0);
+    for (const p of prompts) {
+      expect(p, p).toContain("Woodstock");
+      expect(p, p).toContain("Ontario");
+    }
+  });
+
+  it("asks for the category noun customers type, not a '<x> services' phrase", () => {
+    // The discovery prompt must name the practitioner: "best electricians".
+    expect(prompts.some((p) => /\bbest electricians\b/i.test(p))).toBe(true);
+    // And no prompt may fall back to the "best <something> services" shape
+    // that made the shipped set unanswerable. Asserting the SHAPE, not one
+    // hardcoded string — a mutation test showed the narrow version passed
+    // while the original bug was reintroduced as "best electrician services".
+    for (const p of prompts) {
+      expect(p, p).not.toMatch(/\b(?:best|top[- ]rated)\s+[\w-]+\s+services\b/i);
+    }
+  });
+
+  it("never names a region the business did not supply", () => {
+    for (const p of prompts) {
+      expect(p, p).not.toMatch(/alberta|british columbia|georgia/i);
+    }
+  });
+
+  it("drops the retail templates that made no sense for a trade", () => {
+    for (const p of prompts) {
+      expect(p, p).not.toMatch(/worth the drive|open on weekends|typical prices/i);
+    }
+  });
+
+  it("gets the indefinite article right", () => {
+    // A first draft produced "a electrician" in two of six prompts.
+    for (const p of prompts) {
+      expect(p, p).not.toMatch(/\ba [aeiou]/i);
+    }
+    expect(prompts.some((p) => /\ban electrician\b/i.test(p))).toBe(true);
+  });
+
+  it("emits nothing category-specific that breaks on another category", () => {
+    // A first draft asked "which ... offer emergency service?" — sensible for
+    // an electrician, nonsense for a mortgage broker. Every stock line must
+    // survive being pointed at any local business.
+    const broker = buildAiVisibilityPrompts({
+      category: "Mortgage broker",
+      city: "Vernon",
+      region: "British Columbia",
+    });
+    for (const p of broker) {
+      expect(p, p).not.toMatch(/emergency|open on|drive|walk[- ]in|delivery/i);
+      expect(p, p).toContain("Vernon, British Columbia");
+    }
+    expect(broker.some((p) => /\ba mortgage broker\b/i.test(p))).toBe(true);
+  });
+
+  it("asks about the services the business actually sells", () => {
+    expect(prompts.some((p) => /EV charger/i.test(p))).toBe(true);
+  });
+
+  it("caps at the tracked-prompt limit of 10", () => {
+    expect(prompts.length).toBeLessThanOrEqual(10);
+  });
+
+  it("emits no duplicates", () => {
+    expect(new Set(prompts).size).toBe(prompts.length);
+  });
+
+  it("refuses to build a set when the region is unknown", () => {
+    expect(() =>
+      buildAiVisibilityPrompts({ ...BLINE, region: "" }),
+    ).toThrowError(/region/i);
+  });
+});
