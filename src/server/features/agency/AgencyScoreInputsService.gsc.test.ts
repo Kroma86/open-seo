@@ -79,3 +79,23 @@ describe("loadGscTotals reports why it has no data", () => {
     expect(getPerformance).not.toHaveBeenCalled();
   });
 });
+
+describe("the provider's own words survive", () => {
+  it("unwraps a nested cause so a revoked grant is distinguishable", async () => {
+    const google = new Error("invalid_grant: Token has been expired or revoked.");
+    const wrapped = new GscTokenError(
+      "Could not mint a Search Console access token (grant revoked or expired).",
+      google,
+    );
+    getPerformance.mockRejectedValueOnce(wrapped);
+    const out = await loadGscTotals("p1", true);
+    expect(out.status).toBe("token_expired");
+    expect(out.error).toContain("invalid_grant");
+  });
+
+  it("does not repeat the message when there is no cause", async () => {
+    getPerformance.mockRejectedValueOnce(new GscTokenError("plain failure"));
+    const out = await loadGscTotals("p1", true);
+    expect(out.error).toBe("plain failure");
+  });
+});

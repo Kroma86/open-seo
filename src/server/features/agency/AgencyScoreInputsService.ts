@@ -173,11 +173,25 @@ export type GscTotalsResult = {
 };
 
 /** Map a thrown GSC error to a status a human can act on. */
+/** Unwrap nested `cause` chains so the provider's own words survive. Better
+ *  Auth wraps Google's `invalid_grant` inside our GscTokenError, and without
+ *  this the stored reason is only our own sentence — which cannot distinguish
+ *  a revoked grant from a misconfigured client. */
+function describeCause(error: unknown, depth = 0): string {
+  if (depth > 4 || error == null) return "";
+  const self = error instanceof Error ? error.message : String(error);
+  const inner =
+    error instanceof Error && "cause" in error
+      ? describeCause((error as { cause?: unknown }).cause, depth + 1)
+      : "";
+  return inner && !self.includes(inner) ? `${self} <- ${inner}` : self;
+}
+
 function classifyGscError(error: unknown): {
   status: GscTotalsStatus;
   error: string;
 } {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = describeCause(error);
   if (error instanceof GscTokenError) {
     return { status: "token_expired", error: message };
   }
