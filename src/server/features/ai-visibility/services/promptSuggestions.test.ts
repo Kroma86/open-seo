@@ -171,6 +171,41 @@ describe("buildAiVisibilityPrompts", () => {
     expect(prompts.length).toBeLessThanOrEqual(10);
   });
 
+  it("drops the advice prompt first when the set is capped", () => {
+    // A client with two locations splits one 10-prompt cap between them, so
+    // something has to go. The lines that make a model NAME businesses are
+    // what we measure with; "what should I look for when hiring..." is advice
+    // and usually answers without naming anyone. It goes last, so a cap takes
+    // it first.
+    const five = buildAiVisibilityPrompts({ ...BLINE, services: [], limit: 5 });
+    expect(five).toHaveLength(5);
+    expect(five.some((p) => /what should I look for/i.test(p))).toBe(false);
+    expect(five.some((p) => /top-rated electricians/i.test(p))).toBe(true);
+
+    const fiveChoose = buildAiVisibilityPrompts({
+      category: "Bakery",
+      city: "Kelowna",
+      region: "British Columbia",
+      kind: "choose",
+      limit: 5,
+    });
+    expect(fiveChoose).toHaveLength(5);
+    expect(fiveChoose.some((p) => /what makes a good/i.test(p))).toBe(false);
+  });
+
+  it("keeps the service prompts ahead of the advice prompt", () => {
+    // A business that sells more services than there are slots should spend
+    // them on the services, not on the advice line.
+    const many = buildAiVisibilityPrompts({
+      ...BLINE,
+      services: ["EV charger installation", "panel upgrades", "generator installation", "knob and tube rewiring"],
+    });
+    expect(many.some((p) => /knob and tube/i.test(p))).toBe(true);
+    expect(many.indexOf(many.find((p) => /what should I look for/i.test(p))!)).toBe(
+      many.length - 1,
+    );
+  });
+
   it("emits no duplicates", () => {
     expect(new Set(prompts).size).toBe(prompts.length);
   });

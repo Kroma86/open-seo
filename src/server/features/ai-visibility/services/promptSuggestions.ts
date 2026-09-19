@@ -109,6 +109,12 @@ export type PromptSuggestionInput = {
   kind?: BusinessKind;
   /** Services the business actually sells, most distinctive first. */
   services?: string[];
+  /**
+   * How many prompts this set may use, never above MAX_TRACKED_PROMPTS.
+   * A client with two locations calls this once per location and splits the
+   * cap between them.
+   */
+  limit?: number;
 };
 
 export function buildAiVisibilityPrompts(
@@ -131,35 +137,34 @@ export function buildAiVisibilityPrompts(
   // asked "which ... offer emergency service?", which is fine for an
   // electrician and nonsense for a mortgage broker — the same category
   // mismatch that put "open on weekends" in the shipped set.
-  const shared = [
+  const choose = (input.kind ?? "hire") === "choose";
+
+  // Order matters, because a client with two locations splits one 10-prompt
+  // cap between them. The lines that make a model NAME businesses come first;
+  // the advice line goes last, so a cap takes it before anything we measure
+  // with. Services sit ahead of it for the same reason.
+  const prompts: string[] = [
     `Who are the best ${plural} in ${where}?`,
     `Which ${plural} in ${where} have the best reviews?`,
     `Who are the top-rated ${plural} near ${where}?`,
+    choose
+      ? `Can you recommend ${withArticle(`good ${singular}`)} in ${where}?`
+      : `Can you recommend ${withArticle(`reliable ${singular}`)} in ${where}?`,
+    choose
+      ? `Which ${singular} do locals in ${where} recommend?`
+      : `Who do locals use for ${withArticle(singular)} in ${where}?`,
   ];
-
-  const prompts: string[] =
-    (input.kind ?? "hire") === "choose"
-      ? [
-          shared[0]!,
-          shared[1]!,
-          `Can you recommend ${withArticle(`good ${singular}`)} in ${where}?`,
-          `Which ${singular} do locals in ${where} recommend?`,
-          `What makes ${withArticle(`good ${singular}`)} in ${where}?`,
-          shared[2]!,
-        ]
-      : [
-          shared[0]!,
-          shared[1]!,
-          `Can you recommend ${withArticle(`reliable ${singular}`)} in ${where}?`,
-          `Who do locals use for ${withArticle(singular)} in ${where}?`,
-          `What should I look for when hiring ${withArticle(singular)} in ${where}?`,
-          shared[2]!,
-        ];
 
   for (const service of input.services ?? []) {
     const clean = service.trim();
     if (clean) prompts.push(`Who offers ${clean} in ${where}?`);
   }
+
+  prompts.push(
+    choose
+      ? `What makes ${withArticle(`good ${singular}`)} in ${where}?`
+      : `What should I look for when hiring ${withArticle(singular)} in ${where}?`,
+  );
 
   const seen = new Set<string>();
   const unique = prompts.filter((prompt) => {
@@ -169,5 +174,8 @@ export function buildAiVisibilityPrompts(
     return true;
   });
 
-  return unique.slice(0, MAX_TRACKED_PROMPTS);
+  const limit = Math.min(input.limit ?? MAX_TRACKED_PROMPTS, MAX_TRACKED_PROMPTS);
+  if (limit < 1) throw new Error("A prompt set needs at least one prompt.");
+
+  return unique.slice(0, limit);
 }
