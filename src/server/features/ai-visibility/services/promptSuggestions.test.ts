@@ -82,11 +82,39 @@ describe("buildAiVisibilityPrompts", () => {
     }
   });
 
-  it("gets the indefinite article right", () => {
-    // A first draft produced "a electrician" in two of six prompts.
-    for (const p of prompts) {
-      expect(p, p).not.toMatch(/\ba [aeiou]/i);
+  it("agrees the indefinite article with the word that follows it", () => {
+    // Two bugs in one line. A first draft produced "a electrician" — the
+    // article was hardcoded. The fix computed it from the CATEGORY, which then
+    // produced "an reliable electrician", because in that template the word
+    // after the article is the adjective, not the noun. The article has to
+    // agree with whatever word actually follows it, so assert exactly that
+    // over several categories rather than pinning one string.
+    const sets = [
+      prompts,
+      buildAiVisibilityPrompts({
+        category: "Accountant",
+        city: "Vernon",
+        region: "British Columbia",
+      }),
+      buildAiVisibilityPrompts({
+        category: "Mortgage broker",
+        city: "Vernon",
+        region: "British Columbia",
+      }),
+    ];
+    for (const set of sets) {
+      for (const p of set) {
+        for (const [, article, next] of p.matchAll(/\b(an?) ([a-z]+)/gi)) {
+          const expected = /^[aeiou]/i.test(next) ? "an" : "a";
+          expect(article.toLowerCase(), `"${article} ${next}" in: ${p}`).toBe(
+            expected,
+          );
+        }
+      }
     }
+  });
+
+  it("still says 'an electrician', not 'a electrician'", () => {
     expect(prompts.some((p) => /\ban electrician\b/i.test(p))).toBe(true);
   });
 

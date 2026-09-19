@@ -69,6 +69,17 @@ export function indefiniteArticle(noun: string): "a" | "an" {
   return /^[aeiou]/i.test(noun.trim()) ? "an" : "a";
 }
 
+/**
+ * Prepends the article that agrees with the phrase's FIRST word. In
+ * "reliable electrician" that is the adjective, not the category noun —
+ * taking the article from the category produced "an reliable electrician".
+ * Always build the article and the phrase together so they cannot drift.
+ */
+export function withArticle(phrase: string): string {
+  const clean = phrase.trim();
+  return `${indefiniteArticle(clean)} ${clean}`;
+}
+
 /** "Electrician" -> "electricians". The word a customer actually types. */
 export function pluralizeCategory(category: string): string {
   const lower = category.trim().toLowerCase();
@@ -103,8 +114,6 @@ export function buildAiVisibilityPrompts(
   const plural = pluralizeCategory(input.category);
   const singular = input.category.trim().toLowerCase();
 
-  const a = indefiniteArticle(singular);
-
   // Every line here has to make sense for ANY local category. An earlier draft
   // asked "which ... offer emergency service?", which is fine for an
   // electrician and nonsense for a mortgage broker — the same category
@@ -112,9 +121,9 @@ export function buildAiVisibilityPrompts(
   const prompts: string[] = [
     `Who are the best ${plural} in ${where}?`,
     `Which ${plural} in ${where} have the best reviews?`,
-    `Can you recommend ${a} reliable ${singular} in ${where}?`,
-    `Who do locals use for ${a} ${singular} in ${where}?`,
-    `What should I look for when hiring ${a} ${singular} in ${where}?`,
+    `Can you recommend ${withArticle(`reliable ${singular}`)} in ${where}?`,
+    `Who do locals use for ${withArticle(singular)} in ${where}?`,
+    `What should I look for when hiring ${withArticle(singular)} in ${where}?`,
     `Who are the top-rated ${plural} near ${where}?`,
   ];
 
