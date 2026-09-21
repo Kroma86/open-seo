@@ -94,3 +94,25 @@ if (!process.env.CLOUDFLARE_API_TOKEN) {
     );
   }
 }
+
+// 2026-09-21: the machine-identity /mcp path (c5271d6) was deployed on Sep 16
+// and then overwritten on Sep 17 by a deploy from a branch that forked before
+// the merge. Grok Bot lost its MCP for four days and nobody could see why.
+// Refuse to deploy any tree that does not carry it. This is a source check,
+// not a git check, so it also holds in detached worktrees.
+{
+  const identityFile = "src/middleware/ensure-user/serviceTokenIdentity.ts";
+  const serverTs = "src/server.ts";
+  const hasFile = existsSync(identityFile);
+  const wired =
+    existsSync(serverTs) &&
+    readFileSync(serverTs, "utf8").includes("resolveServiceTokenWorkspaceContext");
+  if (!hasFile || !wired) {
+    fail(
+      `This tree does not carry the /mcp service-token identity fix (open-seo c5271d6 / a0665ec).`,
+      `Missing: ${[!hasFile && identityFile, !wired && `${serverTs} -> resolveServiceTokenWorkspaceContext`].filter(Boolean).join(", ")}`,
+      `Deploying it would break Grok Bot and Claude's OpenSEO MCP again (401 invalid_token, 0 tools).`,
+      `Merge agency-platform (or cherry-pick a0665ec) into this line first.`,
+    );
+  }
+}
