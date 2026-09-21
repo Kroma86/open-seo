@@ -19,6 +19,9 @@ import {
   hasSelfHostedGoogleOAuthConfig,
 } from "./oauth-config";
 
+// Google account chooser + consent can take a while for a non-technical user; 10 min expired in the field on 2026-09-21.
+export const OAUTH_STATE_TTL_MS = 30 * 60 * 1_000;
+
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
@@ -134,7 +137,7 @@ async function createState(input: {
           input.callbackURL,
           input.publicOrigin,
         ),
-        exp: Date.now() + 10 * 60 * 1_000,
+        exp: Date.now() + OAUTH_STATE_TTL_MS,
       }),
     ),
   );
