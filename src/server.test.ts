@@ -126,6 +126,16 @@ describe("server /mcp routing under cloudflare_access", () => {
     expect(mocks.providerFetch).not.toHaveBeenCalled();
     expect(mocks.resolveServiceContext).toHaveBeenCalledWith("grok-bot.access");
     expect(mocks.transport).toHaveBeenCalledTimes(1);
+    // Which identity the transport runs AS is the load-bearing claim — the
+    // machine's own context, derived from common_name by serviceTokenIdentity,
+    // not a person's and not null. Mirrors the user-context assertion below.
+    expect(mocks.transport).toHaveBeenCalledWith(
+      expect.any(Request),
+      "cloudflare_access",
+      env,
+      ctx,
+      serviceContext,
+    );
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("mcp user handler");
     expect(mocks.appFetch).not.toHaveBeenCalled();
@@ -188,6 +198,43 @@ describe("server /mcp routing under cloudflare_access", () => {
       ctx,
       null,
     );
+  });
+});
+
+describe("server /mcp outside cloudflare_access", () => {
+  it("in local_noauth never reaches the gate or the service-token branch — /mcp is served with an explicit null context", async () => {
+    const localEnv = { AUTH_MODE: "local_noauth" } as unknown as Env;
+
+    const response = await handler.fetch(mcpRequest(), localEnv, ctx);
+
+    expect(mocks.gate).not.toHaveBeenCalled();
+    expect(mocks.resolveServiceContext).not.toHaveBeenCalled();
+    expect(mocks.resolveContext).not.toHaveBeenCalled();
+    expect(mocks.transport).toHaveBeenCalledWith(
+      expect.any(Request),
+      "local_noauth",
+      localEnv,
+      ctx,
+      null,
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.appFetch).not.toHaveBeenCalled();
+  });
+
+  it("in hosted the request exits before the gate — hosted routes everything to the OAuth provider, so the Access gate and service branch never run", async () => {
+    const hostedEnv = { AUTH_MODE: "hosted" } as unknown as Env;
+
+    const response = await handler.fetch(mcpRequest(), hostedEnv, ctx);
+
+    expect(mocks.gate).not.toHaveBeenCalled();
+    expect(mocks.resolveServiceContext).not.toHaveBeenCalled();
+    expect(mocks.resolveContext).not.toHaveBeenCalled();
+    expect(mocks.transport).not.toHaveBeenCalled();
+    // The exit IS the OAuth provider: in hosted every request goes there
+    // (the beforeEach stub answers 401 to a request with no bearer).
+    expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(401);
+    expect(mocks.appFetch).not.toHaveBeenCalled();
   });
 });
 

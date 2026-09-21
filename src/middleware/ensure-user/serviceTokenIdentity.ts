@@ -24,11 +24,14 @@ function serviceTokenUserId(commonName: string) {
 //
 // A digest is NOT injective and this comment will not pretend otherwise: it is
 // SHA-256 truncated to 160 bits, and TextEncoder folds unpaired surrogates to
-// U+FFFD, so inputs exist that share an address. common_name is the token name
-// an operator typed, a free-form string over an alphabet far wider than 160
-// bits can enumerate, so colliding names certainly exist -- nothing here rules
-// them out. The difference from a character map is reachability, not absence:
-// a map collided on ordinary names an operator would actually pick (ci-bot /
+// U+FFFD, so inputs exist that share an address. Cloudflare defines
+// common_name as the service token's Client ID — a fixed-format string like
+// `0123456789abcdef0123456789abcdef.access`, 32 hex digits plus the `.access`
+// suffix — not as a name an operator typed. That narrows what reaches this
+// function in practice, but it does not make the address exact: truncation
+// could still fold two Client IDs together, and nothing here rules that out.
+// The difference from a character map is reachability, not absence: a map
+// collided on ordinary strings a caller could plausibly present (ci-bot /
 // CI-BOT / ci bot), while 160 bits against a handful of service tokens is
 // collision resistance. That is a probability argument, not a proof, and the
 // id above is the field that is exact.

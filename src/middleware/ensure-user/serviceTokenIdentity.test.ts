@@ -27,6 +27,17 @@ describe("serviceTokenIdentity", () => {
     });
   });
 
+  // common_name is not operator-typed: Cloudflare sets it to the service
+  // token's Client ID, a fixed-format string of 32 hex digits + ".access".
+  it("handles the real common_name shape — a Cloudflare Client ID like <32 hex>.access", async () => {
+    const clientId = "9f2e1c4a7b3d48f0a1c2e3b4d5f60718.access";
+
+    expect(await serviceTokenIdentity(clientId)).toEqual({
+      userId: `cf-service-token:${clientId}`,
+      userEmail: expect.stringMatching(/^[0-9a-f]{40}@service-token\.invalid$/),
+    });
+  });
+
   it("gives every one of these names its own id AND its own address (a character map would merge them)", async () => {
     const ids = new Set<string>();
     const emails = new Set<string>();
