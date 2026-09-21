@@ -105,6 +105,12 @@ describe("resolveCloudflareAccessMcpGate", () => {
 
     const gate = await resolveCloudflareAccessMcpGate(WITH_TOKEN);
     expect(gate.kind).toBe("service_token");
+    // The token's own name must survive the gate: it is what gives a machine
+    // caller a named, auditable identity instead of an anonymous one.
+    expect(gate).toEqual({
+      kind: "service_token",
+      commonName: "abc.service-token",
+    });
   });
 
   it("falls back to the user audience for a user JWT, returning the verified identity only (context resolution is the caller's DB-scoped job)", async () => {

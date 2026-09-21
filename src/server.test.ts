@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   transport: vi.fn(),
   gate: vi.fn(),
   resolveContext: vi.fn(),
+  resolveServiceContext: vi.fn(),
 }));
 
 vi.mock("cloudflare:workers", () => ({
@@ -31,6 +32,7 @@ vi.mock("@/middleware/ensure-user/cloudflareAccess", () => ({
 }));
 vi.mock("@/middleware/ensure-user/delegated", () => ({
   resolveSharedWorkspaceContext: mocks.resolveContext,
+  resolveServiceTokenWorkspaceContext: mocks.resolveServiceContext,
 }));
 vi.mock("@/server/mcp/oauth-provider", () => ({
   createOpenSeoOAuthProvider: () => ({
@@ -82,6 +84,17 @@ const userContext = {
   organizationId: "org1",
 } as never;
 
+// A machine caller resolves to its own row in the SAME shared workspace as
+// people (organizationId matches userContext's) — that sameness is the point:
+// a scheduled job and the person reading its output see one set of projects.
+const serviceContext = {
+  userId: "cf-service-token:grok-bot.access",
+  // Shaped like production (40 hex chars), not the old slug-as-address, so
+  // nobody copies a dead format out of this fixture.
+  userEmail: "0123456789abcdef0123456789abcdef01234567@service-token.invalid",
+  organizationId: "org1",
+} as never;
+
 function mcpRequest(method = "POST", path = "/mcp") {
   return new Request(`https://open-seo.test${path}`, { method });
 }
@@ -96,24 +109,44 @@ beforeEach(() => {
 });
 
 describe("server /mcp routing under cloudflare_access", () => {
-  it("hands a service token to the OAuth provider (never the user handler) — the provider's answer, including 401, is what the client gets", async () => {
-    mocks.gate.mockResolvedValue({ kind: "service_token" });
+  it("serves a verified service token from its own machine identity, never the OAuth provider (a headless caller cannot finish a browser login)", async () => {
+    mocks.gate.mockResolvedValue({
+      kind: "service_token",
+      commonName: "grok-bot.access",
+    });
+    mocks.resolveServiceContext.mockResolvedValue(serviceContext);
 
     const response = await handler.fetch(mcpRequest(), env, ctx);
 
     expect(mocks.gate).toHaveBeenCalledTimes(1);
-    expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
-    const [routedRequest] = mocks.providerFetch.mock.calls[0] as [Request];
-    expect(new URL(routedRequest.url).pathname).toBe("/mcp");
-    // The load-bearing claim: a service token only ever reaches the OAuth
-    // provider, which requires a bearer token on its apiRoute (/mcp) — a
-    // request without one comes back 401 (mocked here; the 401-on-missing-
-    // bearer behavior is the workers-oauth-provider library's contract on
-    // `apiRoute`, doubled in tests because the library cannot run under
-    // vitest — see oauth-provider.test.ts's module double).
-    expect(response.status).toBe(401);
-    expect(mocks.transport).not.toHaveBeenCalled();
+    // The load-bearing claim, and the whole point of the change: Access has
+    // already proved this machine, so the request is served. Routing it to the
+    // OAuth provider is what produced a permanent 401 for every headless
+    // client — the provider demands a bearer no machine can obtain.
+    expect(mocks.providerFetch).not.toHaveBeenCalled();
+    expect(mocks.resolveServiceContext).toHaveBeenCalledWith("grok-bot.access");
+    expect(mocks.transport).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("mcp user handler");
     expect(mocks.appFetch).not.toHaveBeenCalled();
+  });
+
+  // Scope: this proves the gate's common_name reaches the resolver UNCHANGED.
+  // Whether two names can collapse into one row is decided inside
+  // serviceTokenIdentity, which this test mocks out — see
+  // serviceTokenIdentity.test.ts for that.
+  it("passes the service token's own name through to the resolver unchanged", async () => {
+    mocks.gate.mockResolvedValue({
+      kind: "service_token",
+      commonName: "hermes-box.access",
+    });
+    mocks.resolveServiceContext.mockResolvedValue(serviceContext);
+
+    await handler.fetch(mcpRequest(), env, ctx);
+
+    expect(mocks.resolveServiceContext).toHaveBeenCalledWith(
+      "hermes-box.access",
+    );
   });
 
   it("hands a user gate result to the user MCP handler with the DB-resolved context (its own short client scope, after the network wait)", async () => {
@@ -219,13 +252,20 @@ describe("server /mcp gate failures become responses, not exceptions", () => {
     expect(await response.json()).toEqual({ error: "internal_error" });
   });
 
-  it("answers an OAuth provider failure the same way", async () => {
-    mocks.gate.mockResolvedValue({ kind: "service_token" });
-    mocks.providerFetch.mockRejectedValue(new Error("provider exploded"));
+  it("answers a machine-identity lookup failure with a plain 500 and no Access challenge", async () => {
+    mocks.gate.mockResolvedValue({
+      kind: "service_token",
+      commonName: "grok-bot.access",
+    });
+    mocks.resolveServiceContext.mockRejectedValue(new Error("pg exploded"));
 
     const response = await handler.fetch(mcpRequest(), env, ctx);
 
+    // Identity was already proved by Access, so a failure here is ours. An
+    // Access challenge would send the caller off to re-authenticate over
+    // something authentication cannot fix.
     expect(response.status).toBe(500);
+    expect(response.headers.get("WWW-Authenticate")).toBeNull();
     expect(JSON.stringify(await response.json())).not.toContain("exploded");
   });
 

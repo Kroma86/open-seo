@@ -5,6 +5,7 @@ import {
   ensureSharedWorkspaceOrganization,
 } from "@/server/auth/delegated-organization";
 import { eq } from "drizzle-orm";
+import { serviceTokenIdentity } from "./serviceTokenIdentity";
 import type { EnsuredUserContext } from "./types";
 
 const LOCAL_ADMIN_USER_ID = "local-admin";
@@ -90,6 +91,16 @@ export async function resolveSharedWorkspaceContext(
     emailVerified: true,
     organizationId,
   };
+}
+
+// Machine callers land in the SAME shared workspace as signed-in people, which
+// is the point: a scheduled job and the person reviewing its output must see
+// one set of projects, not two.
+export async function resolveServiceTokenWorkspaceContext(
+  commonName: string,
+): Promise<EnsuredUserContext> {
+  const { userId, userEmail } = await serviceTokenIdentity(commonName);
+  return resolveSharedWorkspaceContext(userId, userEmail);
 }
 
 export async function resolveLocalNoAuthContext(): Promise<EnsuredUserContext> {
