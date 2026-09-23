@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "@/server/lib/errors";
 import {
