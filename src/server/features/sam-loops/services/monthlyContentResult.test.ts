@@ -11,6 +11,16 @@ const tracked = { toolName: "get_rank_tracker", output: { data: { results: { row
 const query = { toolName: "get_search_console_performance", output: { data: { ok: true, dimensions: ["page", "query"], rows: [{ keys: [url, "drain cleaning"] }] } } };
 
 describe("monthly draft evidence", () => {
+  it("accepts a project-bound imported tracked term without claiming measured native rankings", async () => {
+    const imported = { toolName: "get_rank_tracker", output: { data: { configs: [], externalObservations: { status: "available", rows: [{ keyword: "drain cleaning" }] } } } };
+    const result = await validateMonthlyContent(article, [{ toolResults: [imported, source] }], "example.com");
+    expect(result.error).toBeNull();
+    expect(await hasVerifiedMonthlyDraft(result.report)).toBe(true);
+  });
+  it("rejects a term from an invalid imported feed", async () => {
+    const imported = { toolName: "get_rank_tracker", output: { data: { configs: [], externalObservations: { status: "invalid", rows: [{ keyword: "drain cleaning" }] } } } };
+    expect((await validateMonthlyContent(article, [{ toolResults: [imported, source] }], "example.com")).error).not.toBeNull();
+  });
   it.each([saved, tracked, query])("accepts a retrieved topic and own-site supporting page", async (demand) => {
     const result = await validateMonthlyContent(article, [{ toolResults: [demand, source] }], "example.com");
     expect(result.error).toBeNull();

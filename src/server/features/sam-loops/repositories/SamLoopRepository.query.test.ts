@@ -473,6 +473,26 @@ describe("atomic daily run admission", () => {
 });
 
 describe("validated article velocity", () => {
+  it("reads completed draft candidates only for the requested project", async () => {
+    await seedProject();
+    await insertLoop({ id: "loop", name: "Monthly content" });
+    await insertRun({ id: "complete", loopId: "loop", status: "completed", report: "DRAFT — candidate" });
+    await insertRun({ id: "failed", loopId: "loop", status: "failed", report: "DRAFT — incomplete" });
+    await insertRun({ id: "no-data", loopId: "loop", status: "completed", report: "NO DATA" });
+    expect(await SamLoopRepository.getCompletedMonthlyReports("project_1")).toEqual([{ report: "DRAFT — candidate" }]);
+    expect(await SamLoopRepository.getCompletedMonthlyReports("other-project")).toEqual([]);
+  });
+  it("checkpoints running work without overwriting a terminal report", async () => {
+    await seedProject();
+    await insertLoop({ id: "loop", name: "Weekly pass" });
+    await insertRun({ id: "run", loopId: "loop", status: "running" });
+    const progress = { report: "INCOMPLETE — observations", stepsUsed: 2, proposalsQueued: 0, costNote: null };
+    await SamLoopRepository.checkpointRun("run", progress);
+    expect(await SamLoopRepository.getRunById("run")).toMatchObject({ status: "running", ...progress });
+    await SamLoopRepository.updateRun("run", { status: "failed", report: "Stopped report" });
+    await SamLoopRepository.checkpointRun("run", { ...progress, report: "Late progress" });
+    expect(await SamLoopRepository.getRunById("run")).toMatchObject({ status: "failed", report: "Stopped report" });
+  });
   it("counts the complete artifact for a renamed approved monthly identity", async () => {
     await seedProject();
     await insertLoop({ id: "renamed", name: "Editorial routine" });

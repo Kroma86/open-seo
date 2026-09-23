@@ -108,6 +108,7 @@ export class SamLoopWorkflow extends WorkflowEntrypoint<Env, SamLoopParams> {
             skillName: prepared.loop.skillName,
             customPrompt: prepared.loop.customPrompt,
             loopName: prepared.loop.name,
+            onProgress: (progress) => SamLoopRepository.checkpointRun(runId, progress),
           });
         },
       );

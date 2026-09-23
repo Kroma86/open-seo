@@ -11,13 +11,13 @@ export const monthlyContentSchema = z.object({
 
 export const MONTHLY_CONTENT_INSTRUCTION = `Produce one complete article draft using saved first-party research. Use list_saved_keywords, get_rank_tracker with a trackerId, or get_search_console_performance with a query dimension to choose a target. A saved/tracked keyword is a topic signal, not proof of search volume or ranking. If Search Console is disconnected, try the other saved sources.
 Read the site's relevant pages with read_pages. Use only facts supported by readable own-site pages. Inspect existing pages to avoid repeating an existing article. Do not claim a current search-results gap or competitor coverage; that research was not performed. Do not request paid research, publish, write project context, or queue changes.
-Return the structured result. For outcome=draft, supply the exact saved targetKeyword, title, a complete article body of at least 600 words with developed prose and headings, and at least one source URL with an exact supporting excerpt from the retrieved page text. Avoid invented prices, guarantees, credentials, locations or testimonials. This is a source-grounded DRAFT for editorial review, not published content. Set reason to an empty string.
+Return the structured result. For outcome=draft, supply the exact selected targetKeyword, title, a complete article body of 600–800 words with developed prose and headings, and one to three source URLs with short exact supporting excerpts from the retrieved page text. Use the target selected from saved first-party data by this run; do not substitute a related phrase. Avoid invented prices, guarantees, credentials, locations or testimonials. This is a source-grounded DRAFT for editorial review, not published content. Set reason to an empty string.
 If demand or source evidence is unavailable, or you cannot finish the article, set outcome=blocked, explain the specific reason, and leave body empty. Never substitute a plan or outline for an article.`;
 
 const MARKER = /\n?<!-- openseo-monthly-draft-v1:([a-f0-9]{64}) -->\s*$/;
 const ALL_MARKERS = /<!--\s*openseo-monthly-draft[^>]*-->/g;
 
-type Step = { toolResults?: Array<{ toolName: string; output?: unknown }> };
+export type MonthlyEvidenceStep = { toolResults?: Array<{ toolName: string; output?: unknown }> };
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -51,31 +51,55 @@ export async function hasVerifiedMonthlyDraft(report: string | null): Promise<bo
   return article.startsWith("DRAFT — source-grounded article for editorial review. Not published.\n") && await hash(article) === marker[1];
 }
 
-export async function validateMonthlyContent(output: unknown, steps: Step[], domain: string): Promise<{ report: string; error: string | null }> {
+/** Only verified completed reports may reserve a topic for future months. */
+export async function verifiedMonthlyTopics(reports: { report: string | null }[]): Promise<Set<string>> {
+  const used = new Set<string>();
+  for (const { report } of reports) {
+    if (!report || !await hasVerifiedMonthlyDraft(report)) continue;
+    const target = report.match(/\n\nTarget topic: ([\s\S]*?)\n\n# /)?.[1];
+    if (target) used.add(normalized(target));
+  }
+  return used;
+}
+
+export function monthlyDemand(steps: MonthlyEvidenceStep[]): Map<string, string> {
+  const demand = new Map<string, string>();
+  const add = (value: unknown) => {
+    if (typeof value === "string" && value.trim()) demand.set(normalized(value), value.trim());
+  };
+  for (const step of steps) for (const result of step.toolResults ?? []) {
+    const out = record(result.output);
+    const data = record(out.data);
+    if (out.error || out.isError === true || data.error || data.ok === false) continue;
+    if (result.toolName === "list_saved_keywords") {
+      for (const row of rows(data.rows)) add(row.keyword);
+    } else if (result.toolName === "get_rank_tracker") {
+      for (const row of rows(record(data.results).rows)) add(row.keyword);
+      // The project-bound reader also exposes validated Hermes terms. Their
+      // keywords are topic signals, never evidence of native rank or volume.
+      const external = record(data.externalObservations);
+      if (external.status === "available") for (const row of rows(external.rows)) add(row.keyword);
+    } else if (result.toolName === "get_search_console_performance" && data.ok === true) {
+      const index = Array.isArray(data.dimensions) ? data.dimensions.indexOf("query") : -1;
+      if (index >= 0) for (const row of rows(data.rows)) add(Array.isArray(row.keys) ? row.keys[index] : null);
+    }
+  }
+  return demand;
+}
+
+export async function validateMonthlyContent(output: unknown, steps: MonthlyEvidenceStep[], domain: string): Promise<{ report: string; error: string | null }> {
   const fail = (reason: string) => ({ report: `Monthly article not completed: ${reason}`, error: reason });
   const parsed = monthlyContentSchema.safeParse(output);
   if (!parsed.success) return fail("The run did not return a complete structured article result.");
   const draft = parsed.data;
   if (draft.outcome === "blocked") return fail(stripDraftEvidence(draft.reason).slice(0, 1000) || "Required research or article content was unavailable.");
-  const demand = new Set<string>();
+  const demand = monthlyDemand(steps);
   const pages = new Map<string, string[]>();
   for (const step of steps) {
     for (const result of step.toolResults ?? []) {
       const out = record(result.output);
       if (out.error || out.isError === true) continue;
-      const data = record(out.data);
-      if (result.toolName === "list_saved_keywords") {
-        for (const row of rows(data.rows)) if (typeof row.keyword === "string") demand.add(normalized(row.keyword));
-      } else if (result.toolName === "get_rank_tracker") {
-        for (const row of rows(record(data.results).rows)) if (typeof row.keyword === "string") demand.add(normalized(row.keyword));
-      } else if (result.toolName === "get_search_console_performance" && data.ok === true) {
-        const dimensions = Array.isArray(data.dimensions) ? data.dimensions : [];
-        const index = dimensions.indexOf("query");
-        if (index >= 0) for (const row of rows(data.rows)) {
-          const term = Array.isArray(row.keys) ? row.keys[index] : null;
-          if (typeof term === "string") demand.add(normalized(term));
-        }
-      } else if (result.toolName === "read_pages" && out.blocked === false) {
+      if (result.toolName === "read_pages" && out.blocked === false) {
         for (const page of rows(out.pages)) {
           const url = typeof page.url === "string" ? ownUrl(page.url, domain) : null;
           if (url && typeof page.text === "string" && page.text.trim().length >= 80) {
