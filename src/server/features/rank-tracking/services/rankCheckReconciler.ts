@@ -1,5 +1,8 @@
 import { and, asc, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
+import { env } from "cloudflare:workers";
+import { getDatabaseProvider } from "@/db/provider";
+import { toSqliteTimestamp } from "../rankTrackingTimestamps";
 import { rankCheckRuns } from "@/db/schema";
 import { completeRankCheckRunFromSnapshots } from "@/server/features/rank-tracking/services/rankCheckFinalize";
 import { failRunIfActive } from "@/server/features/rank-tracking/services/rankCheckRunGuards";
@@ -16,17 +19,44 @@ const STALE_INCOMPLETE_MS = 25 * 60 * 1000;
 
 const WATCHDOG_BATCH_LIMIT = 100;
 
+// D1's CURRENT_TIMESTAMP uses a space separator, while Postgres defaults to
+// ISO. Comparing a D1 value with an ISO cutoff makes every same-day run appear
+// stale (space sorts before "T"). Match the provider, then verify elapsed age.
+function isOlderThan(
+  run: { id: string; startedAt: string },
+  ageMs: number,
+): boolean {
+  const { startedAt } = run;
+  const timestamp = Date.parse(
+    startedAt.includes("T") ? startedAt : `${startedAt.replace(" ", "T")}Z`,
+  );
+  if (!Number.isFinite(timestamp)) {
+    console.warn(`[rank-check] watchdog skipped ${run.id}: invalid startedAt`);
+    return false;
+  }
+  return timestamp < Date.now() - ageMs;
+}
+
 /**
  * Cron watchdog: finish (or fail) rank_check_runs stuck in pending/running
  * after their workflow should have finalized.
  */
 export async function reconcileStuckRankCheckRuns() {
-  const snapshotGraceCutoff = new Date(
-    Date.now() - SNAPSHOT_FINALIZE_GRACE_MS,
-  ).toISOString();
-  const incompleteCutoff = new Date(
-    Date.now() - STALE_INCOMPLETE_MS,
-  ).toISOString();
+  if (
+    ["ANTHROPIC_API_KEY", "XAI_API_KEY", "OPENAI_API_KEY"].some(
+      (name) =>
+        (typeof process !== "undefined" && process.env[name] !== undefined) ||
+        Reflect.has(env, name),
+    )
+  ) {
+    throw new Error("API-key environment refused; subscriptions only");
+  }
+
+  const cutoff = new Date(Date.now() - SNAPSHOT_FINALIZE_GRACE_MS);
+  const snapshotGraceCutoff =
+    getDatabaseProvider() === "postgres"
+      ? cutoff.toISOString()
+      : toSqliteTimestamp(cutoff);
 
   const stuck = await db
     .select()
@@ -41,6 +71,7 @@ export async function reconcileStuckRankCheckRuns() {
     .limit(WATCHDOG_BATCH_LIMIT);
 
   for (const run of stuck) {
+    if (!isOlderThan(run, SNAPSHOT_FINALIZE_GRACE_MS)) continue;
     try {
       const completed = await completeRankCheckRunFromSnapshots({
         run,
@@ -53,7 +84,7 @@ export async function reconcileStuckRankCheckRuns() {
         continue;
       }
 
-      if (run.startedAt < incompleteCutoff) {
+      if (isOlderThan(run, STALE_INCOMPLETE_MS)) {
         await failRunIfActive(
           run.id,
           "Rank check timed out before finalizing",
