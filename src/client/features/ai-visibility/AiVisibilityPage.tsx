@@ -14,7 +14,7 @@ import {
   listAiVisibilityTrackingConfigs,
   triggerAiVisibilityCheck,
 } from "@/serverFunctions/ai-visibility";
-import { formatMentionsDisplay } from "@/shared/ai-visibility-mentions";
+import { formatOwnSiteCitations } from "@/shared/ai-visibility-citations";
 
 type Props = {
   projectId: string;
@@ -204,13 +204,10 @@ function AiVisibilityPageInner({
             {latest?.measured && latest.latestRun ? (
               <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
                 <Metric
-                  label="Total mentions"
-                  value={formatMentionsDisplay(
-                    latest.latestRun.totalMentions,
-                    latest.latestRun.partialMentions,
-                  )}
+                  label="Own-site citations"
+                  value={formatOwnSiteCitations(latest.latestRun)}
                   fetchedAt={latest.fetchedAt}
-                  source={latest.source}
+                  source="answers that linked to this site"
                 />
                 <Metric
                   label="Share of voice"
@@ -304,13 +301,9 @@ function AiVisibilityPageInner({
                       </span>
                     </div>
                     <p>
-                      Mentions:{" "}
-                      {formatMentionsDisplay(
-                        run.totalMentions,
-                        run.partialMentions,
-                      )}
-                      {run.delta?.totalMentions != null
-                        ? ` (${run.delta.totalMentions >= 0 ? "+" : ""}${run.delta.totalMentions})`
+                      Own-site citations: {formatOwnSiteCitations(run)}
+                      {run.delta?.ownSiteCitationCount != null
+                        ? ` (${run.delta.ownSiteCitationCount >= 0 ? "+" : ""}${run.delta.ownSiteCitationCount})`
                         : run.delta === null &&
                             trendQuery.data.runs.indexOf(run) > 0
                           ? " · new baseline"

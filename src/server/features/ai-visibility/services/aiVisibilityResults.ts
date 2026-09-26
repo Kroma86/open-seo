@@ -1,9 +1,15 @@
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
+import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import { AppError } from "@/server/lib/errors";
 import {
   parseCompetitorsJson,
   parsePlatformsJson,
 } from "@/shared/ai-visibility";
+import {
+  parseStoredPromptAnswers,
+  summarizeOwnSiteCitations,
+  type OwnSiteCitationSummary,
+} from "@/shared/ai-visibility-citations";
 import type {
   AiVisibilityLatestResults,
   AiVisibilityTrend,
@@ -36,13 +42,29 @@ function notMeasuredLatest(): AiVisibilityLatestResults {
   };
 }
 
+type DeltaInput = {
+  promptSetVersion: number;
+  totalMentions: number | null;
+  shareOfVoicePct: number | null;
+  promptsWithBrand: number | null;
+  promptsChecked: number | null;
+} & OwnSiteCitationSummary;
+
+function citationsForDetail(
+  detail: string | null | undefined,
+  ownSite: string | null,
+): OwnSiteCitationSummary {
+  return summarizeOwnSiteCitations(parseStoredPromptAnswers(detail), ownSite);
+}
+
+async function projectOwnSite(projectId: string): Promise<string | null> {
+  const project = await ProjectRepository.getProjectById(projectId);
+  return project?.domain ?? null;
+}
+
 function computeDelta(
-  current: Awaited<
-    ReturnType<typeof AiVisibilityRepository.getCompletedRunsForConfig>
-  >[number],
-  previous: Awaited<
-    ReturnType<typeof AiVisibilityRepository.getCompletedRunsForConfig>
-  >[number],
+  current: DeltaInput,
+  previous: DeltaInput,
 ): AiVisibilityTrendPoint["delta"] {
   if (current.promptSetVersion !== previous.promptSetVersion) {
     return null;
@@ -56,6 +78,14 @@ function computeDelta(
     shareOfVoicePct: diff(current.shareOfVoicePct, previous.shareOfVoicePct),
     promptsWithBrand: diff(current.promptsWithBrand, previous.promptsWithBrand),
     promptsChecked: diff(current.promptsChecked, previous.promptsChecked),
+    ownSiteCitationCount: diff(
+      current.ownSiteCitationCount,
+      previous.ownSiteCitationCount,
+    ),
+    ownSiteCitationSharePct: diff(
+      current.ownSiteCitationSharePct,
+      previous.ownSiteCitationSharePct,
+    ),
   };
 }
 
@@ -112,6 +142,10 @@ export async function getLatestResults(
   }
 
   const partialMentions = parsePartialMentionsFromDetail(latestRun.detail);
+  const ownSiteCitations = citationsForDetail(
+    latestRun.detail,
+    await projectOwnSite(projectId),
+  );
 
   return {
     measured: true,
@@ -139,6 +173,7 @@ export async function getLatestResults(
       shareOfVoicePct: latestRun.shareOfVoicePct,
       promptsWithBrand: latestRun.promptsWithBrand,
       promptsChecked: latestRun.promptsChecked,
+      ...ownSiteCitations,
       promptSetVersion: latestRun.promptSetVersion,
       costNote: latestRun.costNote,
       error: latestRun.error,
@@ -176,8 +211,13 @@ export async function getTrend(
     };
   }
 
-  const points: AiVisibilityTrendPoint[] = runs.map((run, index) => {
-    const previous = runs[index + 1];
+  const ownSite = await projectOwnSite(projectId);
+  const enriched = runs.map((run) => ({
+    ...run,
+    ...citationsForDetail(run.detail, ownSite),
+  }));
+  const points: AiVisibilityTrendPoint[] = enriched.map((run, index) => {
+    const previous = enriched[index + 1];
     return {
       id: run.id,
       finishedAt: run.finishedAt,
@@ -189,6 +229,9 @@ export async function getTrend(
       shareOfVoicePct: run.shareOfVoicePct,
       promptsWithBrand: run.promptsWithBrand,
       promptsChecked: run.promptsChecked,
+      ownSiteCitationCount: run.ownSiteCitationCount,
+      ownSiteCitationSharePct: run.ownSiteCitationSharePct,
+      ownSiteCitationsChecked: run.ownSiteCitationsChecked,
       delta: previous ? computeDelta(run, previous) : null,
     };
   });
@@ -225,6 +268,9 @@ export async function getAgencyExportBlock(projectId: string) {
     shareOfVoicePct: latest.latestRun.shareOfVoicePct,
     promptsWithBrand: latest.latestRun.promptsWithBrand,
     promptsChecked: latest.latestRun.promptsChecked,
+    ownSiteCitationCount: latest.latestRun.ownSiteCitationCount,
+    ownSiteCitationSharePct: latest.latestRun.ownSiteCitationSharePct,
+    ownSiteCitationsChecked: latest.latestRun.ownSiteCitationsChecked,
     promptSetVersion: latest.latestRun.promptSetVersion,
   };
 }

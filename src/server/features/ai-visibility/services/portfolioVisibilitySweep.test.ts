@@ -73,6 +73,9 @@ function latest(
       shareOfVoicePct: 12.5,
       promptsWithBrand: 2,
       promptsChecked: 5,
+      ownSiteCitationCount: null,
+      ownSiteCitationSharePct: null,
+      ownSiteCitationsChecked: null,
       promptSetVersion: 3,
       costNote: null,
       error: null,
@@ -392,9 +395,7 @@ describe("buildPortfolioVisibilitySnapshot", () => {
     expect(snapshot.rows.map((row) => row.projectId)).toEqual(
       projects.map((p) => p.id),
     );
-    expect(
-      snapshot.rows.filter((row) => row.status === "ok"),
-    ).toHaveLength(37);
+    expect(snapshot.rows.filter((row) => row.status === "ok")).toHaveLength(37);
     expect(
       snapshot.rows.find((row) => row.projectId === "proj_07")?.status,
     ).toBe("no_config");

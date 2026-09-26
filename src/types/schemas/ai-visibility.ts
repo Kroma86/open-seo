@@ -104,6 +104,15 @@ export type AiVisibilityLatestResults = {
     shareOfVoicePct: number | null;
     promptsWithBrand: number | null;
     promptsChecked: number | null;
+    /**
+     * Checked answers that linked to the project's own site.
+     * Null means not measured — never a stand-in for totalMentions.
+     */
+    ownSiteCitationCount: number | null;
+    /** Share of checked answers that linked to the project's own site (0–100). */
+    ownSiteCitationSharePct: number | null;
+    /** Answers inspected for an own-site link. Null when none succeeded. */
+    ownSiteCitationsChecked: number | null;
     promptSetVersion: number;
     costNote: string | null;
     error: string | null;
@@ -121,11 +130,16 @@ export type AiVisibilityTrendPoint = {
   shareOfVoicePct: number | null;
   promptsWithBrand: number | null;
   promptsChecked: number | null;
+  ownSiteCitationCount: number | null;
+  ownSiteCitationSharePct: number | null;
+  ownSiteCitationsChecked: number | null;
   delta: {
     totalMentions: number | null;
     shareOfVoicePct: number | null;
     promptsWithBrand: number | null;
     promptsChecked: number | null;
+    ownSiteCitationCount: number | null;
+    ownSiteCitationSharePct: number | null;
   } | null;
 };
 
@@ -137,4 +151,5 @@ export type AiVisibilityTrend = {
   runs: AiVisibilityTrendPoint[];
 };
 
-export const MAX_ACTIVE_PROMPTS_PER_CONFIG_EXPORT = MAX_ACTIVE_PROMPTS_PER_CONFIG;
+export const MAX_ACTIVE_PROMPTS_PER_CONFIG_EXPORT =
+  MAX_ACTIVE_PROMPTS_PER_CONFIG;
