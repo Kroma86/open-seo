@@ -5,7 +5,7 @@ import {
   getLatestResults,
   getTrend,
 } from "@/server/features/ai-visibility/services/aiVisibilityResults";
-import { formatMentionsDisplay } from "@/shared/ai-visibility-mentions";
+import { formatOwnSiteCitations } from "@/shared/ai-visibility-citations";
 import { buildProjectMeta } from "@/server/mcp/context";
 import { mcpResponse } from "@/server/mcp/formatters";
 import {
@@ -68,15 +68,23 @@ export const getAiVisibilityTrendTool = {
       fetchExternalAgencyMetrics(context.project.domain),
     ]);
 
-    const externalObservations = parseExternalAiVisibility(feed.ai, context.project.domain ?? "", new Date());
+    const externalObservations = parseExternalAiVisibility(
+      feed.ai,
+      context.project.domain ?? "",
+      new Date(),
+    );
     const text = latest.measured
       ? [
           `Tracked AI visibility for ${latest.config?.brand ?? "project"}`,
           `Fetched at: ${latest.fetchedAt}`,
-          `Total mentions: ${formatMentionsDisplay(
-            latest.latestRun?.totalMentions ?? null,
-            latest.latestRun?.partialMentions ?? false,
-          )}`,
+          `Own-site citations: ${formatOwnSiteCitations({
+            ownSiteCitationCount:
+              latest.latestRun?.ownSiteCitationCount ?? null,
+            ownSiteCitationSharePct:
+              latest.latestRun?.ownSiteCitationSharePct ?? null,
+            ownSiteCitationsChecked:
+              latest.latestRun?.ownSiteCitationsChecked ?? null,
+          })}`,
           `Share of voice: ${formatNullable(latest.latestRun?.shareOfVoicePct)}${latest.latestRun?.shareOfVoicePct == null ? "" : "%"}`,
           `Prompts with brand: ${formatNullable(latest.latestRun?.promptsWithBrand)} / ${formatNullable(latest.latestRun?.promptsChecked)}`,
           `Trend runs: ${trend.runs.length}`,
@@ -84,7 +92,9 @@ export const getAiVisibilityTrendTool = {
       : "AI visibility: not measured yet for this project.";
 
     return mcpResponse({
-      text: text + `\n\nHermes AI observations: ${externalObservations.status}; ${externalObservations.answers.length} saved ChatGPT answers; measured ${externalObservations.measuredAt ?? "unknown"}; run ${externalObservations.runStatus ?? "unknown"}. ${feed.error ?? externalObservations.note}`,
+      text:
+        text +
+        `\n\nHermes AI observations: ${externalObservations.status}; ${externalObservations.answers.length} saved ChatGPT answers; measured ${externalObservations.measuredAt ?? "unknown"}; run ${externalObservations.runStatus ?? "unknown"}. ${feed.error ?? externalObservations.note}`,
       meta: buildProjectMeta(
         context,
         args.projectId,

@@ -108,6 +108,9 @@ export type AgencyScoreInputs = {
     shareOfVoicePct: number | null;
     promptsWithBrand: number | null;
     promptsChecked: number | null;
+    ownSiteCitationCount: number | null;
+    ownSiteCitationSharePct: number | null;
+    ownSiteCitationsChecked: number | null;
     promptSetVersion: number | null;
     source: "dataforseo_llm_mentions";
   } | null;

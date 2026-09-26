@@ -13,10 +13,18 @@ const mocks = vi.hoisted(() => ({
   getCompletedRunsForConfig: vi.fn(),
 }));
 
+const projectMocks = vi.hoisted(() => ({
+  getProjectById: vi.fn(),
+}));
+
 vi.mock(
   "@/server/features/ai-visibility/repositories/AiVisibilityRepository",
   () => ({ AiVisibilityRepository: mocks }),
 );
+
+vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
+  ProjectRepository: projectMocks,
+}));
 
 const config = {
   id: "config_1",
@@ -38,6 +46,7 @@ describe("aiVisibilityResults", () => {
     mocks.getConfigsForProject.mockResolvedValue([config]);
     mocks.getConfigById.mockResolvedValue(config);
     mocks.getPromptsForConfig.mockResolvedValue([]);
+    projectMocks.getProjectById.mockResolvedValue({ domain: "acme.com" });
   });
 
   it("refuses to pick a config silently when the project has more than one", async () => {
@@ -146,6 +155,52 @@ describe("aiVisibilityResults", () => {
       shareOfVoicePct: 5,
       promptsWithBrand: 1,
       promptsChecked: 0,
+      ownSiteCitationCount: null,
+      ownSiteCitationSharePct: null,
     });
+  });
+
+  it("reports own-site citation count from stored links, not the loose mentions total", async () => {
+    mocks.getLatestCompletedRunForConfig.mockResolvedValue({
+      id: "run_1",
+      status: "completed",
+      finishedAt: "2026-02-02T00:00:00.000Z",
+      totalMentions: 11880,
+      shareOfVoicePct: null,
+      promptsWithBrand: 6,
+      promptsChecked: 2,
+      promptSetVersion: 2,
+      costNote: null,
+      error: null,
+      detail: JSON.stringify({
+        prompts: [
+          {
+            results: [
+              {
+                status: "success",
+                citations: [{ domain: "www.acme.com" }],
+              },
+            ],
+          },
+          {
+            results: [
+              {
+                status: "success",
+                citations: [{ domain: "unrelated.example" }],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const latest = await getLatestResults("project_1");
+    expect(latest.latestRun).toMatchObject({
+      totalMentions: 11880,
+      ownSiteCitationCount: 1,
+      ownSiteCitationSharePct: 50,
+      ownSiteCitationsChecked: 2,
+    });
+    expect(projectMocks.getProjectById).toHaveBeenCalledWith("project_1");
   });
 });
