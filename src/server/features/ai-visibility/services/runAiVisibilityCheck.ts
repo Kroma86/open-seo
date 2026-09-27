@@ -1,6 +1,13 @@
 import type { BillingCustomerContext } from "@/server/billing/subscription";
+import { textMentionsBrand } from "@/server/features/ai-search/services/brandMatch";
 import { getBrandLookup } from "@/server/features/ai-search/services/brandLookup";
 import { explorePrompt } from "@/server/features/ai-search/services/promptExplorer";
+import {
+  WEEKLY_JEV_CAP_USD,
+  gradeAnswerName,
+  type NameBudget,
+} from "@/server/features/ai-visibility/services/brandNameDecision";
+import { askJevNamed } from "@/server/features/ai-visibility/services/jevBrandName";
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import {
   AiVisibilityManagementService,
@@ -26,6 +33,7 @@ import type { PromptExplorerResult } from "@/types/schemas/ai-search";
 type RunDetail = {
   source: "dataforseo_llm_mentions";
   promptsAttempted: number;
+  jevSpendUsd: number;
   brandLookup: {
     fetchedAt: string;
     totalMentions: number | null;
@@ -86,11 +94,37 @@ function buildCostNote(input: { promptExplorerCalls: number }): string {
   return `${brandLabel}; ${input.promptExplorerCalls} prompt check(s): cache/paid uncertain`;
 }
 
+async function applyNameGrades(
+  results: PromptExplorerResult["results"],
+  brand: string,
+  website: string,
+  budget: NameBudget,
+): Promise<void> {
+  for (const row of results) {
+    // Older fixtures omit `text`. Leave their stored flag alone.
+    if (row.status !== "success" || typeof row.text !== "string") continue;
+    const grade = await gradeAnswerName({
+      brand,
+      website,
+      text: row.text,
+      askJev: askJevNamed,
+      // The old token matcher stays only for a Jev failure or a full cap.
+      fallbackNamed: textMentionsBrand(row.text, brand),
+      budget,
+    });
+    row.brandMentioned = grade.named;
+    row.nameProbability = grade.p;
+    row.nameUnsure = grade.unsure;
+    row.nameSource = grade.source;
+  }
+}
+
 async function executeRun(input: {
   runId: string;
   configId: string;
   projectId: string;
   billingCustomer: BillingCustomerContext;
+  nameBudget: NameBudget;
 }): Promise<"completed" | "reclaimed"> {
   const config = await AiVisibilityManagementService.getValidatedConfig(
     input.configId,
@@ -166,6 +200,12 @@ async function executeRun(input: {
         },
         input.billingCustomer,
       );
+      await applyNameGrades(
+        explorer.results,
+        config.brand,
+        project.domain ?? "",
+        input.nameBudget,
+      );
       promptResults.push({
         promptId: trackedPrompt.id,
         prompt: trackedPrompt.prompt,
@@ -195,6 +235,7 @@ async function executeRun(input: {
   const detail: RunDetail = {
     source: "dataforseo_llm_mentions",
     promptsAttempted: promptExplorerCalls,
+    jevSpendUsd: input.nameBudget.spentUsd,
     brandLookup: {
       fetchedAt: brandLookup.fetchedAt,
       totalMentions: mentionsSum.total,
@@ -239,6 +280,8 @@ export async function runAiVisibilityCheck(input: {
   projectId: string;
   billingCustomer: BillingCustomerContext;
   trigger: AiVisibilityCheckTrigger;
+  /** Shared across one weekly pass so the estate stays within the cap. */
+  nameBudget?: NameBudget;
 }): Promise<AiVisibilityCheckTriggerResult> {
   await AiVisibilityManagementService.requireAiVisibilityAccess(
     input.billingCustomer.organizationId,
@@ -262,6 +305,10 @@ export async function runAiVisibilityCheck(input: {
       configId: input.configId,
       projectId: input.projectId,
       billingCustomer: input.billingCustomer,
+      nameBudget: input.nameBudget ?? {
+        spentUsd: 0,
+        capUsd: WEEKLY_JEV_CAP_USD,
+      },
     });
     return { ok: true, runId: begin.runId, outcome };
   } catch (error) {

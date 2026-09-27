@@ -107,7 +107,10 @@ describe("runScheduledAiVisibilityChecks", () => {
 
     expect(mocks.runAiVisibilityCheck).toHaveBeenCalledTimes(1);
     expect(mocks.runAiVisibilityCheck).toHaveBeenCalledWith(
-      expect.objectContaining({ trigger: "scheduled" }),
+      expect.objectContaining({
+        trigger: "scheduled",
+        nameBudget: { spentUsd: 0, capUsd: 0.02 },
+      }),
     );
   });
 

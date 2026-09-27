@@ -1,5 +1,6 @@
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import { reconcileStaleAiVisibilityRuns } from "@/server/features/ai-visibility/services/aiVisibilityReconciler";
+import { WEEKLY_JEV_CAP_USD } from "@/server/features/ai-visibility/services/brandNameDecision";
 import { runAiVisibilityCheck } from "@/server/features/ai-visibility/services/runAiVisibilityCheck";
 import { customerHasPaidPlan } from "@/server/billing/subscription";
 import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
@@ -34,6 +35,8 @@ export async function runScheduledAiVisibilityChecks(_env: Env) {
     return check;
   };
 
+  // One cap for every client in this pass, not one cap per client.
+  const nameBudget = { spentUsd: 0, capUsd: WEEKLY_JEV_CAP_USD };
   let started = 0;
   let skippedFree = 0;
   let skippedNoPrompts = 0;
@@ -109,6 +112,7 @@ export async function runScheduledAiVisibilityChecks(_env: Env) {
             projectId: config.projectId,
           },
           trigger: "scheduled",
+          nameBudget,
         });
       } catch (err) {
         runErrors++;
@@ -171,5 +175,6 @@ export async function runScheduledAiVisibilityChecks(_env: Env) {
     alreadyRunning,
     planCheckErrors,
     runErrors,
+    jevSpendUsd: nameBudget.spentUsd,
   });
 }
