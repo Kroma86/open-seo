@@ -15,6 +15,7 @@ import {
   triggerAiVisibilityCheck,
 } from "@/serverFunctions/ai-visibility";
 import { formatOwnSiteCitations } from "@/shared/ai-visibility-citations";
+import { formatRealMentions } from "@/shared/real-mentions";
 
 type Props = {
   projectId: string;
@@ -202,7 +203,13 @@ function AiVisibilityPageInner({
             </div>
 
             {latest?.measured && latest.latestRun ? (
-              <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+              <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 text-sm">
+                <Metric
+                  label="Real mentions"
+                  value={formatRealMentions(latest.latestRun.realMentions)}
+                  fetchedAt={latest.fetchedAt}
+                  source="cited sources about this business"
+                />
                 <Metric
                   label="Own-site citations"
                   value={formatOwnSiteCitations(latest.latestRun)}
@@ -300,6 +307,12 @@ function AiVisibilityPageInner({
                         v{run.promptSetVersion}
                       </span>
                     </div>
+                    <p>
+                      Real mentions: {formatRealMentions(run.realMentions)}
+                      {run.delta?.realMentions != null
+                        ? ` (${run.delta.realMentions >= 0 ? "+" : ""}${run.delta.realMentions})`
+                        : ""}
+                    </p>
                     <p>
                       Own-site citations: {formatOwnSiteCitations(run)}
                       {run.delta?.ownSiteCitationCount != null

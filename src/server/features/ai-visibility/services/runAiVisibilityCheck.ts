@@ -1,5 +1,6 @@
 import type { BillingCustomerContext } from "@/server/billing/subscription";
 import { getBrandLookup } from "@/server/features/ai-search/services/brandLookup";
+import { gradeCitedSources } from "@/server/features/ai-search/services/jevCitedSources";
 import { explorePrompt } from "@/server/features/ai-search/services/promptExplorer";
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import {
@@ -20,6 +21,7 @@ import {
   promptExplorerModelsForPlatforms,
 } from "@/shared/ai-visibility";
 import { sumMentionsForPlatforms } from "@/shared/ai-visibility-mentions";
+import type { JevSpendBudget } from "@/shared/real-mentions";
 import type { BrandLookupResult } from "@/types/schemas/ai-search";
 import type { PromptExplorerResult } from "@/types/schemas/ai-search";
 
@@ -32,7 +34,18 @@ type RunDetail = {
     partialMentions: boolean;
     shareOfVoicePct: number | null;
     perPlatform: BrandLookupResult["perPlatform"];
-    topCitedSources: BrandLookupResult["topPages"];
+    topCitedSources: Array<
+      BrandLookupResult["topPages"][number] & { p: number | null }
+    >;
+    /** Sources with p >= 0.5. Null means this run was not fully graded. */
+    realMentions: number | null;
+    real_mentions: number | null;
+    jev: {
+      calls: number;
+      costUsd: number;
+      capped: boolean;
+      unavailable: boolean;
+    };
   };
   prompts: Array<{
     promptId: string;
@@ -80,10 +93,30 @@ function countPromptsWithBrand(
 
 // getBrandLookup exposes no cache/paid signal, and any freshness heuristic
 // mislabels in one direction or the other — say so honestly in both cases.
-function buildCostNote(input: { promptExplorerCalls: number }): string {
-  const brandLabel = "brand lookup cache/paid uncertain";
-  if (input.promptExplorerCalls === 0) return brandLabel;
-  return `${brandLabel}; ${input.promptExplorerCalls} prompt check(s): cache/paid uncertain`;
+function buildCostNote(input: {
+  promptExplorerCalls: number;
+  jevCalls: number;
+  jevCostUsd: number;
+  jevCapped: boolean;
+  jevUnavailable: boolean;
+}): string {
+  const parts = ["brand lookup cache/paid uncertain"];
+  if (input.promptExplorerCalls > 0) {
+    parts.push(
+      `${input.promptExplorerCalls} prompt check(s): cache/paid uncertain`,
+    );
+  }
+  if (input.jevUnavailable) {
+    parts.push("jev not measured");
+  } else if (input.jevCalls > 0 || input.jevCapped) {
+    const spent = input.jevCostUsd.toFixed(4);
+    parts.push(
+      input.jevCapped
+        ? `jev capped at $0.01 (spent $${spent})`
+        : `jev ${input.jevCalls} call(s) $${spent}`,
+    );
+  }
+  return parts.join("; ");
 }
 
 async function executeRun(input: {
@@ -91,6 +124,7 @@ async function executeRun(input: {
   configId: string;
   projectId: string;
   billingCustomer: BillingCustomerContext;
+  jevBudget?: JevSpendBudget;
 }): Promise<"completed" | "reclaimed"> {
   const config = await AiVisibilityManagementService.getValidatedConfig(
     input.configId,
@@ -191,6 +225,13 @@ async function executeRun(input: {
   const mentionsSum = sumMentionsForPlatforms(brandLookup, lookupPlatforms);
   const promptsChecked = countPromptsWithDefinitiveAnswer(promptResults);
   const promptsWithBrand = countPromptsWithBrand(promptResults);
+  const gradedSources = await gradeCitedSources({
+    businessName: config.brand,
+    website: project.domain ?? null,
+    brandQuery: config.brand,
+    sources: brandLookup.topPages.slice(0, 10),
+    budget: input.jevBudget,
+  });
 
   const detail: RunDetail = {
     source: "dataforseo_llm_mentions",
@@ -201,7 +242,15 @@ async function executeRun(input: {
       partialMentions: mentionsSum.partialMentions,
       shareOfVoicePct: targetSharePct(brandLookup),
       perPlatform: filteredPlatformRows,
-      topCitedSources: brandLookup.topPages.slice(0, 10),
+      topCitedSources: gradedSources.sources,
+      realMentions: gradedSources.realMentions,
+      real_mentions: gradedSources.real_mentions,
+      jev: {
+        calls: gradedSources.calls,
+        costUsd: gradedSources.costUsd,
+        capped: gradedSources.capped,
+        unavailable: gradedSources.unavailable,
+      },
     },
     prompts: promptResults,
   };
@@ -217,7 +266,13 @@ async function executeRun(input: {
       promptsWithBrand,
       promptsChecked,
       detail: JSON.stringify(detail),
-      costNote: buildCostNote({ promptExplorerCalls }),
+      costNote: buildCostNote({
+        promptExplorerCalls,
+        jevCalls: gradedSources.calls,
+        jevCostUsd: gradedSources.costUsd,
+        jevCapped: gradedSources.capped,
+        jevUnavailable: gradedSources.unavailable,
+      }),
     },
     { requireRunning: true },
   );
@@ -239,6 +294,8 @@ export async function runAiVisibilityCheck(input: {
   projectId: string;
   billingCustomer: BillingCustomerContext;
   trigger: AiVisibilityCheckTrigger;
+  /** Shared by every brand in one weekly pass. Omit for a single manual run. */
+  jevBudget?: JevSpendBudget;
 }): Promise<AiVisibilityCheckTriggerResult> {
   await AiVisibilityManagementService.requireAiVisibilityAccess(
     input.billingCustomer.organizationId,
@@ -262,6 +319,7 @@ export async function runAiVisibilityCheck(input: {
       configId: input.configId,
       projectId: input.projectId,
       billingCustomer: input.billingCustomer,
+      jevBudget: input.jevBudget,
     });
     return { ok: true, runId: begin.runId, outcome };
   } catch (error) {

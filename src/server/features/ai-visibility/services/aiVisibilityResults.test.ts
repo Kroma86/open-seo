@@ -155,6 +155,7 @@ describe("aiVisibilityResults", () => {
       shareOfVoicePct: 5,
       promptsWithBrand: 1,
       promptsChecked: 0,
+      realMentions: null,
       ownSiteCitationCount: null,
       ownSiteCitationSharePct: null,
     });
@@ -197,10 +198,41 @@ describe("aiVisibilityResults", () => {
     const latest = await getLatestResults("project_1");
     expect(latest.latestRun).toMatchObject({
       totalMentions: 11880,
+      realMentions: null,
       ownSiteCitationCount: 1,
       ownSiteCitationSharePct: 50,
       ownSiteCitationsChecked: 2,
     });
     expect(projectMocks.getProjectById).toHaveBeenCalledWith("project_1");
+  });
+
+  it("reads the stored real mention count without calling out", async () => {
+    mocks.getLatestCompletedRunForConfig.mockResolvedValue({
+      id: "run_1",
+      status: "completed",
+      finishedAt: "2026-09-23T00:00:00.000Z",
+      totalMentions: 184,
+      shareOfVoicePct: null,
+      promptsWithBrand: 1,
+      promptsChecked: 1,
+      promptSetVersion: 2,
+      costNote: "jev 2 call(s) $0.0000",
+      error: null,
+      detail: JSON.stringify({
+        brandLookup: {
+          totalMentions: 184,
+          real_mentions: 3,
+          topCitedSources: [
+            { url: "https://ssocc.ca/a", p: 0.9 },
+            { url: "https://ssocc.ca/b", p: 0.8 },
+            { url: "https://cinnamoncounselling.ca/sex-therapy", p: 0.7 },
+          ],
+        },
+      }),
+    });
+
+    const latest = await getLatestResults("project_1");
+    expect(latest.latestRun?.realMentions).toBe(3);
+    expect(latest.latestRun?.totalMentions).toBe(184);
   });
 });

@@ -7,6 +7,7 @@ import {
   computeNextRunAt,
   isScheduledAiVisibilityInterval,
 } from "@/shared/ai-visibility";
+import { newJevSpendBudget } from "@/shared/real-mentions";
 
 /** Back off failed scheduled runs so the interval is not lost to a hot loop. */
 const SCHEDULED_RUN_FAILURE_BACKOFF_MS = 60 * 60 * 1000;
@@ -34,6 +35,8 @@ export async function runScheduledAiVisibilityChecks(_env: Env) {
     return check;
   };
 
+  // One cent for the whole pass, not one cent per brand.
+  const jevBudget = newJevSpendBudget();
   let started = 0;
   let skippedFree = 0;
   let skippedNoPrompts = 0;
@@ -109,6 +112,7 @@ export async function runScheduledAiVisibilityChecks(_env: Env) {
             projectId: config.projectId,
           },
           trigger: "scheduled",
+          jevBudget,
         });
       } catch (err) {
         runErrors++;
