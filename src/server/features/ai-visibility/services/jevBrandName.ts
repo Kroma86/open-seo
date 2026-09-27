@@ -34,9 +34,8 @@ export async function askJevNamed(
   if (typeof p !== "number" || !Number.isFinite(p)) {
     throw new Error("jev_missing_probability");
   }
-  const costUsd = typeof usage.cost === "number" && usage.cost >= 0
-    ? usage.cost
-    : 0;
+  const costUsd =
+    typeof usage.cost === "number" && usage.cost >= 0 ? usage.cost : 0;
   return { p, costUsd };
 }
 

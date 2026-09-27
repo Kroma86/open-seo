@@ -147,7 +147,11 @@ describe("gradeAnswerName", () => {
   });
 
   it("builds the decisions body the ticket specifies", () => {
-    const body = jevDecisionBody("Tyne Buchy", "tynebuchyrcc.com", "Tyne Buchy, RCC");
+    const body = jevDecisionBody(
+      "Tyne Buchy",
+      "tynebuchyrcc.com",
+      "Tyne Buchy, RCC",
+    );
     expect(body).toEqual({
       model: "typesafe/jev-1.13",
       provider: { zdr: true },
