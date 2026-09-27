@@ -238,6 +238,11 @@ export const promptExplorerModelResultSchema = z.discriminatedUnion("status", [
     citations: z.array(promptExplorerCitationSchema),
     fanOutQueries: z.array(z.string()),
     brandMentioned: z.boolean().nullable(),
+    // Jev probability for "does this answer name the client?". Absent on
+    // older runs. Null when the brand string itself was enough.
+    nameProbability: z.number().min(0).max(1).nullable().optional(),
+    nameUnsure: z.boolean().optional(),
+    nameSource: z.enum(["literal", "jev", "matcher_fallback"]).optional(),
     outputTokens: z.number().int().nonnegative().nullable(),
     webSearch: z.boolean(),
   }),

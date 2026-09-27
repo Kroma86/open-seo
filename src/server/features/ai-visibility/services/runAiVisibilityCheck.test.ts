@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   getBrandLookup: vi.fn(),
   explorePrompt: vi.fn(),
   reclaimStaleRunsForConfig: vi.fn(),
+  askJevNamed: vi.fn(),
 }));
 
 vi.mock(
@@ -53,6 +54,9 @@ vi.mock("@/server/features/ai-search/services/promptExplorer", () => ({
 }));
 vi.mock("./aiVisibilityReconciler", () => ({
   reclaimStaleRunsForConfig: mocks.reclaimStaleRunsForConfig,
+}));
+vi.mock("./jevBrandName", () => ({
+  askJevNamed: mocks.askJevNamed,
 }));
 
 const billingCustomer = {
@@ -333,5 +337,89 @@ describe("runAiVisibilityCheck", () => {
     expect(completedUpdate?.[1]?.costNote).toBe(
       "brand lookup cache/paid uncertain; 1 prompt check(s): cache/paid uncertain",
     );
+  });
+
+  it("uses a literal name without Jev, and does not count Hunter Exteriors", async () => {
+    mocks.getValidatedConfig.mockResolvedValue({
+      ...config,
+      brand: "Jace-Xteriors",
+      platforms: '["chat_gpt"]',
+    });
+    mocks.getProjectForOrganization.mockResolvedValue({
+      locationCode: 2124,
+      languageCode: "en",
+      domain: "jacexteriors.net",
+    });
+    mocks.getActivePromptsForConfig.mockResolvedValue([
+      { id: "prompt_literal", prompt: "where" },
+      { id: "prompt_near", prompt: "who else" },
+    ]);
+    mocks.askJevNamed.mockResolvedValue({ p: 0.04, costUsd: 0.00004 });
+    mocks.explorePrompt
+      .mockResolvedValueOnce({
+        prompt: "where",
+        highlightBrand: "Jace-Xteriors",
+        fetchedAt: new Date().toISOString(),
+        results: [
+          {
+            status: "success",
+            model: "chat_gpt",
+            modelName: "gpt",
+            text: "Jace\u2011Xteriors serves Lumby.",
+            citations: [],
+            fanOutQueries: [],
+            brandMentioned: false,
+            outputTokens: 10,
+            webSearch: true,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        prompt: "who else",
+        highlightBrand: "Jace-Xteriors",
+        fetchedAt: new Date().toISOString(),
+        results: [
+          {
+            status: "success",
+            model: "chat_gpt",
+            modelName: "gpt",
+            text: "Hunter Exteriors lists Lumby. https://jacexteriors.net/",
+            citations: [],
+            fanOutQueries: [],
+            brandMentioned: true,
+            outputTokens: 10,
+            webSearch: true,
+          },
+        ],
+      });
+
+    await runAiVisibilityCheck({
+      configId: "config_1",
+      projectId: "project_1",
+      billingCustomer,
+      trigger: "manual",
+    });
+
+    expect(mocks.askJevNamed).toHaveBeenCalledTimes(1);
+    const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
+      (call) => call[1]?.status === "completed",
+    );
+    expect(completedUpdate?.[1]).toMatchObject({
+      promptsChecked: 2,
+      promptsWithBrand: 1,
+    });
+    const detail = JSON.parse(String(completedUpdate?.[1]?.detail));
+    expect(detail.prompts[0].results[0]).toMatchObject({
+      brandMentioned: true,
+      nameSource: "literal",
+      nameProbability: null,
+    });
+    expect(detail.prompts[1].results[0]).toMatchObject({
+      brandMentioned: false,
+      nameSource: "jev",
+      nameProbability: 0.04,
+      nameUnsure: false,
+    });
+    expect(detail.jevSpendUsd).toBeCloseTo(0.00004);
   });
 });
