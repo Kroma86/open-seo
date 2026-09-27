@@ -108,6 +108,7 @@ export type AgencyScoreInputs = {
     shareOfVoicePct: number | null;
     promptsWithBrand: number | null;
     promptsChecked: number | null;
+    realMentions: number | null;
     ownSiteCitationCount: number | null;
     ownSiteCitationSharePct: number | null;
     ownSiteCitationsChecked: number | null;

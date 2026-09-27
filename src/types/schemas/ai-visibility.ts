@@ -105,6 +105,11 @@ export type AiVisibilityLatestResults = {
     promptsWithBrand: number | null;
     promptsChecked: number | null;
     /**
+     * Cited sources Jev scored as actually about this business (p >= 0.5).
+     * Null means not measured — never a stand-in for totalMentions.
+     */
+    realMentions: number | null;
+    /**
      * Checked answers that linked to the project's own site.
      * Null means not measured — never a stand-in for totalMentions.
      */
@@ -130,6 +135,7 @@ export type AiVisibilityTrendPoint = {
   shareOfVoicePct: number | null;
   promptsWithBrand: number | null;
   promptsChecked: number | null;
+  realMentions: number | null;
   ownSiteCitationCount: number | null;
   ownSiteCitationSharePct: number | null;
   ownSiteCitationsChecked: number | null;
@@ -138,6 +144,7 @@ export type AiVisibilityTrendPoint = {
     shareOfVoicePct: number | null;
     promptsWithBrand: number | null;
     promptsChecked: number | null;
+    realMentions: number | null;
     ownSiteCitationCount: number | null;
     ownSiteCitationSharePct: number | null;
   } | null;

@@ -10,6 +10,7 @@ import {
   summarizeOwnSiteCitations,
   type OwnSiteCitationSummary,
 } from "@/shared/ai-visibility-citations";
+import { parseStoredRealMentions } from "@/shared/real-mentions";
 import type {
   AiVisibilityLatestResults,
   AiVisibilityTrend,
@@ -48,6 +49,7 @@ type DeltaInput = {
   shareOfVoicePct: number | null;
   promptsWithBrand: number | null;
   promptsChecked: number | null;
+  realMentions: number | null;
 } & OwnSiteCitationSummary;
 
 function citationsForDetail(
@@ -78,6 +80,7 @@ function computeDelta(
     shareOfVoicePct: diff(current.shareOfVoicePct, previous.shareOfVoicePct),
     promptsWithBrand: diff(current.promptsWithBrand, previous.promptsWithBrand),
     promptsChecked: diff(current.promptsChecked, previous.promptsChecked),
+    realMentions: diff(current.realMentions, previous.realMentions),
     ownSiteCitationCount: diff(
       current.ownSiteCitationCount,
       previous.ownSiteCitationCount,
@@ -173,6 +176,7 @@ export async function getLatestResults(
       shareOfVoicePct: latestRun.shareOfVoicePct,
       promptsWithBrand: latestRun.promptsWithBrand,
       promptsChecked: latestRun.promptsChecked,
+      realMentions: parseStoredRealMentions(latestRun.detail),
       ...ownSiteCitations,
       promptSetVersion: latestRun.promptSetVersion,
       costNote: latestRun.costNote,
@@ -214,6 +218,7 @@ export async function getTrend(
   const ownSite = await projectOwnSite(projectId);
   const enriched = runs.map((run) => ({
     ...run,
+    realMentions: parseStoredRealMentions(run.detail),
     ...citationsForDetail(run.detail, ownSite),
   }));
   const points: AiVisibilityTrendPoint[] = enriched.map((run, index) => {
@@ -229,6 +234,7 @@ export async function getTrend(
       shareOfVoicePct: run.shareOfVoicePct,
       promptsWithBrand: run.promptsWithBrand,
       promptsChecked: run.promptsChecked,
+      realMentions: run.realMentions,
       ownSiteCitationCount: run.ownSiteCitationCount,
       ownSiteCitationSharePct: run.ownSiteCitationSharePct,
       ownSiteCitationsChecked: run.ownSiteCitationsChecked,
@@ -268,6 +274,7 @@ export async function getAgencyExportBlock(projectId: string) {
     shareOfVoicePct: latest.latestRun.shareOfVoicePct,
     promptsWithBrand: latest.latestRun.promptsWithBrand,
     promptsChecked: latest.latestRun.promptsChecked,
+    realMentions: latest.latestRun.realMentions,
     ownSiteCitationCount: latest.latestRun.ownSiteCitationCount,
     ownSiteCitationSharePct: latest.latestRun.ownSiteCitationSharePct,
     ownSiteCitationsChecked: latest.latestRun.ownSiteCitationsChecked,

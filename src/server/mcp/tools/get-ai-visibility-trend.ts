@@ -6,6 +6,7 @@ import {
   getTrend,
 } from "@/server/features/ai-visibility/services/aiVisibilityResults";
 import { formatOwnSiteCitations } from "@/shared/ai-visibility-citations";
+import { formatRealMentions } from "@/shared/real-mentions";
 import { buildProjectMeta } from "@/server/mcp/context";
 import { mcpResponse } from "@/server/mcp/formatters";
 import {
@@ -77,6 +78,7 @@ export const getAiVisibilityTrendTool = {
       ? [
           `Tracked AI visibility for ${latest.config?.brand ?? "project"}`,
           `Fetched at: ${latest.fetchedAt}`,
+          `Real mentions: ${formatRealMentions(latest.latestRun?.realMentions)}`,
           `Own-site citations: ${formatOwnSiteCitations({
             ownSiteCitationCount:
               latest.latestRun?.ownSiteCitationCount ?? null,

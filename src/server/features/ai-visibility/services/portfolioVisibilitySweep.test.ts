@@ -73,6 +73,7 @@ function latest(
       shareOfVoicePct: 12.5,
       promptsWithBrand: 2,
       promptsChecked: 5,
+      realMentions: null,
       ownSiteCitationCount: null,
       ownSiteCitationSharePct: null,
       ownSiteCitationsChecked: null,

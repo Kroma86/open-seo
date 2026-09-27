@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   getBrandLookup: vi.fn(),
   explorePrompt: vi.fn(),
   reclaimStaleRunsForConfig: vi.fn(),
+  gradeCitedSources: vi.fn(),
 }));
 
 vi.mock(
@@ -47,6 +48,9 @@ vi.mock("./aiVisibilityRunGuards", () => ({
 }));
 vi.mock("@/server/features/ai-search/services/brandLookup", () => ({
   getBrandLookup: mocks.getBrandLookup,
+}));
+vi.mock("@/server/features/ai-search/services/jevCitedSources", () => ({
+  gradeCitedSources: mocks.gradeCitedSources,
 }));
 vi.mock("@/server/features/ai-search/services/promptExplorer", () => ({
   explorePrompt: mocks.explorePrompt,
@@ -84,7 +88,19 @@ describe("runAiVisibilityCheck", () => {
     mocks.getProjectForOrganization.mockResolvedValue({
       locationCode: 2840,
       languageCode: "en",
+      domain: "acme.com",
     });
+    mocks.gradeCitedSources.mockImplementation(
+      async (input: { sources: Array<Record<string, unknown>> }) => ({
+        sources: input.sources.map((source) => ({ ...source, p: null })),
+        realMentions: input.sources.length === 0 ? 0 : null,
+        real_mentions: input.sources.length === 0 ? 0 : null,
+        costUsd: 0,
+        calls: 0,
+        capped: false,
+        unavailable: false,
+      }),
+    );
     mocks.beginAiVisibilityRun.mockResolvedValue({ ok: true, runId: "run_1" });
     mocks.updateRunIfInFlight.mockResolvedValue(true);
     mocks.getBrandLookup.mockResolvedValue({
@@ -92,9 +108,7 @@ describe("runAiVisibilityCheck", () => {
       resolvedTarget: "acme.com",
       fetchedAt: new Date().toISOString(),
       hasData: true,
-      perPlatform: [
-        { platform: "google", mentions: 5, impressions: null },
-      ],
+      perPlatform: [{ platform: "google", mentions: 5, impressions: null }],
       topPages: [],
       shareOfVoice: null,
     });
@@ -185,6 +199,78 @@ describe("runAiVisibilityCheck", () => {
     });
     const detail = JSON.parse(String(completedUpdate?.[1]?.detail));
     expect(detail.promptsAttempted).toBe(2);
+  });
+
+  it("stores Jev p on each cited source and the real mention count", async () => {
+    mocks.getBrandLookup.mockResolvedValue({
+      query: "Acme",
+      resolvedTarget: "acme.com",
+      fetchedAt: new Date().toISOString(),
+      hasData: true,
+      perPlatform: [{ platform: "google", mentions: 5, impressions: null }],
+      shareOfVoice: null,
+      topPages: [
+        {
+          url: "https://ssocc.ca/a",
+          domain: "ssocc.ca",
+          keywords: [{ question: "ssocc services" }],
+        },
+        {
+          url: "https://example.com/oopsie-daisy",
+          domain: "example.com",
+          keywords: [],
+        },
+      ],
+    });
+    mocks.gradeCitedSources.mockResolvedValue({
+      sources: [
+        { url: "https://ssocc.ca/a", domain: "ssocc.ca", p: 0.93 },
+        {
+          url: "https://example.com/oopsie-daisy",
+          domain: "example.com",
+          p: 0.04,
+        },
+      ],
+      realMentions: 1,
+      real_mentions: 1,
+      costUsd: 0.000036,
+      calls: 2,
+      capped: false,
+      unavailable: false,
+    });
+
+    await runAiVisibilityCheck({
+      configId: "config_1",
+      projectId: "project_1",
+      billingCustomer,
+      trigger: "manual",
+    });
+
+    expect(mocks.gradeCitedSources).toHaveBeenCalledWith(
+      expect.objectContaining({
+        businessName: "Acme",
+        website: "acme.com",
+        brandQuery: "Acme",
+      }),
+    );
+    const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
+      (call) => call[1]?.status === "completed",
+    );
+    const detail = JSON.parse(String(completedUpdate?.[1]?.detail));
+    expect(detail.brandLookup.realMentions).toBe(1);
+    expect(detail.brandLookup.real_mentions).toBe(1);
+    expect(
+      detail.brandLookup.topCitedSources.map(
+        (source: { p: number }) => source.p,
+      ),
+    ).toEqual([0.93, 0.04]);
+    expect(detail.brandLookup.jev).toMatchObject({
+      calls: 2,
+      capped: false,
+      costUsd: 0.000036,
+    });
+    expect(String(completedUpdate?.[1]?.costNote)).toContain("jev 2 call(s)");
+    expect(String(completedUpdate?.[1]?.costNote)).not.toContain("test-key");
   });
 
   it("does not write results when the run was reclaimed before completion", async () => {
