@@ -165,6 +165,10 @@ export function withoutContactDetails(
   const brandToken = (c: string) => {
     const a = alnum(c);
     if (!a || !/[a-z]/.test(a)) return false;
+    // half a postal code written as one ("A1A", "T2P", "V1Y", "1A1") is
+    // never kept; "A1's" (with the apostrophe) still is (r8)
+    if (/^(?:[a-z]\d[a-z]|\d[a-z]\d)$/i.test(c) && a !== brandFull)
+      return false;
     const letters = a.replace(/[^a-z]/g, "").length;
     if (
       a.length >= 2 &&
@@ -215,6 +219,39 @@ export function withoutContactDetails(
             brandPieces[j + 1] === next)),
     );
   };
+  const starts = brandPieces.map((_, j) =>
+    brandPieces.slice(0, j + 1).join(""),
+  );
+  // word n starts the brand and the next word completes a brand piece:
+  // "A1 Plumbing" for "A 1 Plumbing"; "unit 24H. Our" does not (r6, r7)
+  const startsBrand = (n: number) => {
+    const own = alnum(coreAt(n) ?? "");
+    const after = alnum(coreAt(n + 1) ?? "");
+    const at = starts.indexOf(own + after);
+    return (
+      /[a-z]/.test(own) &&
+      after !== "" &&
+      at > 0 &&
+      brandPieces[at] === after &&
+      starts.includes(own)
+    );
+  };
+  // word n is the client's own name, as written: a brand word or piece, the
+  // numbered brand, or its start completed by the next word
+  const ownNameAt = (n: number) => {
+    const w = coreAt(n) ?? "";
+    return (
+      brandLetters.has(w.toLowerCase()) ||
+      brandPieces.includes(alnum(w)) ||
+      brandToken(w) ||
+      startsBrand(n)
+    );
+  };
+  const spelledDot = (k: number) =>
+    DOT_WORD.test(coreAt(k)) ||
+    DOT_WORD.test(parts[words[k] as number] ?? "") ||
+    DOT_TLD_WORD.test(coreAt(k)) ||
+    /^\.[a-z]/i.test(coreAt(k));
   const cut = new Set<number>();
   words.forEach((i, n) => {
     const token = parts[i] ?? "";
@@ -228,14 +265,15 @@ export function withoutContactDetails(
     if (isDomain(core(i))) cut.add(i);
     // spelled address: the word before "at", then up to 8 words to a domain,
     // a dot word (and its label) or a "dotcom" word
-    if (
-      AT_WORD.test(core(i).replace(/^-+|-+$/g, "") || token) &&
-      n > 0 &&
-      !besideOwnNeighbour(n, core(i).toLowerCase())
-    ) {
+    if (AT_WORD.test(core(i).replace(/^-+|-+$/g, "") || token) && n > 0) {
+      // the brand's own "at" in place ("Photos at the Park") only starts a
+      // span when a spelled dot follows ("at home dot com"), r7-r8; a glued
+      // domain is cut on its own anyway
+      const ownAt = besideOwnNeighbour(n, core(i).toLowerCase());
       let last = -1;
       for (let k = n + 1; k < Math.min(words.length, n + 10); k += 1) {
         const w = coreAt(k);
+        if (ownAt && !spelledDot(k)) continue;
         if (DOT_TLD_WORD.test(w) || DOMAIN_LIKE.test(w)) {
           last = k;
           break;
@@ -249,18 +287,14 @@ export function withoutContactDetails(
       }
       let first = n - 1;
       while (first > 0 && coreAt(first) === "") first -= 1;
-      // the client's own name is never cut: "At Home Care ... at
-      // homecare.com" (r5), "Play2Learn at", "U-Haul at", "O'Brien at",
-      // "Route 66 at" (r6). Its digits still go through the digit rule below.
+      // the client's own name is never cut, before or after "at" ("Play2Learn
+      // at", "at A1 Plumbing (a1plumbing.com)"), r5-r8, unless it is a domain
+      // label: the word right before a spelled dot ("at play2learn dot com",
+      // "at joesplumbing .com"). Its digits still go through the digit rule.
       if (last > n)
         for (let k = first; k <= last; k += 1) {
-          const w = coreAt(k);
-          const ownName =
-            k < n &&
-            (brandLetters.has(w.toLowerCase()) ||
-              brandPieces.includes(alnum(w)) ||
-              brandToken(w));
-          if (!ownName) cut.add(words[k] as number);
+          const label = k + 1 <= last && spelledDot(k + 1);
+          if (label || !ownNameAt(k)) cut.add(words[k] as number);
         }
     }
   });
@@ -275,20 +309,7 @@ export function withoutContactDetails(
     if (SAFE_TERMS.has(c.toLowerCase()) || brandToken(c)) return;
     // a numbered start of the brand that the next word completes: "A1
     // Plumbing", "2B Brothers"-style unit numbers do not continue it (r6)
-    const own = alnum(c);
-    const after = alnum(coreAt(n + 1) ?? "");
-    const starts = brandPieces.map((_, j) =>
-      brandPieces.slice(0, j + 1).join(""),
-    );
-    const at = starts.indexOf(own + after);
-    if (
-      /[a-z]/.test(own) &&
-      after !== "" &&
-      at > 0 &&
-      brandPieces[at] === after &&
-      starts.includes(own)
-    )
-      return;
+    if (startsBrand(n)) return;
     // a spaced numbered brand ("5 Star Plumbing", "A 1 Plumbing",
     // "1 800 FLOWERS"): a brand digit is kept only when a word right next to
     // it is the brand's own neighbour of that digit, so "Unit 4" or
