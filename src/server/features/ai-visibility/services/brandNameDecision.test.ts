@@ -589,6 +589,45 @@ describe("gradeAnswerName", () => {
     expect(sent).not.toMatch(/\.(?:ca|com)\b/);
   });
 
+  // Grok 4.7 review r9: a spelled address as the first words; an accented
+  // domain; "dot-com" as one word.
+  it.each([
+    [
+      "Joe's Plumbing",
+      "At joesplumbing dot com you can book a plumber in Kelowna.",
+      /joesplumbing|\bcom\b/,
+    ],
+    [
+      "Joe's Plumbing",
+      "At gmail dot com you can send a note.",
+      /gmail|\bcom\b/,
+    ],
+    ["Joe's Plumbing", "at: joesplumbing dot com", /joesplumbing|\bcom\b/],
+    ["Joe's Plumbing", "(at)joesplumbing(dot)com", /joesplumbing|\bcom\b/],
+    [
+      "Joe's Plumbing",
+      "Email hello at caf\u00e9.com or call (250) 555-0199.",
+      /hello|caf|\d/,
+    ],
+    [
+      "Joe's Plumbing",
+      "reservations at montr\u00e9al.ca today",
+      /reservations|montr/,
+    ],
+    ["Joe's Plumbing", "info at gmail dot-com please", /info|gmail|dot-com/],
+  ])("brand %s: no address reaches Jev from %s", (brand, text, leak) => {
+    expect(withoutContactDetails(text, brand)).not.toMatch(leak);
+  });
+
+  it("still keeps the brand's own 'At' as the first word", () => {
+    const sent = withoutContactDetails(
+      "At Home Care is the top pick; see athomecare.com.",
+      "At Home Care Inc",
+    );
+    expect(sent).toContain("At Home Care is the top pick");
+    expect(sent).not.toMatch(/athomecare/);
+  });
+
   it("keeps the client's own website", () => {
     expect(
       withoutContactDetails(
