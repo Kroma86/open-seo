@@ -5,13 +5,17 @@ import {
   gradeAnswerName,
   jevDecisionBody,
   literalBrandInAnswer,
+  withoutContactDetails,
+  type JevDecisionBody,
   type JevNamedAnswer,
 } from "@/server/features/ai-visibility/services/brandNameDecision";
 
 const JACE = "Jace-Xteriors";
 
-function jev(p: number, costUsd = 0.00004): () => Promise<JevNamedAnswer> {
-  return vi.fn(async () => ({ p, costUsd }));
+function jev(p: number, costUsd = 0.00004) {
+  return vi.fn(
+    async (_body: JevDecisionBody): Promise<JevNamedAnswer> => ({ p, costUsd }),
+  );
 }
 
 describe("gradeAnswerName", () => {
@@ -121,7 +125,7 @@ describe("gradeAnswerName", () => {
   });
 
   it("stops asking Jev once the weekly cap would be crossed", async () => {
-    const askJev = jev(0.99, 0.019);
+    const askJev = jev(0.99, WEEKLY_JEV_CAP_USD - 0.001);
     const budget = { spentUsd: 0, capUsd: WEEKLY_JEV_CAP_USD };
     const first = await gradeAnswerName({
       brand: "Truewoods",
@@ -131,7 +135,7 @@ describe("gradeAnswerName", () => {
       budget,
     });
     expect(first.source).toBe("jev");
-    expect(budget.spentUsd).toBeCloseTo(0.019);
+    expect(budget.spentUsd).toBeCloseTo(WEEKLY_JEV_CAP_USD - 0.001);
     const second = await gradeAnswerName({
       brand: "Truewoods",
       website: "truewoodstimber.com",
@@ -167,5 +171,39 @@ describe("gradeAnswerName", () => {
       },
     });
     expect(body.questions.named.instructions).toContain("missing word");
+  });
+
+  it("never sends Jev a phone number, email address or street address", () => {
+    const text =
+      "Call Al’s Appliance Inc. at (250) 545-1234 or +1 778 776 7060, " +
+      "email info@alsappliance.ca, or visit 3101 30 Ave or 2900 Kalamalka Lake Road.";
+    const sent = jevDecisionBody(
+      "Al's Appliance Repair",
+      "alsappliance.ca",
+      text,
+    ).state.ai_answer;
+    expect(sent).toContain("Al’s Appliance Inc.");
+    expect(sent).not.toMatch(/545|1234|776|7060|@|3101|Kalamalka/);
+    expect(sent).toContain("[phone]");
+    expect(sent).toContain("[email]");
+    expect(sent).toContain("[address]");
+  });
+
+  it("keeps years, prices and plain prose that only look like numbers", () => {
+    const text =
+      "For winter 2026–27, expect $1,200 per season; 3 ways to go the extra mile.";
+    expect(withoutContactDetails(text)).toBe(text);
+  });
+
+  it("still counts a literal brand that sits inside an address line", async () => {
+    const askJev = jev(0);
+    const grade = await gradeAnswerName({
+      brand: "Setanta Landscapes",
+      website: "setantalandscapes.ca",
+      text: "Setanta Landscapes, 1200 Setanta Landscapes Way, Vernon",
+      askJev,
+    });
+    expect(grade.source).toBe("literal");
+    expect(askJev).not.toHaveBeenCalled();
   });
 });
