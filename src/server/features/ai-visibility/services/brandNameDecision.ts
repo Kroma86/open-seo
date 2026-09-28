@@ -94,7 +94,7 @@ const DOT_TLD_WORD = /^dot-?(?:com|ca|net|org|info|biz|io|co|us|app|ai)$/i;
 // "https://x.ca/a", and accented ones ("café.com", "montréal.ca", r9). Cut
 // unless it is the client's own website.
 const DOMAIN_LIKE =
-  /^(?:[a-z][a-z0-9+.-]*:\/\/\S*|[\p{L}\p{N}_.-]*\.\p{L}{2,}(?:[/?#]\S*)?)$/iu;
+  /^(?:[a-z][a-z0-9+.-]*:\/\/\S*|[\p{L}\p{N}_.'’-]*\.\p{L}{2,}(?:[/?#]\S*)?)$/iu;
 
 const EDGE_START = /^[([{"'‘“<*]+/;
 const EDGE_END = /[.,;:!?)\]}"'’”>*]+$/;
@@ -205,8 +205,25 @@ export function withoutContactDetails(
   const core = (i: number) =>
     (parts[i] ?? "").replace(EDGE_START, "").replace(EDGE_END, "");
   const coreAt = (n: number) => core(words[n] as number);
+  // the word is some consecutive brand pieces glued together: "Smith's"
+  // (smith + s), "Walk-In", "O'Brien's", "St.Jerome" (r10)
+  const pieceRun = (a: string) => {
+    if (!a) return false;
+    for (let j = 0; j < brandPieces.length; j += 1) {
+      let acc = "";
+      for (let k = j; k < brandPieces.length && acc.length < a.length; k += 1) {
+        acc += brandPieces[k];
+        if (acc === a) return true;
+      }
+    }
+    return false;
+  };
+  // a web address, unless it is the client's own site or the client's own
+  // name written with a dot ("Ste.Therese Dental", r10)
   const isDomain = (c: string) =>
-    DOMAIN_LIKE.test(c) && !(site && alnum(c).includes(site));
+    DOMAIN_LIKE.test(c) &&
+    !(site && alnum(c).includes(site)) &&
+    !pieceRun(alnum(c));
   // word n is `piece` and a word right next to it is the brand's own
   // neighbour of that piece, in brand order ("5 Star", "Photos at the")
   const besideOwnNeighbour = (n: number, piece: string) => {
@@ -245,6 +262,7 @@ export function withoutContactDetails(
     return (
       brandLetters.has(w.toLowerCase()) ||
       brandPieces.includes(alnum(w)) ||
+      pieceRun(alnum(w)) ||
       brandToken(w) ||
       startsBrand(n)
     );
