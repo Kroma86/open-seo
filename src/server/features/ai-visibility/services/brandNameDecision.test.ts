@@ -504,6 +504,91 @@ describe("gradeAnswerName", () => {
     expect(withoutContactDetails(text, brand)).toContain(kept);
   });
 
+  // Grok 4.7 review r8: the brand's own "at" before a spelled dot; half a
+  // postal code shaped like the brand; the brand written after "at".
+  it.each([
+    [
+      "At Home Care",
+      "Email the coordinator at home dot com for a quote.",
+      /coordinator|home|\bcom\b/,
+    ],
+    ["At Home Care", "hello(at)home(dot)com", /hello|home|\bcom\b/],
+    [
+      "At Home Care",
+      "info at home dot com or 250-555-0199",
+      /info|home|\bcom\b|\d/,
+    ],
+    [
+      "Photos at the Park",
+      "Book a session at the park dot com this week.",
+      /session|park|\bcom\b/,
+    ],
+    [
+      "Coffee at Main",
+      "Say hello at main dot com for hours.",
+      /hello|main|\bcom\b/,
+    ],
+  ])(
+    "brand %s: a spelled address after its own 'at' is cut",
+    (brand, text, leak) => {
+      expect(withoutContactDetails(text, brand)).not.toMatch(leak);
+    },
+  );
+
+  it.each([
+    [
+      "A1 Appliance Repair",
+      "They are downtown near the harbour, postal code A1A 1A1.",
+    ],
+    ["S1 Auto Body", "Regina, SK S1A 0H1"],
+    ["T2 Plumbing", "Calgary, AB T2P 1B5"],
+    ["V1 Electric", "Vernon, BC V1T 6L4"],
+  ])("brand %s: no half of a postal code reaches Jev", (brand, text) => {
+    expect(withoutContactDetails(text, brand)).not.toMatch(/\d/);
+  });
+
+  it.each([
+    [
+      "A 1 Plumbing",
+      "You will find them at A1 Plumbing (a1plumbing.com).",
+      "A1 Plumbing",
+    ],
+    [
+      "A 1 Plumbing",
+      "Ask the people at A1 Plumbing instead of a dot com directory.",
+      "A1 Plumbing",
+    ],
+    [
+      "Play 2 Learn",
+      "The teachers at Play2Learn beat any dot com program.",
+      "Play2Learn",
+    ],
+    [
+      "24 Hour Glass",
+      "Book at 24-Hour Glass via 24hourglass.com today.",
+      "24-Hour Glass",
+    ],
+    [
+      "H 2 O Plumbing",
+      "Call the techs at H2O Plumbing, see h2oplumbing.com.",
+      "H2O Plumbing",
+    ],
+    [
+      "Al's Appliance Inc.",
+      "Get a quote at Al's Appliance (alsappliance.ca).",
+      "Al's Appliance",
+    ],
+    [
+      "Photos at the Park",
+      "For weddings, Photos at the Park (photosatthepark.com) is the one locals name.",
+      "Photos at the Park",
+    ],
+  ])("brand %s: its name after 'at' is kept", (brand, text, kept) => {
+    const sent = withoutContactDetails(text, brand);
+    expect(sent).toContain(kept);
+    expect(sent).not.toMatch(/\.(?:ca|com)\b/);
+  });
+
   it("keeps the client's own website", () => {
     expect(
       withoutContactDetails(
