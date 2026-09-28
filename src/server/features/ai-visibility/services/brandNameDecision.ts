@@ -81,58 +81,42 @@ const DASHES = /[‐-―−]/g;
 // long run of letters or digits is scanned once (no quadratic backtracking).
 const EMAIL =
   /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}/g;
-const AT_TOKEN = /\S*@\S*/g;
+// A token that is, or hides, an email: "@", "%40", "(at)", "[at]", "{at}", "<at>", "*at*".
+const EMAIL_TOKEN = /@|%40|[([{<*]\s*at\s*[)\]}>*]/i;
+const AT_WORD = /^(?:at|[([{<*]at[)\]}>*])$/i;
+const DOT_WORD = /^(?:\.|dot|[([{<*]dot[)\]}>*])$/i;
+const DOT_TLD_WORD = /^dot(?:com|ca|net|org|info|biz|io|co|us|app|ai)$/i;
 
 const EDGE_START = /^[([{"'‘“<*]+/;
 const EDGE_END = /[.,;:!?)\]}"'’”>*]+$/;
-const STREET_WORD =
-  /^(?:st|street|ave|avenue|rd|road|dr|drive|blvd|boulevard|way|hwy|highway|cr|cres|crescent|pl|place|lane|ln|court|ct|crt|trail|pkwy|parkway|terrace|terr|close|circle|cir|circuit|ridge|gate|square|sq|plaza|rise|grove|point|pt|view|private|pvt)\.?$/i;
-const UNIT_WORD =
-  /^(?:years?|yrs|days?|hours?|hrs|weeks?|months?|minutes?|mins?|stars?|locations?|trucks?|km|miles?|percent)$/i;
-const AGE_WORD = /^(?:over|under|aged?|ages|than)$/i;
+// Terms that contain a digit but can never be a contact detail.
+const SAFE_TERMS = new Set([
+  "24/7",
+  "lgbtq2s+",
+  "lgbtq2s",
+  "2slgbtq+",
+  "2slgbtqia+",
+  "lgbtq2sia+",
+  "covid-19",
+  "b2b",
+  "b2c",
+]);
 
-function keepNumberToken(
-  core: string,
-  prev: string,
-  next: string[],
-  brandWords: Set<string>,
-): boolean {
-  const lower = core.toLowerCase();
-  if (brandWords.has(lower)) return true; // the client's own name ("A1", "1-800-GOT-JUNK")
-  if (/^(?:19|20)\d{2}[-/](?:19|20)?\d{2}$/.test(core) || core === "24/7")
-    return true;
-  if (/^\d{1,3}(?:%|\+)$/.test(core)) return true;
-  if (
-    /^\d{1,3}-[a-z]+$/i.test(core) &&
-    UNIT_WORD.test(core.split("-")[1] ?? "")
-  )
-    return true;
-  if (
-    /^\d{1,3}$/.test(core) &&
-    next[0] !== undefined &&
-    UNIT_WORD.test(next[0])
-  )
-    return true;
-  const letters = (core.match(/[A-Za-z]/g) ?? []).length;
-  const digits = (core.match(/\d/g) ?? []).length;
-  if (letters >= 3 && digits <= 2) return true; // "LGBTQ2S+", "COVID-19"
-  const streetAhead = next.some((w) => STREET_WORD.test(w));
-  if (/^\d{1,3}$/.test(core) && AGE_WORD.test(prev) && !streetAhead)
-    return true;
-  // a lone year, unless a number sits just before it (a phone's last group)
-  // or a street word follows (a house number)
-  if (/^(?:19|20)\d{2}$/.test(core) && !/\d/.test(prev) && !streetAhead)
-    return true;
-  return false;
-}
+const alnum = (w: string) => w.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /**
- * Jev is never sent contact details (standing rule). Emails and any token
- * with "@" are cut. Then every whitespace-separated token that contains a
- * digit becomes [number] (phones in any format, house, unit and box numbers
- * wherever they sit, postal codes), except years and year ranges, 24/7,
- * small counts with a unit ("7 days", "5-star", "100%"), ages, words like
- * "LGBTQ2S+", and any word of the client's own name or website. The text is
+ * Jev is never sent contact details (standing rule). The rule is structural,
+ * so no number format or email spelling can slip through:
+ * - every whitespace-separated token that contains a digit becomes [number],
+ *   except a few fixed terms (24/7, LGBTQ2S+, COVID-19, B2B) and the client's
+ *   own name: a token whose letters and digits start with, or are the start
+ *   of, a numbered word of the brand or website ("A1's", "A-1", "24hr",
+ *   "1800-GOT-JUNK");
+ * - every token that holds "@", "%40" or a bracketed "at" becomes [email],
+ *   and so do the words on either side of a lone "@";
+ * - a spelled address ("info at joes plumbing . com", "jane *at* example
+ *   *dot* COM", "... dotcom") is cut from the word before "at" to the end.
+ * Over-cutting ordinary numbers (years, prices) is accepted. The text is
  * capped at MAX_JEV_ANSWER_CHARS first. The literal brand check runs on the
  * original text, before this.
  */
@@ -141,41 +125,72 @@ export function withoutContactDetails(
   brand = "",
   website = "",
 ): string {
-  const brandWords = new Set(
-    `${brand} ${website}`
-      .toLowerCase()
-      .replace(DASHES, "-")
-      .split(/\s+/)
-      .map((w) => w.replace(EDGE_START, "").replace(EDGE_END, ""))
-      .filter((w) => /\d/.test(w)),
-  );
-  const cleaned = text
+  const brandFull = alnum(brand.replace(DASHES, "-"));
+  const brandWords = `${brand} ${website}`
+    .replace(DASHES, "-")
+    .split(/\s+/)
+    .map(alnum)
+    .filter((w) => /\d/.test(w));
+  const isBrandToken = (core: string) => {
+    const a = alnum(core);
+    if (!a) return false;
+    if (brandFull.length >= 2 && brandFull.startsWith(a) && a.length >= 2)
+      return true;
+    return brandWords.some(
+      (w) => a === w || (a.startsWith(w) && /^[a-z]+$/.test(a.slice(w.length))),
+    );
+  };
+  const parts = text
     .slice(0, MAX_JEV_ANSWER_CHARS)
     .replace(DASHES, "-")
     .replace(EMAIL, "[email]")
-    .replace(AT_TOKEN, "[email]");
-  const parts = cleaned.split(/(\s+)/);
+    .split(/(\s+)/);
   const words: number[] = [];
   parts.forEach((t, i) => {
     if (t && !/^\s+$/.test(t)) words.push(i);
   });
-  const cores = words.map((i) =>
-    (parts[i] ?? "").replace(EDGE_START, "").replace(EDGE_END, ""),
-  );
+  const core = (i: number) =>
+    (parts[i] ?? "").replace(EDGE_START, "").replace(EDGE_END, "");
+  const cut = new Set<number>();
   words.forEach((i, n) => {
     const token = parts[i] ?? "";
-    if (!/\d/.test(token)) return;
-    const core = cores[n] ?? "";
-    if (
-      keepNumberToken(
-        core,
-        cores[n - 1] ?? "",
-        cores.slice(n + 1, n + 6),
-        brandWords,
-      )
-    ) {
+    if (EMAIL_TOKEN.test(token)) {
+      cut.add(i);
+      if (token === "@") {
+        if (n > 0) cut.add(words[n - 1] as number);
+        if (n + 1 < words.length) cut.add(words[n + 1] as number);
+      }
+    }
+    // spelled address: a word before "at", up to 8 words, then dot-markers
+    if (AT_WORD.test(core(i)) && n > 0) {
+      let last = -1;
+      for (let k = n + 1; k < Math.min(words.length, n + 10); k += 1) {
+        const w = core(words[k] as number);
+        if (DOT_TLD_WORD.test(w)) {
+          last = k;
+          break;
+        }
+        if (
+          DOT_WORD.test(w) ||
+          DOT_WORD.test(parts[words[k] as number] ?? "")
+        ) {
+          if (k + 1 < words.length) last = k + 1;
+          else last = k;
+        }
+      }
+      if (last > n)
+        for (let k = n - 1; k <= last; k += 1) cut.add(words[k] as number);
+    }
+  });
+  words.forEach((i) => {
+    const token = parts[i] ?? "";
+    if (cut.has(i)) {
+      parts[i] = "[email]";
       return;
     }
+    if (!/\d/.test(token)) return;
+    const c = core(i);
+    if (SAFE_TERMS.has(c.toLowerCase()) || isBrandToken(c)) return;
     const lead = token.match(EDGE_START)?.[0] ?? "";
     const trail = token.match(EDGE_END)?.[0] ?? "";
     parts[i] = `${lead}[number]${trail}`;
