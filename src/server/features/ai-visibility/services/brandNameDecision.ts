@@ -88,11 +88,13 @@ const AT_WORD = /^(?:at|@|[-([{<*]at[-)\]}>*])$/i;
 // slashes is unwrapped to a spaced word first, so every wrapper reads alike.
 const WRAPPED_MARKER = /[[({<*/]\s*(@|at|dot|\.)\s*[\])}>*/]/gi;
 const DOT_WORD = /^(?:\.|dot|[-([{<*]dot[-)\]}>*])$/i;
-const DOT_TLD_WORD = /^dot(?:com|ca|net|org|info|biz|io|co|us|app|ai)$/i;
+// "dotcom" or "dot-com" as one word (r9)
+const DOT_TLD_WORD = /^dot-?(?:com|ca|net|org|info|biz|io|co|us|app|ai)$/i;
 // A web address or domain: "gmail.com", "dept.company.co.uk", ".com",
-// "https://x.ca/a". Cut unless it is the client's own website.
+// "https://x.ca/a", and accented ones ("café.com", "montréal.ca", r9). Cut
+// unless it is the client's own website.
 const DOMAIN_LIKE =
-  /^(?:[a-z][a-z0-9+.-]*:\/\/\S*|[\w.-]*\.[a-z]{2,}(?:[/?#]\S*)?)$/i;
+  /^(?:[a-z][a-z0-9+.-]*:\/\/\S*|[\p{L}\p{N}_.-]*\.\p{L}{2,}(?:[/?#]\S*)?)$/iu;
 
 const EDGE_START = /^[([{"'‘“<*]+/;
 const EDGE_END = /[.,;:!?)\]}"'’”>*]+$/;
@@ -265,7 +267,9 @@ export function withoutContactDetails(
     if (isDomain(core(i))) cut.add(i);
     // spelled address: the word before "at", then up to 8 words to a domain,
     // a dot word (and its label) or a "dotcom" word
-    if (AT_WORD.test(core(i).replace(/^-+|-+$/g, "") || token) && n > 0) {
+    // also when "at" is the first word ("At joesplumbing dot com you can
+    // book", r9): the span then starts at "at" itself
+    if (AT_WORD.test(core(i).replace(/^-+|-+$/g, "") || token)) {
       // the brand's own "at" in place ("Photos at the Park") only starts a
       // span when a spelled dot follows ("at home dot com"), r7-r8; a glued
       // domain is cut on its own anyway
@@ -285,7 +289,7 @@ export function withoutContactDetails(
           last = Math.min(k + 1, words.length - 1);
         }
       }
-      let first = n - 1;
+      let first = Math.max(n - 1, 0);
       while (first > 0 && coreAt(first) === "") first -= 1;
       // the client's own name is never cut, before or after "at" ("Play2Learn
       // at", "at A1 Plumbing (a1plumbing.com)"), r5-r8, unless it is a domain
