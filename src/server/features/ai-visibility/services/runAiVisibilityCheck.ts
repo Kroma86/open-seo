@@ -162,6 +162,9 @@ async function executeRun(input: {
   }
 
   let promptExplorerCalls = 0;
+  // The budget can be shared by every config in a scheduled tick; this run
+  // stores only what it spent itself.
+  const jevSpentBefore = input.nameBudget.spentUsd;
 
   const brandLookup = await getBrandLookup(
     {
@@ -235,7 +238,7 @@ async function executeRun(input: {
   const detail: RunDetail = {
     source: "dataforseo_llm_mentions",
     promptsAttempted: promptExplorerCalls,
-    jevSpendUsd: input.nameBudget.spentUsd,
+    jevSpendUsd: input.nameBudget.spentUsd - jevSpentBefore,
     brandLookup: {
       fetchedAt: brandLookup.fetchedAt,
       totalMentions: mentionsSum.total,

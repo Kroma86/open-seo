@@ -35,6 +35,8 @@ export type NameGrade = {
 export type NameBudget = {
   spentUsd: number;
   capUsd: number;
+  /** Consecutive failed Jev calls in this pass (shared like the spend). */
+  failures?: number;
 };
 
 export type JevDecisionBody = {
@@ -68,26 +70,41 @@ export function literalBrandInAnswer(text: string, brand: string): boolean {
   return normalizeForBrandMatch(text).toLowerCase().includes(needle);
 }
 
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+/** Longest answer text sent to Jev. The 23 Sep answers peak at 5,380 characters. */
+export const MAX_JEV_ANSWER_CHARS = 12_000;
+/** Consecutive failed Jev calls after which the rest of the pass uses the matcher. */
+export const MAX_JEV_FAILURES = 3;
+
+// Every dash a phone number can be written with, folded to "-" before the
+// phone check so "250‑545‑1234" can't slip through in pieces.
+const DASHES = /[‐-―−]/g;
+// The lookbehind means a match can only start at the start of a word, so a
+// long run of letters or digits is scanned once (no quadratic backtracking).
+const EMAIL =
+  /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}/g;
 const PHONE_SHAPE = /\+?\d[\d\s().\-/]{5,}\d/g;
-// A house number, up to 3 capitalised or numeric words, then a capitalised
-// street word ("3101 30 Ave", "2900 Kalamalka Lake Road"). Lower-case prose
-// such as "3 ways to go the extra mile" is left alone.
-const STREET =
-  /\b\d{1,6}[A-Za-z]?(?:\s+[A-Z0-9][A-Za-z0-9.'-]*){0,3}\s+(?:St|Street|Ave|Avenue|Rd|Road|Dr|Drive|Blvd|Boulevard|Way|Hwy|Highway|Cres|Crescent|Pl|Place|Lane|Ln|Court|Ct|Trail|Pkwy|Parkway|Terrace|Close|Circle|Cir)\b\.?/g;
+// Only the house number goes: a number followed, within 4 words, by a street
+// word ("3101 30 ave", "2900 North West Kalamalka Lake Road"). The street
+// name stays, because a business can be named after its street
+// ("Setanta Landscapes Way") and Jev must still see that name.
+const HOUSE_NUMBER =
+  /\b\d{1,6}[A-Za-z]?(?=(?:\s+[\w.'’-]+){0,4}\s+(?:st|street|ave|avenue|rd|road|dr|drive|blvd|boulevard|way|hwy|highway|cres|crescent|pl|place|lane|ln|court|ct|trail|pkwy|parkway|terrace|close|circle|cir)\b)/gi;
 
 /**
- * Jev is never sent contact details (standing rule): email addresses, phone
- * numbers (7 or more digits) and street addresses are replaced with a tag.
+ * Jev is never sent contact details (standing rule): email addresses and
+ * phone numbers (7 or more digits) become [email] / [phone], and house
+ * numbers become [number]. The text is capped at MAX_JEV_ANSWER_CHARS first.
  * The literal brand check runs on the original text, before this.
  */
 export function withoutContactDetails(text: string): string {
   return text
+    .slice(0, MAX_JEV_ANSWER_CHARS)
+    .replace(DASHES, "-")
     .replace(EMAIL, "[email]")
     .replace(PHONE_SHAPE, (m) =>
       m.replace(/\D/g, "").length >= 7 ? "[phone]" : m,
     )
-    .replace(STREET, "[address]");
+    .replace(HOUSE_NUMBER, "[number]");
 }
 
 export function jevDecisionBody(
@@ -147,19 +164,29 @@ export async function gradeAnswerName(input: {
   const fallbackNamed = input.fallbackNamed === true;
   if (!input.askJev) return fallbackGrade(fallbackNamed);
 
+  // After MAX_JEV_FAILURES failed calls in a row (Jev down or hanging), stop
+  // asking for the rest of the pass so a dead Jev costs at most 3 timeouts.
+  if (input.budget && (input.budget.failures ?? 0) >= MAX_JEV_FAILURES) {
+    return fallbackGrade(fallbackNamed);
+  }
   const body = jevDecisionBody(input.brand, input.website, input.text);
   const estimate = estimateJevCostUsd(body);
   if (input.budget && input.budget.spentUsd + estimate > input.budget.capUsd) {
     return fallbackGrade(fallbackNamed);
   }
+  const failed = () => {
+    if (input.budget) input.budget.failures = (input.budget.failures ?? 0) + 1;
+    return fallbackGrade(fallbackNamed);
+  };
 
   try {
     const answer = await input.askJev(body);
     const p = answer?.p;
     if (typeof p !== "number" || !Number.isFinite(p) || p < 0 || p > 1) {
-      return fallbackGrade(fallbackNamed);
+      return failed();
     }
     if (input.budget) {
+      input.budget.failures = 0;
       const charged =
         typeof answer.costUsd === "number" && answer.costUsd > 0
           ? answer.costUsd
@@ -169,6 +196,6 @@ export async function gradeAnswerName(input: {
     const graded = gradeFromProbability(p);
     return { named: graded.named, p, unsure: graded.unsure, source: "jev" };
   } catch {
-    return fallbackGrade(fallbackNamed);
+    return failed();
   }
 }
