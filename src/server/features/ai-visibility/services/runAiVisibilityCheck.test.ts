@@ -420,4 +420,52 @@ describe("runAiVisibilityCheck", () => {
     });
     expect(detail.jevSpendUsd).toBeCloseTo(0.00004);
   });
+  it("keeps promptExplorer's own verdict when Jev fails (Grok r2)", async () => {
+    mocks.getValidatedConfig.mockResolvedValue({
+      ...config,
+      brand: "Truewoods",
+      platforms: '["chat_gpt"]',
+    });
+    mocks.getActivePromptsForConfig.mockResolvedValue([
+      { id: "p1", prompt: "who" },
+    ]);
+    mocks.askJevNamed.mockRejectedValue(new Error("jev_timeout"));
+    mocks.explorePrompt.mockResolvedValueOnce({
+      prompt: "who",
+      highlightBrand: "Truewoods",
+      fetchedAt: new Date().toISOString(),
+      results: [
+        {
+          status: "success",
+          model: "chat_gpt",
+          modelName: "gpt",
+          text: "A Vernon timber shop is often recommended for live-edge tables.",
+          citations: [
+            { url: "https://truewoodstimber.com/about", title: "About" },
+          ],
+          fanOutQueries: [],
+          brandMentioned: true,
+          outputTokens: 10,
+          webSearch: true,
+        },
+      ],
+    });
+
+    await runAiVisibilityCheck({
+      configId: "config_1",
+      projectId: "project_1",
+      billingCustomer,
+      trigger: "manual",
+    });
+
+    const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
+      (call) => call[1]?.status === "completed",
+    );
+    const detail = JSON.parse(String(completedUpdate?.[1]?.detail));
+    expect(detail.prompts[0].results[0]).toMatchObject({
+      brandMentioned: true,
+      nameSource: "matcher_fallback",
+      nameProbability: null,
+    });
+  });
 });

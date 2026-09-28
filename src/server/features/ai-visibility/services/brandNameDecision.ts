@@ -75,36 +75,112 @@ export const MAX_JEV_ANSWER_CHARS = 12_000;
 /** Consecutive failed Jev calls after which the rest of the pass uses the matcher. */
 export const MAX_JEV_FAILURES = 3;
 
-// Every dash a phone number can be written with, folded to "-" before the
-// phone check so "250‑545‑1234" can't slip through in pieces.
+// Every dash a number can be written with, folded to "-" first.
 const DASHES = /[‐-―−]/g;
 // The lookbehind means a match can only start at the start of a word, so a
 // long run of letters or digits is scanned once (no quadratic backtracking).
 const EMAIL =
   /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}/g;
-const PHONE_SHAPE = /\+?\d[\d\s().\-/]{5,}\d/g;
-// Only the house number goes: a number followed, within 4 words, by a street
-// word ("3101 30 ave", "2900 North West Kalamalka Lake Road"). The street
-// name stays, because a business can be named after its street
-// ("Setanta Landscapes Way") and Jev must still see that name.
-const HOUSE_NUMBER =
-  /\b\d{1,6}[A-Za-z]?(?=(?:\s+[\w.'’-]+){0,4}\s+(?:st|street|ave|avenue|rd|road|dr|drive|blvd|boulevard|way|hwy|highway|cres|crescent|pl|place|lane|ln|court|ct|trail|pkwy|parkway|terrace|close|circle|cir)\b)/gi;
+const AT_TOKEN = /\S*@\S*/g;
+
+const EDGE_START = /^[([{"'‘“<*]+/;
+const EDGE_END = /[.,;:!?)\]}"'’”>*]+$/;
+const STREET_WORD =
+  /^(?:st|street|ave|avenue|rd|road|dr|drive|blvd|boulevard|way|hwy|highway|cr|cres|crescent|pl|place|lane|ln|court|ct|crt|trail|pkwy|parkway|terrace|terr|close|circle|cir|circuit|ridge|gate|square|sq|plaza|rise|grove|point|pt|view|private|pvt)\.?$/i;
+const UNIT_WORD =
+  /^(?:years?|yrs|days?|hours?|hrs|weeks?|months?|minutes?|mins?|stars?|locations?|trucks?|km|miles?|percent)$/i;
+const AGE_WORD = /^(?:over|under|aged?|ages|than)$/i;
+
+function keepNumberToken(
+  core: string,
+  prev: string,
+  next: string[],
+  brandWords: Set<string>,
+): boolean {
+  const lower = core.toLowerCase();
+  if (brandWords.has(lower)) return true; // the client's own name ("A1", "1-800-GOT-JUNK")
+  if (/^(?:19|20)\d{2}[-/](?:19|20)?\d{2}$/.test(core) || core === "24/7")
+    return true;
+  if (/^\d{1,3}(?:%|\+)$/.test(core)) return true;
+  if (
+    /^\d{1,3}-[a-z]+$/i.test(core) &&
+    UNIT_WORD.test(core.split("-")[1] ?? "")
+  )
+    return true;
+  if (
+    /^\d{1,3}$/.test(core) &&
+    next[0] !== undefined &&
+    UNIT_WORD.test(next[0])
+  )
+    return true;
+  const letters = (core.match(/[A-Za-z]/g) ?? []).length;
+  const digits = (core.match(/\d/g) ?? []).length;
+  if (letters >= 3 && digits <= 2) return true; // "LGBTQ2S+", "COVID-19"
+  const streetAhead = next.some((w) => STREET_WORD.test(w));
+  if (/^\d{1,3}$/.test(core) && AGE_WORD.test(prev) && !streetAhead)
+    return true;
+  // a lone year, unless a number sits just before it (a phone's last group)
+  // or a street word follows (a house number)
+  if (/^(?:19|20)\d{2}$/.test(core) && !/\d/.test(prev) && !streetAhead)
+    return true;
+  return false;
+}
 
 /**
- * Jev is never sent contact details (standing rule): email addresses and
- * phone numbers (7 or more digits) become [email] / [phone], and house
- * numbers become [number]. The text is capped at MAX_JEV_ANSWER_CHARS first.
- * The literal brand check runs on the original text, before this.
+ * Jev is never sent contact details (standing rule). Emails and any token
+ * with "@" are cut. Then every whitespace-separated token that contains a
+ * digit becomes [number] (phones in any format, house, unit and box numbers
+ * wherever they sit, postal codes), except years and year ranges, 24/7,
+ * small counts with a unit ("7 days", "5-star", "100%"), ages, words like
+ * "LGBTQ2S+", and any word of the client's own name or website. The text is
+ * capped at MAX_JEV_ANSWER_CHARS first. The literal brand check runs on the
+ * original text, before this.
  */
-export function withoutContactDetails(text: string): string {
-  return text
+export function withoutContactDetails(
+  text: string,
+  brand = "",
+  website = "",
+): string {
+  const brandWords = new Set(
+    `${brand} ${website}`
+      .toLowerCase()
+      .replace(DASHES, "-")
+      .split(/\s+/)
+      .map((w) => w.replace(EDGE_START, "").replace(EDGE_END, ""))
+      .filter((w) => /\d/.test(w)),
+  );
+  const cleaned = text
     .slice(0, MAX_JEV_ANSWER_CHARS)
     .replace(DASHES, "-")
     .replace(EMAIL, "[email]")
-    .replace(PHONE_SHAPE, (m) =>
-      m.replace(/\D/g, "").length >= 7 ? "[phone]" : m,
-    )
-    .replace(HOUSE_NUMBER, "[number]");
+    .replace(AT_TOKEN, "[email]");
+  const parts = cleaned.split(/(\s+)/);
+  const words: number[] = [];
+  parts.forEach((t, i) => {
+    if (t && !/^\s+$/.test(t)) words.push(i);
+  });
+  const cores = words.map((i) =>
+    (parts[i] ?? "").replace(EDGE_START, "").replace(EDGE_END, ""),
+  );
+  words.forEach((i, n) => {
+    const token = parts[i] ?? "";
+    if (!/\d/.test(token)) return;
+    const core = cores[n] ?? "";
+    if (
+      keepNumberToken(
+        core,
+        cores[n - 1] ?? "",
+        cores.slice(n + 1, n + 6),
+        brandWords,
+      )
+    ) {
+      return;
+    }
+    const lead = token.match(EDGE_START)?.[0] ?? "";
+    const trail = token.match(EDGE_END)?.[0] ?? "";
+    parts[i] = `${lead}[number]${trail}`;
+  });
+  return parts.join("");
 }
 
 export function jevDecisionBody(
@@ -117,7 +193,7 @@ export function jevDecisionBody(
     provider: { zdr: true },
     state: {
       business: { name: brand, website },
-      ai_answer: withoutContactDetails(text),
+      ai_answer: withoutContactDetails(text, brand, website),
     },
     questions: {
       named: { type: "noul", instructions: NAMED_INSTRUCTIONS },

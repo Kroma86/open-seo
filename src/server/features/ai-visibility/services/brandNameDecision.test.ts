@@ -185,8 +185,7 @@ describe("gradeAnswerName", () => {
       text,
     ).state.ai_answer;
     expect(sent).toContain("Al\u2019s Appliance Inc.");
-    expect(sent).not.toMatch(/545|1234|776|7060|@|3101|2900/);
-    expect(sent).toContain("[phone]");
+    expect(sent).not.toMatch(/\d|@/);
     expect(sent).toContain("[email]");
     expect(sent).toContain("[number] Kalamalka Lake Road");
   });
@@ -208,13 +207,63 @@ describe("gradeAnswerName", () => {
     expect(withoutContactDetails(text)).not.toMatch(leak);
   });
 
-  it("keeps years, prices and plain prose that only look like numbers", () => {
+  it("keeps years, counts and ages, and the client's own numbered name", () => {
     const sent = withoutContactDetails(
-      "For winter 2026\u201327, expect $1,200 per season; 3 ways to go the extra mile.",
+      "For winter 2026\u201327 and the 2019\u20132020 season, open 24/7, 7 days a week, " +
+        "5-star, 100% local, 25 years, women over 40, LGBTQ2S+ friendly, since 1998. " +
+        "A1 Plumbing and 1-800-GOT-JUNK both serve Vernon.",
+      "A1 Plumbing",
     );
-    expect(sent).toContain("2026-27");
-    expect(sent).toContain("$1,200");
-    expect(sent).toContain("3 ways to go the extra mile");
+    for (const kept of [
+      "2026-27",
+      "2019-2020",
+      "24/7",
+      "7 days",
+      "5-star",
+      "100%",
+      "25 years",
+      "over 40",
+      "LGBTQ2S+",
+      "1998",
+      "A1 Plumbing",
+    ]) {
+      expect(sent).toContain(kept);
+    }
+    expect(sent).toContain("[number] both serve"); // another company's number is not the client's name
+  });
+
+  // Grok 4.7 review r2: numbers in every other shape.
+  it.each([
+    "Visit 2900, Kalamalka Lake Road.",
+    "Visit 3101, 30 Ave, Vernon.",
+    "Unit 305, 3101 30 Avenue, Vernon.",
+    "Suite 200, 123 Main Street, Vernon.",
+    "#104, 3101 30 Ave",
+    "4-123 Main Street",
+    "Find them at 12\u201314 Main Street.",
+    "123 1/2 Main Street",
+    "Shop: 123 Industrial Circuit.",
+    "The yard is at 14 Quail Ridge.",
+    "Visit 88 Harvest Gate tomorrow.",
+    "Call 250.555.0199 on Main Street",
+    "Call 1-800-PLUMBER for a free quote",
+    "Postal code V1Y 2B3, Kelowna",
+  ])("no number from an address or phone in %s", (text) => {
+    const sent = withoutContactDetails(
+      text,
+      "Truewoods",
+      "truewoodstimber.com",
+    );
+    expect(sent).not.toMatch(/\d/);
+  });
+
+  it("keeps a normal eight-digit year range and the name next to it", () => {
+    const sent = withoutContactDetails(
+      "Opened in 2024-2025 beside the shop. For the 2019\u20132020 season, Lane & Co was busy.",
+      "Lane & Co Photography",
+    );
+    expect(sent).toContain("2024-2025");
+    expect(sent).toContain("2019-2020 season, Lane & Co");
   });
 
   // Grok 4.7 review r1: removing a whole address line took the client's own
