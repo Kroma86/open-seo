@@ -589,6 +589,101 @@ describe("gradeAnswerName", () => {
     expect(sent).not.toMatch(/\.(?:ca|com)\b/);
   });
 
+  // Grok 4.7 review r9: a spelled address as the first words; an accented
+  // domain; "dot-com" as one word.
+  it.each([
+    [
+      "Joe's Plumbing",
+      "At joesplumbing dot com you can book a plumber in Kelowna.",
+      /joesplumbing|\bcom\b/,
+    ],
+    [
+      "Joe's Plumbing",
+      "At gmail dot com you can send a note.",
+      /gmail|\bcom\b/,
+    ],
+    ["Joe's Plumbing", "at: joesplumbing dot com", /joesplumbing|\bcom\b/],
+    ["Joe's Plumbing", "(at)joesplumbing(dot)com", /joesplumbing|\bcom\b/],
+    [
+      "Joe's Plumbing",
+      "Email hello at caf\u00e9.com or call (250) 555-0199.",
+      /hello|caf|\d/,
+    ],
+    [
+      "Joe's Plumbing",
+      "reservations at montr\u00e9al.ca today",
+      /reservations|montr/,
+    ],
+    ["Joe's Plumbing", "info at gmail dot-com please", /info|gmail|dot-com/],
+  ])("brand %s: no address reaches Jev from %s", (brand, text, leak) => {
+    expect(withoutContactDetails(text, brand)).not.toMatch(leak);
+  });
+
+  it("still keeps the brand's own 'At' as the first word", () => {
+    const sent = withoutContactDetails(
+      "At Home Care is the top pick; see athomecare.com.",
+      "At Home Care Inc",
+    );
+    expect(sent).toContain("At Home Care is the top pick");
+    expect(sent).not.toMatch(/athomecare/);
+  });
+
+  // Grok 4.7 review r10: a brand word with an inner apostrophe or hyphen
+  // after "at"; a dotted brand with accents; apostrophes in a domain.
+  it.each([
+    [
+      "St. John's Plumbing",
+      "At St John's Plumbing (stjohnsplumbing.com), you can book same-day service.",
+      "St John's Plumbing",
+    ],
+    [
+      "John Smith's Plumbing Inc.",
+      "At John Smith's Plumbing (johnsmithsplumbing.com), you can book a plumber today.",
+      "John Smith's Plumbing",
+    ],
+    [
+      "City Walk-In Clinic Ltd.",
+      "At City Walk-In Clinic, see citywalkinclinic.ca to book.",
+      "City Walk-In Clinic",
+    ],
+    [
+      "Mike O'Brien's Auto Body Inc.",
+      "At Mike O'Brien's Auto Body, see mikeobriensauto.com for a quote.",
+      "Mike O'Brien's Auto Body",
+    ],
+    [
+      "St. John's Plumbing Inc.",
+      "At St. John's Plumbing, the dot-com booking page is easy.",
+      "St. John's Plumbing",
+    ],
+    [
+      "Sweet Bee's Baskets Ltd",
+      "Order at Sweet Bee's Baskets (sweetbeesbaskets.ca) for gifts.",
+      "Sweet Bee's Baskets",
+    ],
+    [
+      "Ste. Th\u00e9r\u00e8se Dental",
+      "Locals recommend Ste.Th\u00e9r\u00e8se Dental for cleanings.",
+      "Ste.Th\u00e9r\u00e8se Dental",
+    ],
+    [
+      "St. J\u00e9r\u00f4me Electric",
+      "Try St.J\u00e9r\u00f4me Electric for the repair.",
+      "St.J\u00e9r\u00f4me Electric",
+    ],
+  ])("brand %s: the name as written is kept", (brand, text, kept) => {
+    const sent = withoutContactDetails(text, brand);
+    expect(sent).toContain(kept);
+    expect(sent).not.toMatch(/\.(?:ca|com)\b/);
+  });
+
+  it.each([
+    ["O'Brien Plumbing Inc.", "Send it to info at o'brien.com today."],
+    ["Joe's Plumbing Inc.", "Send it to info at joe's-plumbing.com today."],
+  ])("brand %s: an apostrophe domain is still cut", (brand, text) => {
+    expect(withoutContactDetails(text, brand)).not.toMatch(/\binfo\b|\.com/);
+  });
+
   it("keeps the client's own website", () => {
     expect(
       withoutContactDetails(
