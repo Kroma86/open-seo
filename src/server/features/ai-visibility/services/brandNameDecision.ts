@@ -83,7 +83,10 @@ const EMAIL =
   /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}/g;
 // A token that is, or hides, an email: "@", "%40", "(at)", "[at]", "{at}", "<at>", "*at*".
 const EMAIL_TOKEN = /@|%40|[-([{<*]\s*at\s*[-)\]}>*]/i;
-const AT_WORD = /^(?:at|[-([{<*]at[-)\]}>*])$/i;
+const AT_WORD = /^(?:at|@|[-([{<*]at[-)\]}>*])$/i;
+// "(@)", "[.]", "{dot}", "*at*", "/at/": a marker wrapped in brackets, stars or
+// slashes is unwrapped to a spaced word first, so every wrapper reads alike.
+const WRAPPED_MARKER = /[[({<*/]\s*(@|at|dot|\.)\s*[\])}>*/]/gi;
 const DOT_WORD = /^(?:\.|dot|[-([{<*]dot[-)\]}>*])$/i;
 const DOT_TLD_WORD = /^dot(?:com|ca|net|org|info|biz|io|co|us|app|ai)$/i;
 // A web address or domain: "gmail.com", "dept.company.co.uk", ".com",
@@ -150,12 +153,14 @@ export function withoutContactDetails(
   const site = alnum(
     website.replace(/^https?:\/\//i, "").replace(/^www\./i, ""),
   );
-  // The client's own numbered name: the whole brand or its start
-  // ("Play2Learn", "1800-GOT-JUNK"), a numbered brand word alone or with "s",
-  // or with the next brand word abbreviated ("24hr" for "24 Hour").
+  // The client's own numbered name, when the token has letters: the whole
+  // brand or its start ("Play2Learn", "1800-GOT-JUNK"), a numbered brand word
+  // alone or with "s", or with the next brand word abbreviated ("24hr" for
+  // "24 Hour"). A token of digits only is never kept here (r5): "24", "18" or
+  // "180" alone could be a house or unit number.
   const brandToken = (c: string) => {
     const a = alnum(c);
-    if (!a) return false;
+    if (!a || !/[a-z]/.test(a)) return false;
     if (a.length >= 2 && brandFull.startsWith(a)) return true;
     return brandWords.some((w) => {
       if (!a.startsWith(w)) return false;
@@ -173,6 +178,7 @@ export function withoutContactDetails(
     });
   };
   const parts = norm(text.slice(0, MAX_JEV_ANSWER_CHARS))
+    .replace(WRAPPED_MARKER, " $1 ")
     .replace(EMAIL, "[email]")
     .split(/(\s+)/);
   const words: number[] = [];
@@ -197,7 +203,11 @@ export function withoutContactDetails(
     if (isDomain(core(i))) cut.add(i);
     // spelled address: the word before "at", then up to 8 words to a domain,
     // a dot word (and its label) or a "dotcom" word
-    if (AT_WORD.test(core(i).replace(/^-+|-+$/g, "") || token) && n > 0) {
+    if (
+      AT_WORD.test(core(i).replace(/^-+|-+$/g, "") || token) &&
+      n > 0 &&
+      !brandLetters.has(core(i).toLowerCase())
+    ) {
       let last = -1;
       for (let k = n + 1; k < Math.min(words.length, n + 10); k += 1) {
         const w = coreAt(k);
@@ -214,8 +224,12 @@ export function withoutContactDetails(
       }
       let first = n - 1;
       while (first > 0 && coreAt(first) === "") first -= 1;
+      // the client's own name words are never cut ("At Home Care ... at
+      // homecare.com" keeps "At Home Care"), r5
       if (last > n)
-        for (let k = first; k <= last; k += 1) cut.add(words[k] as number);
+        for (let k = first; k <= last; k += 1)
+          if (!brandLetters.has(coreAt(k).toLowerCase()))
+            cut.add(words[k] as number);
     }
   });
   words.forEach((i, n) => {
@@ -227,12 +241,22 @@ export function withoutContactDetails(
     if (!/\d/.test(token)) return;
     const c = core(i);
     if (SAFE_TERMS.has(c.toLowerCase()) || brandToken(c)) return;
-    // a spaced numbered brand: "5 Star Plumbing", "A 1 Plumbing", "1 800 FLOWERS"
-    if (brandDigits.has(c) && brandLetters.size > 0) {
-      const near = [n - 2, n - 1, n + 1, n + 2]
-        .filter((k) => k >= 0 && k < words.length)
-        .map((k) => coreAt(k).toLowerCase());
-      if (near.some((w) => brandLetters.has(w))) return;
+    // a spaced numbered brand ("5 Star Plumbing", "A 1 Plumbing",
+    // "1 800 FLOWERS"): a brand digit is kept only when a word right next to
+    // it is the brand's own neighbour of that digit, so "Unit 4" or
+    // "2 Rio Drive" near the name is still cut (r5)
+    if (brandDigits.has(c)) {
+      const prev = alnum(coreAt(n - 1) ?? "");
+      const next = alnum(coreAt(n + 1) ?? "");
+      const inBrand = brandPieces.some(
+        (piece, j) =>
+          piece === c &&
+          ((j > 0 && prev !== "" && brandPieces[j - 1] === prev) ||
+            (j + 1 < brandPieces.length &&
+              next !== "" &&
+              brandPieces[j + 1] === next)),
+      );
+      if (inBrand) return;
     }
     const lead = token.match(EDGE_START)?.[0] ?? "";
     const trail = token.match(EDGE_END)?.[0] ?? "";

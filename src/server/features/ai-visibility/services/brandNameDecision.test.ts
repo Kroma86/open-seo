@@ -356,6 +356,57 @@ describe("gradeAnswerName", () => {
     expect(withoutContactDetails(text, brand)).toContain(kept);
   });
 
+  // Grok 4.7 review r5: a digit of the brand used as a house, unit or box
+  // number; brand names with "at"; wrapped markers.
+  it.each([
+    [
+      "24 Hour Plumbing",
+      "Open late at 24 Pandosy Street, Kelowna. Suite 24, Apt. 24, Unit #24, PO Box 24, ext. 24.",
+    ],
+    [
+      "5 Star Plumbing",
+      "The van was outside 5 Ellis Street, Suite 5, Box 5. Try 5-Star Plumbing at 5 Gordon Drive.",
+    ],
+    [
+      "Play 2 Learn 4 Life",
+      "Classes run at 2 Rio Drive, Unit 4, Kelowna. PO Box 2 and Box 4.",
+    ],
+    ["Play 2 Learn 4 Life", "Play 2 Learn 4 Life at 2 Rio Drive."],
+    ["A 1 Plumbing", "Shop is 1 Main Street, Unit 1, PO Box 1."],
+    ["1 800 Flowers", "Deliver to 1 Main Street or 800 Bernard Avenue."],
+    ["1-800-GOT-JUNK", "Pickup was at 18 Harvey Avenue and 180 Banks Road."],
+  ])("brand %s: no house, unit or box number reaches Jev", (brand, text) => {
+    const sent = withoutContactDetails(text, brand);
+    expect(sent.replace(/Play 2 Learn 4 Life|5-Star/g, "")).not.toMatch(/\d/);
+  });
+
+  it.each([
+    [
+      "At Home Care Inc",
+      "Try At Home Care, details at homecare.com today.",
+      "At Home Care",
+    ],
+    [
+      "Photos at the Park Photography",
+      "For weddings, Photos at the Park (photosatthepark.com) is the one locals name.",
+      "Photos at the Park",
+    ],
+  ])("keeps a brand that contains 'at': %s", (brand, text, kept) => {
+    const sent = withoutContactDetails(text, brand);
+    expect(sent).toContain(kept);
+    expect(sent).not.toMatch(/homecare\.com|photosatthepark\.com/);
+  });
+
+  it.each([
+    "Email info at joesplumbing [.] com for a quote",
+    "Email info at joesplumbing(.)com for a quote",
+    "Email info at joesplumbing{dot}com for a quote",
+    "Email info (@) joesplumbing dot com for a quote",
+    "Email info /at/ joesplumbing /dot/ com today",
+  ])("no wrapped-marker email reaches Jev: %s", (text) => {
+    expect(withoutContactDetails(text)).not.toMatch(/joesplumbing|\binfo\b/);
+  });
+
   it("keeps the client's own website", () => {
     expect(
       withoutContactDetails(
