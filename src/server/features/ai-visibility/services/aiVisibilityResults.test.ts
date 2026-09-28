@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getLatestResults,
+  getPromptResults,
   getTrend,
 } from "./aiVisibilityResults";
 
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getPromptsForConfig: vi.fn(),
   getLatestCompletedRunForConfig: vi.fn(),
   getCompletedRunsForConfig: vi.fn(),
+  getRunById: vi.fn(),
 }));
 
 vi.mock(
@@ -106,6 +108,50 @@ describe("aiVisibilityResults", () => {
       shareOfVoicePct: 5,
       promptsWithBrand: 1,
       promptsChecked: 0,
+    });
+  });
+
+  describe("getPromptResults", () => {
+    const storedRun = {
+      id: "run_9",
+      projectId: "project_1",
+      configId: "config_1",
+      status: "completed",
+      finishedAt: "2026-02-03T00:00:00.000Z",
+      promptSetVersion: 2,
+      detail: JSON.stringify({ prompts: [] }),
+    };
+
+    it("defaults to the latest completed run of the chosen config", async () => {
+      mocks.getLatestCompletedRunForConfig.mockResolvedValue(storedRun);
+
+      await expect(getPromptResults("project_1")).resolves.toMatchObject({
+        measured: true,
+        runId: "run_9",
+        completedAt: "2026-02-03T00:00:00.000Z",
+        promptSetVersion: 2,
+      });
+      expect(mocks.getLatestCompletedRunForConfig).toHaveBeenCalledWith("config_1");
+    });
+
+    it("loads a runId that belongs to the project", async () => {
+      mocks.getRunById.mockResolvedValue(storedRun);
+
+      await expect(
+        getPromptResults("project_1", "config_1", "run_9"),
+      ).resolves.toMatchObject({ runId: "run_9" });
+    });
+
+    it.each([
+      ["another project", { projectId: "project_2" }, undefined],
+      ["another config", { configId: "config_2" }, "config_1"],
+      ["an unfinished run", { status: "running" }, undefined],
+    ])("refuses a runId from %s as not found", async (_label, override, configId) => {
+      mocks.getRunById.mockResolvedValue({ ...storedRun, ...override });
+
+      await expect(
+        getPromptResults("project_1", configId, "run_9"),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
     });
   });
 });
