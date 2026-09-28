@@ -407,6 +407,50 @@ describe("gradeAnswerName", () => {
     expect(withoutContactDetails(text)).not.toMatch(/joesplumbing|\binfo\b/);
   });
 
+  // Grok 4.7 review r6: a letter unit that starts like the brand; the
+  // brand's own spelling right before "at <domain>".
+  it.each([
+    [
+      "2 Brothers Plumbing",
+      "Their shop is in suite 2B on Richter. Also unit #2B and unit 2-B.",
+    ],
+    ["1st Choice Plumbing", "They are in suite 1S."],
+    ["24 Hour Glass", "Workshop is unit 24H, 1500 Pandosy."],
+    ["5 Star Plumbing", "Find them in suite 5S."],
+    ["4 All Seasons", "Suite 4A, 100 Main."],
+    ["A 1 Plumbing", "Their office is Suite A1 downtown."],
+  ])("brand %s: a letter unit number does not reach Jev", (brand, text) => {
+    expect(withoutContactDetails(text, brand)).not.toMatch(/\d/);
+  });
+
+  it.each([
+    ["24 Hour", "I would contact 24-Hour at 24hour.ca", "24-Hour"],
+    ["Play 2 Learn", "Check out Play2Learn at play2learn.com", "Play2Learn"],
+    ["U Haul", "Reserve U-Haul at uhaul.com", "U-Haul"],
+    ["O'Brien Photography", "Hire O'Brien at obrien.com", "O'Brien"],
+    ["Studio 24 Photography", "Book Studio 24 at studio24.com", "Studio 24"],
+    ["Route 66 Associates", "Try Route 66 at route66.com", "Route 66"],
+    ["Highway 97 Inc", "Reach Highway 97 at highway97.com", "Highway 97"],
+    ["A 1 Plumbing", "Call A1 Plumbing, the locals' pick.", "A1 Plumbing"],
+    [
+      "Play 2 Learn 4 Life",
+      "Play 2 Learn 4 Life at play2learn4life.ca is popular.",
+      "Play 2 Learn 4 Life",
+    ],
+  ])("brand %s: its own spelling before 'at' is kept", (brand, text, kept) => {
+    const sent = withoutContactDetails(text, brand);
+    expect(sent).toContain(kept);
+    expect(sent).not.toMatch(/\.(?:ca|com)\b/);
+  });
+
+  it("still cuts the name part of a spelled email next to the brand", () => {
+    const sent = withoutContactDetails(
+      "Email bookings at play2learn dot com or jen24 at gmail.com",
+      "Play 2 Learn",
+    );
+    expect(sent).not.toMatch(/bookings|jen|gmail|\d/);
+  });
+
   it("keeps the client's own website", () => {
     expect(
       withoutContactDetails(

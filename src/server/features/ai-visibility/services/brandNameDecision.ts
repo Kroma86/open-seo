@@ -157,15 +157,24 @@ export function withoutContactDetails(
   // brand or its start ("Play2Learn", "1800-GOT-JUNK"), a numbered brand word
   // alone or with "s", or with the next brand word abbreviated ("24hr" for
   // "24 Hour"). A token of digits only is never kept here (r5): "24", "18" or
-  // "180" alone could be a house or unit number.
+  // "180" alone could be a house or unit number. The start of the brand
+  // needs 2+ letters (r6): "2B", "24H", "5S", "A1" read as unit numbers
+  // ("A1 Plumbing" is still kept, by the next-word rule below).
   const brandToken = (c: string) => {
     const a = alnum(c);
     if (!a || !/[a-z]/.test(a)) return false;
-    if (a.length >= 2 && brandFull.startsWith(a)) return true;
+    const letters = a.replace(/[^a-z]/g, "").length;
+    if (
+      a.length >= 2 &&
+      brandFull.startsWith(a) &&
+      (letters >= 2 || a === brandFull)
+    )
+      return true;
     return brandWords.some((w) => {
       if (!a.startsWith(w)) return false;
       const rest = a.slice(w.length);
-      if (rest === "" || rest === "s") return true;
+      // a plural "s" only on a brand word with letters: "5S" is a unit (r6)
+      if (rest === "" || (rest === "s" && /[a-z]/.test(w))) return true;
       const next = brandFull
         .slice(brandFull.indexOf(w) + w.length)
         .replace(/^\d+/, "");
@@ -224,12 +233,17 @@ export function withoutContactDetails(
       }
       let first = n - 1;
       while (first > 0 && coreAt(first) === "") first -= 1;
-      // the client's own name words are never cut ("At Home Care ... at
-      // homecare.com" keeps "At Home Care"), r5
+      // the client's own name is never cut: "At Home Care ... at
+      // homecare.com" (r5), "Play2Learn at", "U-Haul at", "O'Brien at",
+      // "Route 66 at" (r6). Its digits still go through the digit rule below.
       if (last > n)
-        for (let k = first; k <= last; k += 1)
-          if (!brandLetters.has(coreAt(k).toLowerCase()))
-            cut.add(words[k] as number);
+        for (let k = first; k <= last; k += 1) {
+          const w = coreAt(k);
+          const ownName =
+            brandLetters.has(w.toLowerCase()) ||
+            (k < n && (brandPieces.includes(alnum(w)) || brandToken(w)));
+          if (!ownName) cut.add(words[k] as number);
+        }
     }
   });
   words.forEach((i, n) => {
@@ -241,6 +255,12 @@ export function withoutContactDetails(
     if (!/\d/.test(token)) return;
     const c = core(i);
     if (SAFE_TERMS.has(c.toLowerCase()) || brandToken(c)) return;
+    // a numbered start of the brand that the next word completes: "A1
+    // Plumbing", "2B Brothers"-style unit numbers do not continue it (r6)
+    const own = alnum(c);
+    const after = alnum(coreAt(n + 1) ?? "");
+    if (/[a-z]/.test(own) && after !== "" && brandFull.startsWith(own + after))
+      return;
     // a spaced numbered brand ("5 Star Plumbing", "A 1 Plumbing",
     // "1 800 FLOWERS"): a brand digit is kept only when a word right next to
     // it is the brand's own neighbour of that digit, so "Unit 4" or
