@@ -108,8 +108,13 @@ async function applyNameGrades(
       website,
       text: row.text,
       askJev: askJevNamed,
-      // The old token matcher stays only for a Jev failure or a full cap.
-      fallbackNamed: textMentionsBrand(row.text, brand),
+      // A Jev failure, full cap or open breaker keeps the old verdict exactly:
+      // the one promptExplorer already stored (citation title or hostname,
+      // then the token matcher), not the token matcher alone (Grok r2).
+      fallbackNamed:
+        typeof row.brandMentioned === "boolean"
+          ? row.brandMentioned
+          : textMentionsBrand(row.text, brand),
       budget,
     });
     row.brandMentioned = grade.named;
