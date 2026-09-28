@@ -1,8 +1,10 @@
 import { fetchExternalAgencyMetrics } from "./externalAgencyMetrics";
 import { parseExternalAiVisibility } from "./externalAiVisibility";
 import { z } from "zod";
+import { formatPromptResultLines } from "@/server/features/ai-visibility/services/aiVisibilityPromptResults";
 import {
   getLatestResults,
+  getPromptResults,
   getTrend,
 } from "@/server/features/ai-visibility/services/aiVisibilityResults";
 import { formatMentionsDisplay } from "@/shared/ai-visibility-mentions";
@@ -31,6 +33,19 @@ const inputSchema = {
     .max(50)
     .optional()
     .describe("Maximum completed runs to return (default 20)."),
+  includePromptResults: z
+    .boolean()
+    .optional()
+    .describe(
+      "When true, also returns promptResults: per tracked question and model, whether the answer named the brand, the citations and the answer text (cut to 1,500 characters). Default false.",
+    ),
+  runId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      "Completed run to read promptResults from. Must belong to this project (and to configId when given). Default: latest completed run. Only used with includePromptResults.",
+    ),
 } as const;
 
 type Args = z.infer<z.ZodObject<typeof inputSchema>>;
@@ -62,10 +77,13 @@ export const getAiVisibilityTrendTool = {
     },
   },
   handler: withMcpProjectAuth(async (args: Args, context) => {
-    const [latest, trend, feed] = await Promise.all([
+    const [latest, trend, feed, promptResults] = await Promise.all([
       getLatestResults(args.projectId, args.configId),
       getTrend(args.projectId, args.configId, args.limit ?? 20),
       fetchExternalAgencyMetrics(context.project.domain),
+      args.includePromptResults
+        ? getPromptResults(args.projectId, args.configId, args.runId)
+        : undefined,
     ]);
 
     const externalObservations = parseExternalAiVisibility(feed.ai, context.project.domain ?? "", new Date());
@@ -82,9 +100,17 @@ export const getAiVisibilityTrendTool = {
           `Trend runs: ${trend.runs.length}`,
         ].join("\n")
       : "AI visibility: not measured yet for this project.";
+    const promptResultsText =
+      promptResults === undefined
+        ? ""
+        : "\n\n" +
+          (promptResults
+            ? formatPromptResultLines(promptResults)
+            : ["Prompt results: not measured yet for this project."]
+          ).join("\n");
 
     return mcpResponse({
-      text: text + `\n\nHermes AI observations: ${externalObservations.status}; ${externalObservations.answers.length} saved ChatGPT answers; measured ${externalObservations.measuredAt ?? "unknown"}; run ${externalObservations.runStatus ?? "unknown"}. ${feed.error ?? externalObservations.note}`,
+      text: text + `\n\nHermes AI observations: ${externalObservations.status}; ${externalObservations.answers.length} saved ChatGPT answers; measured ${externalObservations.measuredAt ?? "unknown"}; run ${externalObservations.runStatus ?? "unknown"}. ${feed.error ?? externalObservations.note}` + promptResultsText,
       meta: buildProjectMeta(
         context,
         args.projectId,
@@ -96,6 +122,8 @@ export const getAiVisibilityTrendTool = {
         latest,
         trend,
         externalObservations,
+        // Key only present on request so the default output stays unchanged.
+        ...(promptResults === undefined ? {} : { promptResults }),
       },
     });
   }),
