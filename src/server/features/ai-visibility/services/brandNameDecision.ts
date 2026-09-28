@@ -140,10 +140,12 @@ export function withoutContactDetails(
 ): string {
   const norm = (v: string) => v.normalize("NFKC").replace(DASHES, "-");
   const brandFull = alnum(norm(brand));
+  // brand pieces, with letters split from digits ("A1" -> "a", "1"), so a
+  // glued brand written spaced ("A 1 Plumbing", "Play 2 Learn") matches (r7)
   const brandPieces = norm(brand)
     .toLowerCase()
     .split(/[^a-z0-9]+/)
-    .filter(Boolean);
+    .flatMap((w) => w.match(/[a-z]+|\d+/g) ?? []);
   const brandDigits = new Set(brandPieces.filter((w) => /^\d+$/.test(w)));
   const brandLetters = new Set(brandPieces.filter((w) => /^[a-z]+$/.test(w)));
   const brandWords = norm(`${brand} ${website}`)
@@ -199,6 +201,20 @@ export function withoutContactDetails(
   const coreAt = (n: number) => core(words[n] as number);
   const isDomain = (c: string) =>
     DOMAIN_LIKE.test(c) && !(site && alnum(c).includes(site));
+  // word n is `piece` and a word right next to it is the brand's own
+  // neighbour of that piece, in brand order ("5 Star", "Photos at the")
+  const besideOwnNeighbour = (n: number, piece: string) => {
+    const prev = alnum(coreAt(n - 1) ?? "");
+    const next = alnum(coreAt(n + 1) ?? "");
+    return brandPieces.some(
+      (p, j) =>
+        p === piece &&
+        ((j > 0 && prev !== "" && brandPieces[j - 1] === prev) ||
+          (j + 1 < brandPieces.length &&
+            next !== "" &&
+            brandPieces[j + 1] === next)),
+    );
+  };
   const cut = new Set<number>();
   words.forEach((i, n) => {
     const token = parts[i] ?? "";
@@ -215,7 +231,7 @@ export function withoutContactDetails(
     if (
       AT_WORD.test(core(i).replace(/^-+|-+$/g, "") || token) &&
       n > 0 &&
-      !brandLetters.has(core(i).toLowerCase())
+      !besideOwnNeighbour(n, core(i).toLowerCase())
     ) {
       let last = -1;
       for (let k = n + 1; k < Math.min(words.length, n + 10); k += 1) {
@@ -240,8 +256,10 @@ export function withoutContactDetails(
         for (let k = first; k <= last; k += 1) {
           const w = coreAt(k);
           const ownName =
-            brandLetters.has(w.toLowerCase()) ||
-            (k < n && (brandPieces.includes(alnum(w)) || brandToken(w)));
+            k < n &&
+            (brandLetters.has(w.toLowerCase()) ||
+              brandPieces.includes(alnum(w)) ||
+              brandToken(w));
           if (!ownName) cut.add(words[k] as number);
         }
     }
@@ -259,25 +277,23 @@ export function withoutContactDetails(
     // Plumbing", "2B Brothers"-style unit numbers do not continue it (r6)
     const own = alnum(c);
     const after = alnum(coreAt(n + 1) ?? "");
-    if (/[a-z]/.test(own) && after !== "" && brandFull.startsWith(own + after))
+    const starts = brandPieces.map((_, j) =>
+      brandPieces.slice(0, j + 1).join(""),
+    );
+    const at = starts.indexOf(own + after);
+    if (
+      /[a-z]/.test(own) &&
+      after !== "" &&
+      at > 0 &&
+      brandPieces[at] === after &&
+      starts.includes(own)
+    )
       return;
     // a spaced numbered brand ("5 Star Plumbing", "A 1 Plumbing",
     // "1 800 FLOWERS"): a brand digit is kept only when a word right next to
     // it is the brand's own neighbour of that digit, so "Unit 4" or
     // "2 Rio Drive" near the name is still cut (r5)
-    if (brandDigits.has(c)) {
-      const prev = alnum(coreAt(n - 1) ?? "");
-      const next = alnum(coreAt(n + 1) ?? "");
-      const inBrand = brandPieces.some(
-        (piece, j) =>
-          piece === c &&
-          ((j > 0 && prev !== "" && brandPieces[j - 1] === prev) ||
-            (j + 1 < brandPieces.length &&
-              next !== "" &&
-              brandPieces[j + 1] === next)),
-      );
-      if (inBrand) return;
-    }
+    if (brandDigits.has(c) && besideOwnNeighbour(n, c)) return;
     const lead = token.match(EDGE_START)?.[0] ?? "";
     const trail = token.match(EDGE_END)?.[0] ?? "";
     parts[i] = `${lead}[number]${trail}`;

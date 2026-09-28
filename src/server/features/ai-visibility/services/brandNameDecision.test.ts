@@ -451,6 +451,59 @@ describe("gradeAnswerName", () => {
     expect(sent).not.toMatch(/bookings|jen|gmail|\d/);
   });
 
+  // Grok 4.7 review r7: next word only the tail of a brand word; a brand
+  // with "at"; a glued brand written spaced.
+  it.each([
+    [
+      "24 Hour Glass",
+      "The workshop is unit 24H. Our staff opens early. Or unit 24-H, our staff.",
+    ],
+    ["3 Sons Plumbing", "They work out of suite 3S on Bernard Avenue."],
+    [
+      "1 Stop Plumbing",
+      "The office is suite 1S. Top reviews mention same-day service.",
+    ],
+    ["1 Call Plumbing", "The shop is unit 1C. All reviews mention speed."],
+  ])(
+    "brand %s: a unit is cut even when the next word ends a brand word",
+    (brand, text) => {
+      expect(withoutContactDetails(text, brand)).not.toMatch(/\d/);
+    },
+  );
+
+  it.each([
+    [
+      "At Home Care",
+      "Email the coordinator at sarah at gmail dot com and they will call you back.",
+    ],
+    ["At Home Care", "Write hello(at)gmail(dot)com for a quote."],
+    [
+      "Eat at Joe's",
+      "You should email them at bob at gmail dot com for a table.",
+    ],
+    ["Photos at the Park", "Photos at the Park: write jen at gmail dot com."],
+  ])("brand %s: a spelled email is still cut", (brand, text) => {
+    expect(withoutContactDetails(text, brand)).not.toMatch(
+      /sarah|hello|bob|jen|gmail/,
+    );
+  });
+
+  it.each([
+    ["Eat at Joe's", "Try Eat at Joe's downtown.", "Eat at Joe's"],
+    [
+      "At Home Care",
+      "Try At Home Care, details at homecare.com today.",
+      "At Home Care",
+    ],
+    ["A1 Plumbing", "I'd recommend A 1 Plumbing for the job.", "A 1 Plumbing"],
+    ["Play2Learn", "Look at Play 2 Learn for toddler classes.", "Play 2 Learn"],
+    ["24Hour Glass", "Book 24 Hour Glass for the storefront.", "24 Hour Glass"],
+    ["H2O Plumbing", "Ask for H 2 O Plumbing on the phone.", "H 2 O Plumbing"],
+    ["A 1 Plumbing", "Call A1 Plumbing, the locals' pick.", "A1 Plumbing"],
+  ])("brand %s: the name as written is kept", (brand, text, kept) => {
+    expect(withoutContactDetails(text, brand)).toContain(kept);
+  });
+
   it("keeps the client's own website", () => {
     expect(
       withoutContactDetails(
