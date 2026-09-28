@@ -5,6 +5,8 @@ import {
   type JevNamedAnswer,
 } from "@/server/features/ai-visibility/services/brandNameDecision";
 
+export const JEV_TIMEOUT_MS = 15_000;
+
 /**
  * One Jev yes/no call. OpenSEO is a Worker, so this uses the Worker's
  * existing OpenRouter key. It does not shell out to the jev command.
@@ -14,6 +16,8 @@ export async function askJevNamed(
   body: JevDecisionBody,
 ): Promise<JevNamedAnswer> {
   const apiKey = await getRequiredEnvValue("OPENROUTER_API_KEY");
+  // A hung call must never stall the weekly run: give up after 15 seconds and
+  // let the caller keep the matcher's answer for this one.
   const response = await fetch(JEV_DECISIONS_URL, {
     method: "POST",
     headers: {
@@ -21,6 +25,7 @@ export async function askJevNamed(
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(JEV_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`jev_http_${response.status}`);
