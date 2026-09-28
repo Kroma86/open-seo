@@ -82,10 +82,14 @@ const DASHES = /[‐-―−]/g;
 const EMAIL =
   /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}/g;
 // A token that is, or hides, an email: "@", "%40", "(at)", "[at]", "{at}", "<at>", "*at*".
-const EMAIL_TOKEN = /@|%40|[([{<*]\s*at\s*[)\]}>*]/i;
-const AT_WORD = /^(?:at|[([{<*]at[)\]}>*])$/i;
-const DOT_WORD = /^(?:\.|dot|[([{<*]dot[)\]}>*])$/i;
+const EMAIL_TOKEN = /@|%40|[-([{<*]\s*at\s*[-)\]}>*]/i;
+const AT_WORD = /^(?:at|[-([{<*]at[-)\]}>*])$/i;
+const DOT_WORD = /^(?:\.|dot|[-([{<*]dot[-)\]}>*])$/i;
 const DOT_TLD_WORD = /^dot(?:com|ca|net|org|info|biz|io|co|us|app|ai)$/i;
+// A web address or domain: "gmail.com", "dept.company.co.uk", ".com",
+// "https://x.ca/a". Cut unless it is the client's own website.
+const DOMAIN_LIKE =
+  /^(?:[a-z][a-z0-9+.-]*:\/\/\S*|[\w.-]*\.[a-z]{2,}(?:[/?#]\S*)?)$/i;
 
 const EDGE_START = /^[([{"'‘“<*]+/;
 const EDGE_END = /[.,;:!?)\]}"'’”>*]+$/;
@@ -103,46 +107,72 @@ const SAFE_TERMS = new Set([
 ]);
 
 const alnum = (w: string) => w.toLowerCase().replace(/[^a-z0-9]/g, "");
+const isSubsequence = (short: string, long: string) => {
+  let j = 0;
+  for (const ch of long) if (ch === short[j]) j += 1;
+  return j === short.length;
+};
 
 /**
  * Jev is never sent contact details (standing rule). The rule is structural,
  * so no number format or email spelling can slip through:
+ * - the text is NFKC-normalised first (fullwidth "＠" and "．" become "@" "."
+ *   and are caught like any other);
  * - every whitespace-separated token that contains a digit becomes [number],
  *   except a few fixed terms (24/7, LGBTQ2S+, COVID-19, B2B) and the client's
- *   own name: a token whose letters and digits start with, or are the start
- *   of, a numbered word of the brand or website ("A1's", "A-1", "24hr",
- *   "1800-GOT-JUNK");
+ *   own numbered name (see brandToken);
  * - every token that holds "@", "%40" or a bracketed "at" becomes [email],
- *   and so do the words on either side of a lone "@";
- * - a spelled address ("info at joes plumbing . com", "jane *at* example
- *   *dot* COM", "... dotcom") is cut from the word before "at" to the end.
- * Over-cutting ordinary numbers (years, prices) is accepted. The text is
- * capped at MAX_JEV_ANSWER_CHARS first. The literal brand check runs on the
- * original text, before this.
+ *   with the words either side of a lone "@";
+ * - every web address or domain becomes [email] unless it is the client's own
+ *   website, and a spelled address (a word, "at", then within 8 words a
+ *   domain, a dot word or "dotcom") is cut from the word before "at" on;
+ * - over-cutting ordinary numbers and links is accepted.
+ * The text is capped at MAX_JEV_ANSWER_CHARS first. The literal brand check
+ * runs on the original text, before this.
  */
 export function withoutContactDetails(
   text: string,
   brand = "",
   website = "",
 ): string {
-  const brandFull = alnum(brand.replace(DASHES, "-"));
-  const brandWords = `${brand} ${website}`
-    .replace(DASHES, "-")
+  const norm = (v: string) => v.normalize("NFKC").replace(DASHES, "-");
+  const brandFull = alnum(norm(brand));
+  const brandPieces = norm(brand)
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  const brandDigits = new Set(brandPieces.filter((w) => /^\d+$/.test(w)));
+  const brandLetters = new Set(brandPieces.filter((w) => /^[a-z]+$/.test(w)));
+  const brandWords = norm(`${brand} ${website}`)
     .split(/\s+/)
     .map(alnum)
     .filter((w) => /\d/.test(w));
-  const isBrandToken = (core: string) => {
-    const a = alnum(core);
+  const site = alnum(
+    website.replace(/^https?:\/\//i, "").replace(/^www\./i, ""),
+  );
+  // The client's own numbered name: the whole brand or its start
+  // ("Play2Learn", "1800-GOT-JUNK"), a numbered brand word alone or with "s",
+  // or with the next brand word abbreviated ("24hr" for "24 Hour").
+  const brandToken = (c: string) => {
+    const a = alnum(c);
     if (!a) return false;
-    if (brandFull.length >= 2 && brandFull.startsWith(a) && a.length >= 2)
-      return true;
-    return brandWords.some(
-      (w) => a === w || (a.startsWith(w) && /^[a-z]+$/.test(a.slice(w.length))),
-    );
+    if (a.length >= 2 && brandFull.startsWith(a)) return true;
+    return brandWords.some((w) => {
+      if (!a.startsWith(w)) return false;
+      const rest = a.slice(w.length);
+      if (rest === "" || rest === "s") return true;
+      const next = brandFull
+        .slice(brandFull.indexOf(w) + w.length)
+        .replace(/^\d+/, "");
+      return (
+        rest.length >= 2 &&
+        /^[a-z]+$/.test(rest) &&
+        rest[0] === next[0] &&
+        isSubsequence(rest, next)
+      );
+    });
   };
-  const parts = text
-    .slice(0, MAX_JEV_ANSWER_CHARS)
-    .replace(DASHES, "-")
+  const parts = norm(text.slice(0, MAX_JEV_ANSWER_CHARS))
     .replace(EMAIL, "[email]")
     .split(/(\s+)/);
   const words: number[] = [];
@@ -151,6 +181,9 @@ export function withoutContactDetails(
   });
   const core = (i: number) =>
     (parts[i] ?? "").replace(EDGE_START, "").replace(EDGE_END, "");
+  const coreAt = (n: number) => core(words[n] as number);
+  const isDomain = (c: string) =>
+    DOMAIN_LIKE.test(c) && !(site && alnum(c).includes(site));
   const cut = new Set<number>();
   words.forEach((i, n) => {
     const token = parts[i] ?? "";
@@ -161,12 +194,14 @@ export function withoutContactDetails(
         if (n + 1 < words.length) cut.add(words[n + 1] as number);
       }
     }
-    // spelled address: a word before "at", up to 8 words, then dot-markers
-    if (AT_WORD.test(core(i)) && n > 0) {
+    if (isDomain(core(i))) cut.add(i);
+    // spelled address: the word before "at", then up to 8 words to a domain,
+    // a dot word (and its label) or a "dotcom" word
+    if (AT_WORD.test(core(i).replace(/^-+|-+$/g, "") || token) && n > 0) {
       let last = -1;
       for (let k = n + 1; k < Math.min(words.length, n + 10); k += 1) {
-        const w = core(words[k] as number);
-        if (DOT_TLD_WORD.test(w)) {
+        const w = coreAt(k);
+        if (DOT_TLD_WORD.test(w) || DOMAIN_LIKE.test(w)) {
           last = k;
           break;
         }
@@ -174,15 +209,16 @@ export function withoutContactDetails(
           DOT_WORD.test(w) ||
           DOT_WORD.test(parts[words[k] as number] ?? "")
         ) {
-          if (k + 1 < words.length) last = k + 1;
-          else last = k;
+          last = Math.min(k + 1, words.length - 1);
         }
       }
+      let first = n - 1;
+      while (first > 0 && coreAt(first) === "") first -= 1;
       if (last > n)
-        for (let k = n - 1; k <= last; k += 1) cut.add(words[k] as number);
+        for (let k = first; k <= last; k += 1) cut.add(words[k] as number);
     }
   });
-  words.forEach((i) => {
+  words.forEach((i, n) => {
     const token = parts[i] ?? "";
     if (cut.has(i)) {
       parts[i] = "[email]";
@@ -190,7 +226,14 @@ export function withoutContactDetails(
     }
     if (!/\d/.test(token)) return;
     const c = core(i);
-    if (SAFE_TERMS.has(c.toLowerCase()) || isBrandToken(c)) return;
+    if (SAFE_TERMS.has(c.toLowerCase()) || brandToken(c)) return;
+    // a spaced numbered brand: "5 Star Plumbing", "A 1 Plumbing", "1 800 FLOWERS"
+    if (brandDigits.has(c) && brandLetters.size > 0) {
+      const near = [n - 2, n - 1, n + 1, n + 2]
+        .filter((k) => k >= 0 && k < words.length)
+        .map((k) => coreAt(k).toLowerCase());
+      if (near.some((w) => brandLetters.has(w))) return;
+    }
     const lead = token.match(EDGE_START)?.[0] ?? "";
     const trail = token.match(EDGE_END)?.[0] ?? "";
     parts[i] = `${lead}[number]${trail}`;
