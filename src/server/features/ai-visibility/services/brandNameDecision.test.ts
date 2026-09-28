@@ -306,6 +306,66 @@ describe("gradeAnswerName", () => {
     expect(withoutContactDetails(text, brand)).toContain(kept);
   });
 
+  // Grok 4.7 review r4: spelled emails whose domain stays in one token,
+  // fullwidth characters, units that start with a brand number, vanity numbers.
+  it.each([
+    ["Email jane.smith at gmail.com for a quote.", /jane|gmail/],
+    ["ping sam at dept.company.co.uk please", /sam|company/],
+    ["info at joesplumbing .com", /joesplumbing|\.com/],
+    ["Contact info (at) joesplumbing.com today.", /joesplumbing/],
+    ["Write to sales [at] example.com please.", /example/],
+    ["office *at* citytowing.net thanks", /citytowing/],
+    ["user %40 example.com", /example/],
+    ["Email sales { at } joesplumbing.com for a quote", /joesplumbing/],
+    ["Email info -at- joesplumbing.com for a quote", /joesplumbing/],
+    ["Email info\uff20joesplumbing.com for a quote", /joesplumbing/],
+    ["info at joesplumbing\uff0ecom today", /joesplumbing/],
+  ])("no email reaches Jev from %s", (text, leak) => {
+    expect(withoutContactDetails(text, "Joe's Plumbing")).not.toMatch(leak);
+  });
+
+  it.each([
+    ["24 Hour Towing", "The yard is unit 24B on Main."],
+    ["24 Hour Towing", "Suite 24-B is the office."],
+    ["12 Oaks Dental", "apartment 12B"],
+    ["1-800 GOT JUNK", "Dial 1-800-CALL-NOW now."],
+    ["1-800 GOT JUNK", "Don't call 1-800-FLOWERS today."],
+  ])(
+    "brand %s does not let a unit or vanity number through: %s",
+    (brand, text) => {
+      expect(withoutContactDetails(text, brand)).not.toMatch(/\d/);
+    },
+  );
+
+  it.each([
+    ["7-Eleven", "7 Eleven is the one.", "7 Eleven"],
+    ["1-800-FLOWERS", "Order from 1 800 FLOWERS.", "1 800 FLOWERS"],
+    ["5-Star Plumbing", "I'd call 5 Star Plumbing.", "5 Star Plumbing"],
+    ["A-1 Plumbing", "Try A 1 Plumbing.", "A 1 Plumbing"],
+    [
+      "Play 2 Learn 4 Life",
+      "Play2Learn4Life runs OT groups.",
+      "Play2Learn4Life",
+    ],
+    [
+      "Play 2 Learn 4 Life",
+      "Play 2 Learn 4 Life runs OT groups.",
+      "Play 2 Learn 4 Life",
+    ],
+  ])("keeps a spaced or joined numbered brand %s", (brand, text, kept) => {
+    expect(withoutContactDetails(text, brand)).toContain(kept);
+  });
+
+  it("keeps the client's own website", () => {
+    expect(
+      withoutContactDetails(
+        "See truewoodstimber.com/about for tables.",
+        "Truewoods",
+        "truewoodstimber.com",
+      ),
+    ).toContain("truewoodstimber.com/about");
+  });
+
   it("does not keep a phone number just because the brand starts with its digits", () => {
     expect(
       withoutContactDetails("Call 240-555-1234 now.", "24 Hour Towing"),
