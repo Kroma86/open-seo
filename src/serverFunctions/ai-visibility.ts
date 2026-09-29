@@ -143,6 +143,9 @@ export const triggerAiVisibilityCheck = createServerFn({ method: "POST" })
   .middleware(requireProjectContext)
   .validator(runAiVisibilityCheckSchema)
   .handler(async ({ data, context }) => {
+    // trigger "manual" only inserts a pending row and returns. The scheduled
+    // checker finishes the job. Do not await the DataForSEO work here: a
+    // request cut off at 60 seconds used to leave the run stuck on "running".
     const result = await runAiVisibilityCheck({
       configId: data.configId,
       projectId: context.projectId,

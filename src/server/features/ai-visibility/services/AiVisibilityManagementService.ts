@@ -169,10 +169,7 @@ async function removePrompt(
   promptId: string,
 ) {
   await getValidatedConfig(configId, projectId);
-  const removed = await AiVisibilityRepository.removePrompt(
-    promptId,
-    configId,
-  );
+  const removed = await AiVisibilityRepository.removePrompt(promptId, configId);
   if (!removed) {
     throw new AppError("NOT_FOUND", "Prompt not found");
   }
@@ -276,5 +273,5 @@ export const AiVisibilityManagementService = {
 export type AiVisibilityCheckTrigger = "manual" | "scheduled";
 
 export type AiVisibilityCheckTriggerResult =
-  | { ok: true; runId: string; outcome: "completed" | "reclaimed" }
+  | { ok: true; runId: string; outcome: "completed" | "reclaimed" | "queued" }
   | { ok: false; reason: "already_running"; blockingRunId: string | null };

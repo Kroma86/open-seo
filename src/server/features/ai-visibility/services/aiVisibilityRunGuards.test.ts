@@ -57,6 +57,21 @@ describe("beginAiVisibilityRun", () => {
     );
   });
 
+  it("records a manual trigger so the scheduled checker can find the row", async () => {
+    mocks.tryCreateRun.mockResolvedValue(true);
+
+    await beginAiVisibilityRun({
+      configId: "config_1",
+      projectId: "project_1",
+      promptSetVersion: 2,
+      trigger: "manual",
+    });
+
+    expect(mocks.tryCreateRun).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: "manual" }),
+    );
+  });
+
   it("rejects a second in-flight run via the repository guard", async () => {
     mocks.tryCreateRun.mockResolvedValue(false);
     mocks.getActiveRunForConfig.mockResolvedValue({

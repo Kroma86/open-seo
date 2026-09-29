@@ -33,7 +33,16 @@ function notMeasuredLatest(): AiVisibilityLatestResults {
     fetchedAt: null,
     config: null,
     latestRun: null,
+    activeRun: null,
   };
+}
+
+function activeRunSummary(
+  run: { id: string; status: string } | null,
+): AiVisibilityLatestResults["activeRun"] {
+  if (!run) return null;
+  if (run.status !== "pending" && run.status !== "running") return null;
+  return { id: run.id, status: run.status };
 }
 
 function computeDelta(
@@ -84,10 +93,12 @@ export async function getLatestResults(
   const config = await resolveConfig(projectId, configId);
   if (!config) return notMeasuredLatest();
 
-  const [prompts, latestRun] = await Promise.all([
+  const [prompts, latestRun, inFlight] = await Promise.all([
     AiVisibilityRepository.getPromptsForConfig(config.id),
     AiVisibilityRepository.getLatestCompletedRunForConfig(config.id),
+    AiVisibilityRepository.getActiveRunForConfig(config.id),
   ]);
+  const activeRun = activeRunSummary(inFlight);
 
   if (!latestRun) {
     return {
@@ -108,6 +119,7 @@ export async function getLatestResults(
         })),
       },
       latestRun: null,
+      activeRun,
     };
   }
 
@@ -143,6 +155,7 @@ export async function getLatestResults(
       costNote: latestRun.costNote,
       error: latestRun.error,
     },
+    activeRun,
   };
 }
 

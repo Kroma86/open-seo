@@ -77,6 +77,7 @@ function latest(
       costNote: null,
       error: null,
     },
+    activeRun: null,
     ...overrides,
   };
 }
@@ -277,6 +278,7 @@ describe("buildPortfolioVisibilityRow", () => {
         fetchedAt: null,
         config: latest().config,
         latestRun: null,
+        activeRun: null,
       },
       now: NOW,
       generatedAt: GENERATED_AT,
@@ -392,9 +394,7 @@ describe("buildPortfolioVisibilitySnapshot", () => {
     expect(snapshot.rows.map((row) => row.projectId)).toEqual(
       projects.map((p) => p.id),
     );
-    expect(
-      snapshot.rows.filter((row) => row.status === "ok"),
-    ).toHaveLength(37);
+    expect(snapshot.rows.filter((row) => row.status === "ok")).toHaveLength(37);
     expect(
       snapshot.rows.find((row) => row.projectId === "proj_07")?.status,
     ).toBe("no_config");

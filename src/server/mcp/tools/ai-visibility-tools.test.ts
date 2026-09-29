@@ -26,9 +26,12 @@ vi.mock("@/server/features/ai-visibility/services/aiVisibilityResults", () => ({
   getLatestResults: mocks.getLatestResults,
   getTrend: mocks.getTrend,
 }));
-vi.mock("@/server/features/ai-visibility/services/runAiVisibilityCheck", () => ({
-  runAiVisibilityCheck: mocks.runAiVisibilityCheck,
-}));
+vi.mock(
+  "@/server/features/ai-visibility/services/runAiVisibilityCheck",
+  () => ({
+    runAiVisibilityCheck: mocks.runAiVisibilityCheck,
+  }),
+);
 vi.mock("@/server/lib/posthog", () => ({
   captureServerEvent: mocks.captureServerEvent,
 }));
@@ -75,8 +78,12 @@ describe("ai visibility MCP tools", () => {
     expect(mocks.getTrend).toHaveBeenCalledTimes(1);
   });
 
-  it("run tool starts a check", async () => {
-    mocks.runAiVisibilityCheck.mockResolvedValue({ ok: true, runId: "run_1" });
+  it("run tool queues a check and returns without saying it finished", async () => {
+    mocks.runAiVisibilityCheck.mockResolvedValue({
+      ok: true,
+      runId: "run_1",
+      outcome: "queued",
+    });
 
     const parsed = z.object(runAiVisibilityCheckTool.config.inputSchema).parse({
       projectId,
@@ -84,7 +91,10 @@ describe("ai visibility MCP tools", () => {
     });
     const result = await runAiVisibilityCheckTool.handler(parsed, toolContext);
 
-    expect(mocks.runAiVisibilityCheck).toHaveBeenCalledTimes(1);
-    expect(textContent(result)).toContain("run_1");
+    expect(mocks.runAiVisibilityCheck).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: "manual" }),
+    );
+    expect(textContent(result)).toContain("queued");
+    expect(textContent(result)).not.toContain("completed");
   });
 });

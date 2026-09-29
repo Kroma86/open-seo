@@ -33,6 +33,7 @@ export async function beginAiVisibilityRun(input: {
   configId: string;
   projectId: string;
   promptSetVersion: number;
+  trigger?: AiVisibilityCheckTrigger;
 }): Promise<
   | { ok: true; runId: string }
   | Extract<AiVisibilityCheckTriggerResult, { ok: false }>
@@ -45,6 +46,7 @@ export async function beginAiVisibilityRun(input: {
     configId: input.configId,
     projectId: input.projectId,
     promptSetVersion: input.promptSetVersion,
+    ...(input.trigger ? { trigger: input.trigger } : {}),
   });
 
   if (created) {

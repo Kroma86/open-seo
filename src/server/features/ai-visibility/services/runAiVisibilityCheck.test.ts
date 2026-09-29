@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { runAiVisibilityCheck } from "./runAiVisibilityCheck";
+import {
+  executeQueuedAiVisibilityRun,
+  runAiVisibilityCheck,
+} from "./runAiVisibilityCheck";
 
 const mocks = vi.hoisted(() => ({
   getValidatedConfig: vi.fn(),
@@ -92,9 +95,7 @@ describe("runAiVisibilityCheck", () => {
       resolvedTarget: "acme.com",
       fetchedAt: new Date().toISOString(),
       hasData: true,
-      perPlatform: [
-        { platform: "google", mentions: 5, impressions: null },
-      ],
+      perPlatform: [{ platform: "google", mentions: 5, impressions: null }],
       topPages: [],
       shareOfVoice: null,
     });
@@ -115,10 +116,13 @@ describe("runAiVisibilityCheck", () => {
       configId: "config_1",
       projectId: "project_1",
       billingCustomer,
-      trigger: "manual",
+      trigger: "scheduled",
     });
 
     expect(mocks.explorePrompt).not.toHaveBeenCalled();
+    expect(mocks.beginAiVisibilityRun).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: "scheduled" }),
+    );
     const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
       (call) => call[1]?.status === "completed",
     );
@@ -173,7 +177,7 @@ describe("runAiVisibilityCheck", () => {
       configId: "config_1",
       projectId: "project_1",
       billingCustomer,
-      trigger: "manual",
+      trigger: "scheduled",
     });
 
     const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
@@ -194,7 +198,7 @@ describe("runAiVisibilityCheck", () => {
       configId: "config_1",
       projectId: "project_1",
       billingCustomer,
-      trigger: "manual",
+      trigger: "scheduled",
     });
 
     expect(mocks.updateConfig).not.toHaveBeenCalled();
@@ -225,7 +229,7 @@ describe("runAiVisibilityCheck", () => {
       configId: "config_1",
       projectId: "project_1",
       billingCustomer,
-      trigger: "manual",
+      trigger: "scheduled",
     });
 
     const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
@@ -274,7 +278,7 @@ describe("runAiVisibilityCheck", () => {
       configId: "config_1",
       projectId: "project_1",
       billingCustomer,
-      trigger: "manual",
+      trigger: "scheduled",
     });
 
     const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
@@ -324,7 +328,7 @@ describe("runAiVisibilityCheck", () => {
       configId: "config_1",
       projectId: "project_1",
       billingCustomer,
-      trigger: "manual",
+      trigger: "scheduled",
     });
 
     const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
@@ -333,5 +337,56 @@ describe("runAiVisibilityCheck", () => {
     expect(completedUpdate?.[1]?.costNote).toBe(
       "brand lookup cache/paid uncertain; 1 prompt check(s): cache/paid uncertain",
     );
+  });
+
+  it("manual start queues and returns before any paid call or running status", async () => {
+    const result = await runAiVisibilityCheck({
+      configId: "config_1",
+      projectId: "project_1",
+      billingCustomer,
+      trigger: "manual",
+    });
+
+    expect(result).toEqual({ ok: true, runId: "run_1", outcome: "queued" });
+    expect(mocks.beginAiVisibilityRun).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: "manual" }),
+    );
+    expect(mocks.getBrandLookup).not.toHaveBeenCalled();
+    expect(mocks.explorePrompt).not.toHaveBeenCalled();
+    expect(mocks.updateRunIfInFlight).not.toHaveBeenCalled();
+  });
+
+  it("a stopped manual request cannot leave the run running", async () => {
+    // The request's only job is the queue call. Abandoning it after that
+    // returns does not mark the row running; the scheduled checker does.
+    const result = await runAiVisibilityCheck({
+      configId: "config_1",
+      projectId: "project_1",
+      billingCustomer,
+      trigger: "manual",
+    });
+    expect(result.ok).toBe(true);
+    const runningUpdate = mocks.updateRunIfInFlight.mock.calls.find(
+      (call) => call[1]?.status === "running",
+    );
+    expect(runningUpdate).toBeUndefined();
+  });
+
+  it("the scheduled checker finishes a queued run on the same execution path", async () => {
+    mocks.getActivePromptsForConfig.mockResolvedValue([]);
+    const outcome = await executeQueuedAiVisibilityRun({
+      runId: "run_1",
+      configId: "config_1",
+      projectId: "project_1",
+      billingCustomer,
+    });
+
+    expect(outcome).toBe("completed");
+    expect(mocks.updateRunIfInFlight).toHaveBeenCalledWith(
+      "run_1",
+      expect.objectContaining({ status: "running" }),
+      { requireRunning: false },
+    );
+    expect(mocks.getBrandLookup).toHaveBeenCalledTimes(1);
   });
 });
