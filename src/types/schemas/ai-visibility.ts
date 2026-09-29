@@ -108,6 +108,11 @@ export type AiVisibilityLatestResults = {
     costNote: string | null;
     error: string | null;
   } | null;
+  /** Queued or running check, if one exists. Null when nothing is in flight. */
+  activeRun: {
+    id: string;
+    status: "pending" | "running";
+  } | null;
 };
 
 export type AiVisibilityTrendPoint = {
@@ -137,4 +142,5 @@ export type AiVisibilityTrend = {
   runs: AiVisibilityTrendPoint[];
 };
 
-export const MAX_ACTIVE_PROMPTS_PER_CONFIG_EXPORT = MAX_ACTIVE_PROMPTS_PER_CONFIG;
+export const MAX_ACTIVE_PROMPTS_PER_CONFIG_EXPORT =
+  MAX_ACTIVE_PROMPTS_PER_CONFIG;

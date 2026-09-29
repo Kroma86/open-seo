@@ -13,11 +13,16 @@ type DueConfigRow = {
 };
 
 const mocks = vi.hoisted(() => ({
-  getDueConfigsWithOrganization: vi.fn<(nowIso: string) => Promise<DueConfigRow[]>>(),
+  getDueConfigsWithOrganization:
+    vi.fn<(nowIso: string) => Promise<DueConfigRow[]>>(),
   getActivePromptsForConfig: vi.fn(),
   claimDueConfig: vi.fn(),
   updateConfig: vi.fn(),
+  listQueuedManualRuns: vi.fn(),
+  getRunById: vi.fn(),
+  updateRunIfInFlight: vi.fn(),
   runAiVisibilityCheck: vi.fn(),
+  executeQueuedAiVisibilityRun: vi.fn(),
   customerHasPaidPlan: vi.fn(),
   isHostedServerAuthMode: vi.fn(),
 }));
@@ -31,15 +36,25 @@ vi.mock(
       getActivePromptsForConfig: mocks.getActivePromptsForConfig,
       claimDueConfig: mocks.claimDueConfig,
       updateConfig: mocks.updateConfig,
+      listQueuedManualRuns: mocks.listQueuedManualRuns,
+      getRunById: mocks.getRunById,
+      updateRunIfInFlight: mocks.updateRunIfInFlight,
     },
   }),
 );
-vi.mock("@/server/features/ai-visibility/services/aiVisibilityReconciler", () => ({
-  reconcileStaleAiVisibilityRuns: vi.fn().mockResolvedValue(undefined),
-}));
-vi.mock("@/server/features/ai-visibility/services/runAiVisibilityCheck", () => ({
-  runAiVisibilityCheck: mocks.runAiVisibilityCheck,
-}));
+vi.mock(
+  "@/server/features/ai-visibility/services/aiVisibilityReconciler",
+  () => ({
+    reconcileStaleAiVisibilityRuns: vi.fn().mockResolvedValue(undefined),
+  }),
+);
+vi.mock(
+  "@/server/features/ai-visibility/services/runAiVisibilityCheck",
+  () => ({
+    runAiVisibilityCheck: mocks.runAiVisibilityCheck,
+    executeQueuedAiVisibilityRun: mocks.executeQueuedAiVisibilityRun,
+  }),
+);
 vi.mock("@/server/billing/subscription", () => ({
   customerHasPaidPlan: mocks.customerHasPaidPlan,
 }));
@@ -63,9 +78,8 @@ function dueConfig(overrides: Partial<DueConfigRow> = {}): DueConfigRow {
 }
 
 async function runTick() {
-  const { runScheduledAiVisibilityChecks } = await import(
-    "./scheduledAiVisibilityChecks"
-  );
+  const { runScheduledAiVisibilityChecks } =
+    await import("./scheduledAiVisibilityChecks");
   await runScheduledAiVisibilityChecks({} as Env);
 }
 
@@ -82,6 +96,10 @@ describe("runScheduledAiVisibilityChecks", () => {
       { id: "prompt_1", prompt: "best tools" },
     ]);
     mocks.getDueConfigsWithOrganization.mockResolvedValue([]);
+    mocks.listQueuedManualRuns.mockResolvedValue([]);
+    mocks.executeQueuedAiVisibilityRun.mockResolvedValue("completed");
+    mocks.getRunById.mockResolvedValue({ id: "run_q", status: "pending" });
+    mocks.updateRunIfInFlight.mockResolvedValue(true);
   });
 
   it("makes zero engine calls when nothing is due", async () => {
@@ -129,5 +147,73 @@ describe("runScheduledAiVisibilityChecks", () => {
       }),
     );
     vi.useRealTimers();
+  });
+
+  it("finishes a queued manual run on the scheduled checker without moving the schedule", async () => {
+    mocks.listQueuedManualRuns.mockResolvedValue([
+      {
+        id: "run_q",
+        configId: "config_1",
+        projectId: "project_1",
+        organizationId: "org_1",
+      },
+    ]);
+
+    await runTick();
+
+    expect(mocks.runAiVisibilityCheck).not.toHaveBeenCalled();
+    expect(mocks.claimDueConfig).not.toHaveBeenCalled();
+    expect(mocks.executeQueuedAiVisibilityRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "run_q",
+        configId: "config_1",
+        projectId: "project_1",
+        billingCustomer: expect.objectContaining({ organizationId: "org_1" }),
+      }),
+    );
+  });
+
+  it("a failed queued run does not leave the row running or shift nextRunAt", async () => {
+    mocks.listQueuedManualRuns.mockResolvedValue([
+      {
+        id: "run_q",
+        configId: "config_1",
+        projectId: "project_1",
+        organizationId: "org_1",
+      },
+    ]);
+    mocks.executeQueuedAiVisibilityRun.mockRejectedValue(
+      new Error("upstream failed"),
+    );
+
+    await runTick();
+
+    expect(mocks.claimDueConfig).not.toHaveBeenCalled();
+    expect(mocks.updateRunIfInFlight).not.toHaveBeenCalledWith(
+      "run_q",
+      expect.objectContaining({ status: "running" }),
+      expect.anything(),
+    );
+  });
+
+  it("does not start a paid queued run when the plan check says free", async () => {
+    mocks.customerHasPaidPlan.mockResolvedValue(false);
+    mocks.listQueuedManualRuns.mockResolvedValue([
+      {
+        id: "run_q",
+        configId: "config_1",
+        projectId: "project_1",
+        organizationId: "org_1",
+      },
+    ]);
+
+    await runTick();
+
+    expect(mocks.executeQueuedAiVisibilityRun).not.toHaveBeenCalled();
+    expect(mocks.updateRunIfInFlight).toHaveBeenCalledWith(
+      "run_q",
+      expect.objectContaining({ status: "failed" }),
+      { requireRunning: false },
+    );
   });
 });

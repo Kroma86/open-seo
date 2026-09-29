@@ -57,6 +57,7 @@ function AiVisibilityPageInner({
       getAiVisibilityTracking({
         data: { projectId, configId: activeConfigId },
       }),
+    refetchInterval: (query) => (query.state.data?.activeRun ? 10_000 : false),
   });
 
   // Same explicit config as the latest-results query: the service refuses to
@@ -193,13 +194,30 @@ function AiVisibilityPageInner({
                 disabled={
                   blockedByPlan ||
                   runCheck.isPending ||
+                  latest?.activeRun != null ||
                   config.prompts.filter((row) => row.isActive).length === 0
                 }
                 onClick={() => runCheck.mutate(config.id)}
               >
-                Run check now
+                {latest?.activeRun?.status === "running"
+                  ? "Check running"
+                  : latest?.activeRun
+                    ? "Check queued"
+                    : "Run check now"}
               </button>
             </div>
+            {latest?.activeRun?.status === "pending" ? (
+              <p className="text-sm text-base-content/70">
+                Queued. The scheduled checker picks this up on its next pass
+                (about every 5 minutes) and finishes it in the background. This
+                page looks again every few seconds.
+              </p>
+            ) : latest?.activeRun ? (
+              <p className="text-sm text-base-content/70">
+                Running in the background. This page looks again every few
+                seconds.
+              </p>
+            ) : null}
 
             {latest?.measured && latest.latestRun ? (
               <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">

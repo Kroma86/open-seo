@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getPromptsForConfig: vi.fn(),
   getLatestCompletedRunForConfig: vi.fn(),
   getCompletedRunsForConfig: vi.fn(),
+  getActiveRunForConfig: vi.fn(),
 }));
 
 vi.mock(
@@ -38,6 +39,7 @@ describe("aiVisibilityResults", () => {
     mocks.getConfigsForProject.mockResolvedValue([config]);
     mocks.getConfigById.mockResolvedValue(config);
     mocks.getPromptsForConfig.mockResolvedValue([]);
+    mocks.getActiveRunForConfig.mockResolvedValue(null);
   });
 
   it("refuses to pick a config silently when the project has more than one", async () => {
@@ -88,6 +90,21 @@ describe("aiVisibilityResults", () => {
       fetchedAt: null,
       config: expect.objectContaining({ id: "config_1" }),
       latestRun: null,
+      activeRun: null,
+    });
+  });
+
+  it("reports a queued run without pretending it has finished", async () => {
+    mocks.getLatestCompletedRunForConfig.mockResolvedValue(null);
+    mocks.getActiveRunForConfig.mockResolvedValue({
+      id: "run_queued",
+      status: "pending",
+    });
+
+    await expect(getLatestResults("project_1")).resolves.toMatchObject({
+      measured: false,
+      latestRun: null,
+      activeRun: { id: "run_queued", status: "pending" },
     });
   });
 

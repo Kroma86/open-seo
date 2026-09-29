@@ -597,6 +597,12 @@ export const aiVisibilityRuns = sqliteTable(
     shareOfVoicePct: real("share_of_voice_pct"),
     promptsWithBrand: integer("prompts_with_brand"),
     promptsChecked: integer("prompts_checked"),
+    // "manual" means a person or API client only queued the row. The scheduled
+    // checker is what moves it to running. "scheduled" means that checker
+    // created the row and is finishing it in the same tick. Null on older rows.
+    trigger: text("trigger", {
+      enum: ["manual", "scheduled"],
+    }),
     // JSON blob of per-platform outcome + citations snapshot.
     detail: text("detail"),
     costNote: text("cost_note"),

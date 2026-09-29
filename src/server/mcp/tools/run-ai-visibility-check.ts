@@ -23,7 +23,7 @@ export const runAiVisibilityCheckTool = {
   config: {
     title: "Run AI visibility check",
     description:
-      "Explicitly run a tracked AI visibility check now: one DataForSEO brand lookup plus one prompt-explorer call per active tracked prompt. Spends DataForSEO credits on cache miss; cached brand lookups (24h) and prompt responses (7d) reduce cost. Hosted accounts require a paid plan. If a check is already in progress, reports the blocking run without starting another paid run.",
+      "Queue a tracked AI visibility check and return immediately. The same background checker that runs scheduled checks finishes it (one DataForSEO brand lookup plus one prompt-explorer call per active tracked prompt). This call does not wait and does not spend credits; the checker spends DataForSEO credits when it runs the job. Cached brand lookups (24h) and prompt responses (7d) reduce that cost. Hosted accounts require a paid plan. If a check is already queued or running, reports the blocking run and does not start another.",
     inputSchema,
     outputSchema: z
       .object({
@@ -74,6 +74,19 @@ export const runAiVisibilityCheckTool = {
         },
       }),
     );
+
+    if (result.outcome === "queued") {
+      return mcpResponse({
+        text: `AI visibility check ${result.runId} is queued for config ${args.configId}. This call returned without waiting, and the run is not left running if the call is cut off. The scheduled checker (about every 5 minutes) finishes it on the same path as scheduled checks. Read results later with get_ai_visibility_trend.`,
+        meta: buildProjectMeta(context, args.projectId, path),
+        structuredContent: {
+          configId: args.configId,
+          started: true,
+          runId: result.runId,
+          outcome: "queued",
+        },
+      });
+    }
 
     if (result.outcome === "reclaimed") {
       return mcpResponse({

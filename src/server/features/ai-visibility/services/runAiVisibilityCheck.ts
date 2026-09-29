@@ -234,6 +234,27 @@ async function executeRun(input: {
   return "completed";
 }
 
+/**
+ * Finish one already-queued run. This is the body scheduled checks use.
+ * A manual request must not call it: the scheduled checker does, after the
+ * request has already returned.
+ */
+export async function executeQueuedAiVisibilityRun(input: {
+  runId: string;
+  configId: string;
+  projectId: string;
+  billingCustomer: BillingCustomerContext;
+}): Promise<"completed" | "reclaimed"> {
+  try {
+    return await executeRun(input);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "AI visibility check failed";
+    await failRunIfActive(input.runId, message);
+    throw error;
+  }
+}
+
 export async function runAiVisibilityCheck(input: {
   configId: string;
   projectId: string;
@@ -253,21 +274,22 @@ export async function runAiVisibilityCheck(input: {
     configId: input.configId,
     projectId: input.projectId,
     promptSetVersion: config.promptSetVersion,
+    trigger: input.trigger,
   });
   if (!begin.ok) return begin;
 
-  try {
-    const outcome = await executeRun({
-      runId: begin.runId,
-      configId: input.configId,
-      projectId: input.projectId,
-      billingCustomer: input.billingCustomer,
-    });
-    return { ok: true, runId: begin.runId, outcome };
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "AI visibility check failed";
-    await failRunIfActive(begin.runId, message);
-    throw error;
+  // A hand start only leaves a pending row. The request returns before any
+  // paid call and before the row can become "running", so a 60-second cutoff
+  // cannot abandon a running check. The scheduled checker finishes it.
+  if (input.trigger === "manual") {
+    return { ok: true, runId: begin.runId, outcome: "queued" };
   }
+
+  const outcome = await executeQueuedAiVisibilityRun({
+    runId: begin.runId,
+    configId: input.configId,
+    projectId: input.projectId,
+    billingCustomer: input.billingCustomer,
+  });
+  return { ok: true, runId: begin.runId, outcome };
 }

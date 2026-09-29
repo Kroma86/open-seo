@@ -17,6 +17,10 @@ import {
   aiVisibilityRuns,
   projects,
 } from "@/db/schema";
+import {
+  listQueuedManualRuns,
+  tryCreateRun,
+} from "@/server/features/ai-visibility/repositories/aiVisibilityRunQueue";
 import { MAX_ACTIVE_PROMPTS_PER_CONFIG } from "@/shared/ai-visibility";
 
 const DUE_CONFIGS_PER_TICK = 500;
@@ -68,7 +72,9 @@ async function getConfigByProjectBrand(projectId: string, brand: string) {
   return rows[0] ?? null;
 }
 
-async function createConfig(data: InferInsertModel<typeof aiVisibilityConfigs>) {
+async function createConfig(
+  data: InferInsertModel<typeof aiVisibilityConfigs>,
+) {
   await db.insert(aiVisibilityConfigs).values(data);
 }
 
@@ -144,20 +150,6 @@ async function claimDueConfig(input: {
     )
     .returning({ id: aiVisibilityConfigs.id });
   return claimed.length > 0;
-}
-
-async function tryCreateRun(data: {
-  id: string;
-  configId: string;
-  projectId: string;
-  promptSetVersion: number;
-}) {
-  const inserted = await db
-    .insert(aiVisibilityRuns)
-    .values({ ...data, status: "pending" })
-    .onConflictDoNothing()
-    .returning({ id: aiVisibilityRuns.id });
-  return Boolean(inserted[0]);
 }
 
 async function updateRun(
@@ -331,7 +323,11 @@ async function addPromptRespectingCap(data: {
   const promptId = inserted[0]?.id;
   if (!promptId) return { ok: false, reason: "duplicate" };
 
-  const repaired = await repairActivePromptCap(data.configId, promptId, "insert");
+  const repaired = await repairActivePromptCap(
+    data.configId,
+    promptId,
+    "insert",
+  );
   if (repaired === "cap") return { ok: false, reason: "cap" };
   return { ok: true, promptId };
 }
@@ -417,6 +413,7 @@ export const AiVisibilityRepository = {
   getDueConfigsWithOrganization,
   claimDueConfig,
   tryCreateRun,
+  listQueuedManualRuns,
   updateRun,
   updateRunIfInFlight,
   getRunById,

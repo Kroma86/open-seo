@@ -77,6 +77,7 @@ beforeAll(async () => {
       detail TEXT,
       cost_note TEXT,
       error TEXT,
+      "trigger" TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE UNIQUE INDEX ai_visibility_runs_one_inflight_idx
@@ -125,6 +126,48 @@ describe("AiVisibilityRepository queries", () => {
       "2026-02-01T00:00:00.000Z",
     );
     expect(due.map((row) => row.id)).toEqual(["config_1"]);
+  });
+
+  it("lists a pending manual row and ignores a scheduled pending row", async () => {
+    await client.execute(`
+      INSERT INTO ai_visibility_configs (
+        id, project_id, brand, schedule_interval, next_run_at, is_active
+      ) VALUES (
+        'config_2', 'project_1', 'ScheduledCo', 'weekly', '2026-03-01T00:00:00.000Z', 1
+      );
+    `);
+    const queued = await AiVisibilityRepository.tryCreateRun({
+      id: "run_manual",
+      configId: "config_1",
+      projectId: "project_1",
+      promptSetVersion: 1,
+      trigger: "manual",
+    });
+    const scheduled = await AiVisibilityRepository.tryCreateRun({
+      id: "run_scheduled",
+      configId: "config_2",
+      projectId: "project_1",
+      promptSetVersion: 1,
+      trigger: "scheduled",
+    });
+    expect(queued).toBe(true);
+    expect(scheduled).toBe(true);
+
+    const stored = await client.execute(
+      `SELECT status, "trigger" AS run_trigger FROM ai_visibility_runs WHERE id = 'run_manual'`,
+    );
+    expect(stored.rows[0]).toMatchObject({
+      status: "pending",
+      run_trigger: "manual",
+    });
+
+    const listed = await AiVisibilityRepository.listQueuedManualRuns(10);
+    expect(listed.map((row) => row.id)).toEqual(["run_manual"]);
+    expect(listed[0]).toMatchObject({
+      configId: "config_1",
+      projectId: "project_1",
+      organizationId: "org_1",
+    });
   });
 
   it("blocks a second in-flight run for the same config", async () => {
@@ -216,9 +259,9 @@ describe("AiVisibilityRepository queries", () => {
     ]);
     const outcomes = [raceFirst, raceSecond];
     expect(outcomes.filter((row) => row.ok)).toHaveLength(1);
-    expect(outcomes.filter((row) => !row.ok && row.reason === "cap")).toHaveLength(
-      1,
-    );
+    expect(
+      outcomes.filter((row) => !row.ok && row.reason === "cap"),
+    ).toHaveLength(1);
     expect(
       await AiVisibilityRepository.countActivePromptsForConfig("config_1"),
     ).toBe(10);
@@ -239,9 +282,8 @@ describe("AiVisibilityRepository queries", () => {
       args: [staleStarted, staleStarted],
     });
 
-    const { reclaimStaleRunsForConfig } = await import(
-      "../services/aiVisibilityReconciler"
-    );
+    const { reclaimStaleRunsForConfig } =
+      await import("../services/aiVisibilityReconciler");
     await reclaimStaleRunsForConfig("config_1");
 
     const created = await AiVisibilityRepository.tryCreateRun({
@@ -268,9 +310,8 @@ describe("AiVisibilityRepository queries", () => {
       args: [recentStarted, recentStarted],
     });
 
-    const { reclaimStaleRunsForConfig } = await import(
-      "../services/aiVisibilityReconciler"
-    );
+    const { reclaimStaleRunsForConfig } =
+      await import("../services/aiVisibilityReconciler");
     await reclaimStaleRunsForConfig("config_1");
 
     const created = await AiVisibilityRepository.tryCreateRun({
@@ -297,9 +338,8 @@ describe("AiVisibilityRepository queries", () => {
       args: [staleStarted, staleStarted],
     });
 
-    const { reconcileStaleAiVisibilityRuns } = await import(
-      "../services/aiVisibilityReconciler"
-    );
+    const { reconcileStaleAiVisibilityRuns } =
+      await import("../services/aiVisibilityReconciler");
     await reconcileStaleAiVisibilityRuns();
 
     const row = await client.execute({

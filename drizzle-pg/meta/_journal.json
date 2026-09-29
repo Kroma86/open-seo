@@ -169,6 +169,13 @@
       "when": 1788293409810,
       "tag": "0023_eager_skreet",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790652949592,
+      "tag": "0024_ai_visibility_run_trigger",
+      "breakpoints": true
     }
   ]
 }
