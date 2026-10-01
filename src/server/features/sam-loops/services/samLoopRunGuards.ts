@@ -149,6 +149,9 @@ export async function beginSamLoopRun(input: {
   trigger: "manual" | "scheduled";
   workflowStartErrorMessage: string;
 }): Promise<SamLoopTriggerResult> {
+  if ((env as Env & { SAM_LOOP_EXECUTOR?: string }).SAM_LOOP_EXECUTOR === "subscription") {
+    return { ok: false, reason: "disabled" };
+  }
   for (let attempt = 0; attempt < 2; attempt++) {
     const runId = crypto.randomUUID();
     // Cheap early rejection; the repository repeats admission atomically at insert.
@@ -195,6 +198,10 @@ export async function beginSamLoopRun(input: {
         return { ok: false, reason: "daily_cap" };
       }
       continue;
+    }
+
+    if (blocker.costNote?.startsWith("subscription:")) {
+      return { ok: false, reason: "already_running", blockingRunId: blocker.id };
     }
 
     if (attempt === 0) {

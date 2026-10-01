@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
 vi.mock("ai", () => ({
+  APICallError: { isInstance: () => false },
   generateText: mocks.generateText,
   stepCountIs: () => () => false,
   Output: { object: (value: unknown) => value },
@@ -321,6 +322,7 @@ describe("runHeadlessSamLoop", () => {
     expect(result.stepsUsed).toBe(1);
     expect(result.costNote).toContain("0.2500");
     expect(result.costNote).toContain("unfinished-step cost unavailable");
+    expect(result.error).toBe("Generation did not return a complete valid result: The model call failed or returned invalid structured output.");
     expect(await hasVerifiedMonthlyDraft(result.report)).toBe(false);
     expect(mocks.generateText).toHaveBeenCalledTimes(1);
   });
