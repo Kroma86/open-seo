@@ -31,30 +31,32 @@ const mocks = vi.hoisted(() => ({
   claimDueLoop: vi.fn<(input: ClaimInput) => Promise<boolean>>(),
   countRunsCreatedSince: vi.fn<(sinceDate: string) => Promise<number>>(),
   beginSamLoopRun:
-    vi.fn<(input: { loopId: string; trigger: string }) => Promise<BeginResult>>(),
+    vi.fn<
+      (input: { loopId: string; trigger: string }) => Promise<BeginResult>
+    >(),
 }));
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
+vi.mock("@/server/features/sam-loops/repositories/SamLoopRepository", () => ({
+  SamLoopRepository: {
+    getDueLoopsWithOrganization: mocks.getDueLoopsWithOrganization,
+    claimDueLoop: mocks.claimDueLoop,
+    countRunsCreatedSince: mocks.countRunsCreatedSince,
+  },
+}));
 vi.mock(
-  "@/server/features/sam-loops/repositories/SamLoopRepository",
-  () => ({
-    SamLoopRepository: {
-      getDueLoopsWithOrganization: mocks.getDueLoopsWithOrganization,
-      claimDueLoop: mocks.claimDueLoop,
-      countRunsCreatedSince: mocks.countRunsCreatedSince,
-    },
-  }),
+  "@/server/features/sam-loops/services/samLoopRunGuards",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@/server/features/sam-loops/services/samLoopRunGuards")
+      >();
+    return {
+      ...actual,
+      beginSamLoopRun: mocks.beginSamLoopRun,
+    };
+  },
 );
-vi.mock("@/server/features/sam-loops/services/samLoopRunGuards", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/server/features/sam-loops/services/samLoopRunGuards")
-    >();
-  return {
-    ...actual,
-    beginSamLoopRun: mocks.beginSamLoopRun,
-  };
-});
 
 const testEnv = { SAM_LOOP_WORKFLOW: {} } as unknown as Env;
 
@@ -139,7 +141,8 @@ describe("runScheduledSamLoops", () => {
 
   it("restores a failed workflow start and still starts the next due loop", async () => {
     mocks.getDueLoopsWithOrganization.mockResolvedValue([
-      dueLoop(), dueLoop({ id: "loop_2" }),
+      dueLoop(),
+      dueLoop({ id: "loop_2" }),
     ]);
     mocks.claimDueLoop.mockResolvedValue(true);
     mocks.beginSamLoopRun
@@ -151,14 +154,18 @@ describe("runScheduledSamLoops", () => {
 
     const claim = mocks.claimDueLoop.mock.calls[0]?.[0];
     expect(mocks.claimDueLoop.mock.calls[1]?.[0]).toEqual({
-      loopId: "loop_1", projectId: "project_1",
+      loopId: "loop_1",
+      projectId: "project_1",
       observedNextRunAt: claim?.nextRunAt,
       nextRunAt: "2026-01-01T00:00:00.000Z",
     });
     expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(2);
-    expect(log).toHaveBeenCalledWith(expect.objectContaining({
-      workflowStartErrors: 1, started: 1,
-    }));
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowStartErrors: 1,
+        started: 1,
+      }),
+    );
   });
 
   it("does not overwrite a concurrent schedule change while restoring", async () => {
@@ -171,46 +178,63 @@ describe("runScheduledSamLoops", () => {
     await runTick();
 
     expect(mocks.claimDueLoop).toHaveBeenCalledTimes(2);
-    expect(log).toHaveBeenCalledWith(expect.stringContaining("changed concurrently"));
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("changed concurrently"),
+    );
   });
 
   it("continues other loops when schedule restoration fails", async () => {
     mocks.getDueLoopsWithOrganization.mockResolvedValue([
-      dueLoop(), dueLoop({ id: "loop_2" }),
+      dueLoop(),
+      dueLoop({ id: "loop_2" }),
     ]);
-    mocks.claimDueLoop.mockResolvedValueOnce(true)
+    mocks.claimDueLoop
+      .mockResolvedValueOnce(true)
       .mockRejectedValueOnce(new Error("restore unavailable"))
       .mockResolvedValue(true);
-    mocks.beginSamLoopRun.mockRejectedValueOnce(new Error("workflow unavailable"))
+    mocks.beginSamLoopRun
+      .mockRejectedValueOnce(new Error("workflow unavailable"))
       .mockResolvedValue({ ok: true, runId: "run_2" });
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await runTick();
 
     expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(2);
-    expect(log).toHaveBeenCalledWith(expect.objectContaining({
-      workflowStartErrors: 1, loopErrors: 1, started: 1,
-    }));
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowStartErrors: 1,
+        loopErrors: 1,
+        started: 1,
+      }),
+    );
   });
 
   it("restores the schedule and stops when admission reports the daily cap", async () => {
     mocks.getDueLoopsWithOrganization.mockResolvedValue([
-      dueLoop(), dueLoop({ id: "loop_2" }),
+      dueLoop(),
+      dueLoop({ id: "loop_2" }),
     ]);
     mocks.claimDueLoop.mockResolvedValue(true);
     mocks.beginSamLoopRun.mockResolvedValue({
-      ok: false, reason: "daily_cap", blockingRunId: null,
+      ok: false,
+      reason: "daily_cap",
+      blockingRunId: null,
     });
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     await runTick();
 
     expect(mocks.beginSamLoopRun).toHaveBeenCalledTimes(1);
-    expect(mocks.claimDueLoop.mock.calls[1]?.[0]?.nextRunAt)
-      .toBe("2026-01-01T00:00:00.000Z");
-    expect(log).toHaveBeenCalledWith(expect.objectContaining({
-      stoppedByCap: true, alreadyRunning: 0, started: 0,
-    }));
+    expect(mocks.claimDueLoop.mock.calls[1]?.[0]?.nextRunAt).toBe(
+      "2026-01-01T00:00:00.000Z",
+    );
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stoppedByCap: true,
+        alreadyRunning: 0,
+        started: 0,
+      }),
+    );
   });
 
   it("does nothing when today's runs already reached the cap", async () => {

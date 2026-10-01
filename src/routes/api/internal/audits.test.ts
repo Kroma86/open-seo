@@ -82,7 +82,8 @@ vi.mock("@/server/features/audit/services/AuditService", () => ({
     getStatus: (...args: unknown[]) => getStatus(...args),
     getHistory: (...args: unknown[]) => getHistory(...args),
     startAudit: (...args: unknown[]) => startAudit(...args),
-    resolveAuditLimitTier: (...args: unknown[]) => resolveAuditLimitTier(...args),
+    resolveAuditLimitTier: (...args: unknown[]) =>
+      resolveAuditLimitTier(...args),
   },
 }));
 
@@ -258,7 +259,10 @@ describe("internal audits ownership", () => {
     expect(await listed.json()).toEqual({ error: "project_not_found" });
 
     const created = await handlePost(
-      post({ projectId: "other_project", startUrl: "https://example.com" }, auth),
+      post(
+        { projectId: "other_project", startUrl: "https://example.com" },
+        auth,
+      ),
     );
     expect(created.status).toBe(404);
     expect(await created.json()).toEqual({ error: "project_not_found" });

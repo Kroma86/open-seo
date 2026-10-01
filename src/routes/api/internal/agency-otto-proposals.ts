@@ -24,8 +24,9 @@ function extractBearer(request: Request): string | null {
 }
 
 function assertAgencyToken(request: Request): Response | null {
-  const expected = (env as { AGENCY_SCORE_EXPORT_TOKEN?: string })
-    .AGENCY_SCORE_EXPORT_TOKEN?.trim();
+  const expected = (
+    env as { AGENCY_SCORE_EXPORT_TOKEN?: string }
+  ).AGENCY_SCORE_EXPORT_TOKEN?.trim();
   if (!expected) {
     return Response.json(
       { error: "agency_score_export_disabled" },
@@ -88,8 +89,7 @@ async function handlePost(request: Request): Promise<Response> {
   try {
     const proposal = await enqueueHomegrownOttoProposal({
       domain: String(record.domain ?? ""),
-      projectId:
-        typeof record.projectId === "string" ? record.projectId : null,
+      projectId: typeof record.projectId === "string" ? record.projectId : null,
       path: typeof record.path === "string" ? record.path : "/",
       fixes:
         record.fixes && typeof record.fixes === "object"

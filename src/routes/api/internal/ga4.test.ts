@@ -540,7 +540,9 @@ describe("internal ga4 handlePost", () => {
         return listedAccounts([
           {
             accountId: "ga4_acct_late",
-            properties: [{ propertyId: PROPERTY_ID, displayName: "example.com" }],
+            properties: [
+              { propertyId: PROPERTY_ID, displayName: "example.com" },
+            ],
           },
         ]);
       },
@@ -611,33 +613,36 @@ describe("internal ga4 handlePost", () => {
     ["https with query", "https://example.com?utm=1"],
     ["https with hash", "https://example.com#main"],
     ["https with space", "https://example.com extra"],
-  ])("auto-picks a display name that matches (%s)", async (_label, displayName) => {
-    listPropertiesForUserWithGrantStatus.mockResolvedValue(
-      listedAccounts([
-        {
-          accountId: "ga4_acct_early",
-          properties: [
-            { propertyId: "properties/1", displayName: "unrelated" },
-            { propertyId: PROPERTY_ID, displayName },
-          ],
-        },
-      ]),
-    );
-    setProperty.mockResolvedValue({
-      ...CONNECTION,
-      propertyDisplayName: displayName,
-    });
+  ])(
+    "auto-picks a display name that matches (%s)",
+    async (_label, displayName) => {
+      listPropertiesForUserWithGrantStatus.mockResolvedValue(
+        listedAccounts([
+          {
+            accountId: "ga4_acct_early",
+            properties: [
+              { propertyId: "properties/1", displayName: "unrelated" },
+              { propertyId: PROPERTY_ID, displayName },
+            ],
+          },
+        ]),
+      );
+      setProperty.mockResolvedValue({
+        ...CONNECTION,
+        propertyDisplayName: displayName,
+      });
 
-    const res = await handlePost(post({ projectId: PROJECT_ID }, auth));
-    expect(res.status).toBe(200);
-    expect(setProperty).toHaveBeenCalledWith({
-      projectId: PROJECT_ID,
-      organizationId: ORG_ID,
-      propertyId: PROPERTY_ID,
-      accountId: "ga4_acct_early",
-      userId: "user_early",
-    });
-  });
+      const res = await handlePost(post({ projectId: PROJECT_ID }, auth));
+      expect(res.status).toBe(200);
+      expect(setProperty).toHaveBeenCalledWith({
+        projectId: PROJECT_ID,
+        organizationId: ORG_ID,
+        propertyId: PROPERTY_ID,
+        accountId: "ga4_acct_early",
+        userId: "user_early",
+      });
+    },
+  );
 
   it.each(["https://Example.com/path", "WWW.Example.com:443"])(
     "normalises project domain %s and auto-picks the property named example.com",
@@ -663,25 +668,28 @@ describe("internal ga4 handlePost", () => {
     ["suffix shop", "example.comshop"],
     ["subdomain", "sub.example.com"],
     ["https other host", "https://example.com.evil.com"],
-  ])("does not match a near-miss display name (%s)", async (_label, displayName) => {
-    listPropertiesForUserWithGrantStatus.mockResolvedValue(
-      listedAccounts([
-        {
-          accountId: "ga4_acct_early",
-          properties: [{ propertyId: PROPERTY_ID, displayName }],
-        },
-      ]),
-    );
+  ])(
+    "does not match a near-miss display name (%s)",
+    async (_label, displayName) => {
+      listPropertiesForUserWithGrantStatus.mockResolvedValue(
+        listedAccounts([
+          {
+            accountId: "ga4_acct_early",
+            properties: [{ propertyId: PROPERTY_ID, displayName }],
+          },
+        ]),
+      );
 
-    const res = await handlePost(post({ projectId: PROJECT_ID }, auth));
-    expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({
-      error: "property_not_visible",
-      reason: "no_match",
-      candidates: [{ propertyId: PROPERTY_ID, displayName }],
-    });
-    expectNoWrite();
-  });
+      const res = await handlePost(post({ projectId: PROJECT_ID }, auth));
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({
+        error: "property_not_visible",
+        reason: "no_match",
+        candidates: [{ propertyId: PROPERTY_ID, displayName }],
+      });
+      expectNoWrite();
+    },
+  );
 
   it("returns 409 ambiguous when more than one display name matches", async () => {
     listPropertiesForUserWithGrantStatus.mockResolvedValue(
@@ -714,7 +722,10 @@ describe("internal ga4 handlePost", () => {
         {
           accountId: "ga4_acct_other",
           properties: [
-            { propertyId: "properties/999", displayName: "Some other property" },
+            {
+              propertyId: "properties/999",
+              displayName: "Some other property",
+            },
           ],
         },
       ]),
@@ -739,7 +750,10 @@ describe("internal ga4 handlePost", () => {
         {
           accountId: "ga4_acct_other",
           properties: [
-            { propertyId: "properties/999", displayName: "Some other property" },
+            {
+              propertyId: "properties/999",
+              displayName: "Some other property",
+            },
           ],
         },
       ]),
@@ -771,7 +785,10 @@ describe("internal ga4 handlePost", () => {
         {
           accountId: "ga4_acct_other",
           properties: [
-            { propertyId: "properties/999", displayName: "Some other property" },
+            {
+              propertyId: "properties/999",
+              displayName: "Some other property",
+            },
           ],
         },
       ]),

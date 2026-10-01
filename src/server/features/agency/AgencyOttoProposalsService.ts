@@ -123,7 +123,8 @@ export async function enqueueHomegrownOttoProposal(input: {
  */
 function toProposal(raw: unknown): HomegrownOttoProposal | null {
   const r = raw as Partial<HomegrownOttoProposal> | null;
-  if (!r || typeof r.id !== "string" || typeof r.domain !== "string") return null;
+  if (!r || typeof r.id !== "string" || typeof r.domain !== "string")
+    return null;
   return {
     id: r.id,
     domain: r.domain,

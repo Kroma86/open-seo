@@ -97,12 +97,9 @@ vi.mock("@/server/features/audit/repositories/AuditRepository", () => ({
     getLatestAuditForProject: vi.fn(async () => null),
   },
 }));
-vi.mock(
-  "@/server/features/ai-visibility/services/aiVisibilityResults",
-  () => ({
-    getAgencyExportBlock: vi.fn(async () => null),
-  }),
-);
+vi.mock("@/server/features/ai-visibility/services/aiVisibilityResults", () => ({
+  getAgencyExportBlock: vi.fn(async () => null),
+}));
 
 const PROJECT = {
   id: "p1",
@@ -182,7 +179,9 @@ describe("getAgencyScoreInputs connections", () => {
       { clicks: 100, impressions: 3000, ctr: 0.0333, position: 20 },
       { clicks: 20, impressions: 1000, ctr: 0.02, position: 12 },
     ];
-    const data = await getAgencyScoreInputs({ domain: "https://www.niceseo.ai" });
+    const data = await getAgencyScoreInputs({
+      domain: "https://www.niceseo.ai",
+    });
     expect(data.connections.gsc).toEqual({
       connected: true,
       siteUrl: "sc-domain:niceseo.ai",

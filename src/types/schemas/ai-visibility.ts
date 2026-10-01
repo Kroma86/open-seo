@@ -137,4 +137,5 @@ export type AiVisibilityTrend = {
   runs: AiVisibilityTrendPoint[];
 };
 
-export const MAX_ACTIVE_PROMPTS_PER_CONFIG_EXPORT = MAX_ACTIVE_PROMPTS_PER_CONFIG;
+export const MAX_ACTIVE_PROMPTS_PER_CONFIG_EXPORT =
+  MAX_ACTIVE_PROMPTS_PER_CONFIG;

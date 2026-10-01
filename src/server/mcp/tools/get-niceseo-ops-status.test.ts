@@ -211,7 +211,9 @@ describe("getNiceseoOpsStatusTool handler", () => {
     );
     expect(result.structuredContent.pixel.applicationVerified).toBe(false);
     expect(text).not.toContain("already applied");
-    expect(text).toContain("Browser application of the current served values is not verified");
+    expect(text).toContain(
+      "Browser application of the current served values is not verified",
+    );
     expect(result.structuredContent.pixel.served_fix_keys).toEqual([
       "description",
       "h1",

@@ -6,7 +6,9 @@ import { storeSamAskDraft } from "@/client/features/agency-home/agencyHomeUtils"
 import { AGENCY_WORKFLOW_CHIPS } from "@/client/features/agency-home/workflowChips";
 
 const ROTATE_MS = 4500;
-const ROTATING_PROMPTS = AGENCY_WORKFLOW_CHIPS.slice(0, 5).map((chip) => chip.prompt);
+const ROTATING_PROMPTS = AGENCY_WORKFLOW_CHIPS.slice(0, 5).map(
+  (chip) => chip.prompt,
+);
 
 export function AgencyHomePromptBar({
   projects,
@@ -22,7 +24,8 @@ export function AgencyHomePromptBar({
   const [promptIndex, setPromptIndex] = useState(0);
 
   const rotatingPrompts = useMemo(() => ROTATING_PROMPTS, []);
-  const showRotatingPlaceholder = !draft && !focused && rotatingPrompts.length > 0;
+  const showRotatingPlaceholder =
+    !draft && !focused && rotatingPrompts.length > 0;
   const activePlaceholder =
     rotatingPrompts[promptIndex % rotatingPrompts.length] ?? "";
 

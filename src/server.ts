@@ -46,8 +46,9 @@ const openSeoOAuthProvider = createOpenSeoOAuthProvider(appFetch);
 // Compile-time guard for the `env as OpenSeoOAuthEnv` casts in this file:
 // the self-host Env must carry OAUTH_KV. Fails tsc if the binding is removed.
 type Assert<T extends true> = T;
-type _EnvCarriesOAuthKv =
-  Assert<Env extends Pick<OpenSeoOAuthEnv, "OAUTH_KV"> ? true : never>;
+type _EnvCarriesOAuthKv = Assert<
+  Env extends Pick<OpenSeoOAuthEnv, "OAUTH_KV"> ? true : never
+>;
 
 // Authorize an onboarding-chat connection in the Worker, before it reaches the
 // Durable Object. The DO instance name is the projectId (set client-side); we
@@ -315,7 +316,10 @@ async function handleFetch(
     (authMode === "cloudflare_access" || authMode === "local_noauth") &&
     pathname === MCP_ROUTE
   ) {
-    if (authMode === "cloudflare_access" && publicRequest.method !== "OPTIONS") {
+    if (
+      authMode === "cloudflare_access" &&
+      publicRequest.method !== "OPTIONS"
+    ) {
       // The gate raises AppError for its rejections — no Access JWT, an
       // audience mismatch, TEAM_DOMAIN unset. Nothing in the chain caught them,
       // so they reached the Workers runtime as an unhandled rejection and

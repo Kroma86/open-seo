@@ -16,8 +16,9 @@ function parsePartialMentionsFromDetail(detail: string | null): boolean {
   try {
     const parsed: unknown = JSON.parse(detail);
     if (!parsed || typeof parsed !== "object") return false;
-    const brandLookup = (parsed as { brandLookup?: { partialMentions?: boolean } })
-      .brandLookup;
+    const brandLookup = (
+      parsed as { brandLookup?: { partialMentions?: boolean } }
+    ).brandLookup;
     return Boolean(brandLookup?.partialMentions);
   } catch {
     return false;

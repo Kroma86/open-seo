@@ -1,8 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  getLatestResults,
-  getTrend,
-} from "./aiVisibilityResults";
+import { getLatestResults, getTrend } from "./aiVisibilityResults";
 
 const mocks = vi.hoisted(() => ({
   getConfigsForProject: vi.fn(),
