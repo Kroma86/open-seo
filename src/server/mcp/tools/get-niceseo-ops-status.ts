@@ -20,7 +20,7 @@ export const getNiceseoOpsStatusTool = {
   config: {
     title: "Get NiceSEO ops status (OTTO + pixel)",
     description:
-      "Read-only HomeGrown OTTO proposal queue counts plus NiceSEO pixel status for a domain. Uses the OpenSEO proposal KV and the agency board metrics API — no credits, no deploy. Call this before answering OTTO/pixel/\"how connected\" questions. Served field names show what is available to the pixel, not proof that the current values were applied in a browser. Compare the actual current value and pending proposals before deciding whether a field needs improvement; coverage alone does not make a whole page complete.",
+      'Read-only HomeGrown OTTO proposal queue counts plus NiceSEO pixel status for a domain. Uses the OpenSEO proposal KV and the agency board metrics API — no credits, no deploy. Call this before answering OTTO/pixel/"how connected" questions. Served field names show what is available to the pixel, not proof that the current values were applied in a browser. Compare the actual current value and pending proposals before deciding whether a field needs improvement; coverage alone does not make a whole page complete.',
     inputSchema: {
       domain: z
         .string()

@@ -31,7 +31,11 @@ export type LatestAlertCycleResult =
       countsBySeverity: Record<string, number>;
       /** True count of high-tier alerts in the cycle (not capped at 10). */
       highCount: number;
-      highAlerts: Array<{ type: string; domain: string | null; message: string }>;
+      highAlerts: Array<{
+        type: string;
+        domain: string | null;
+        message: string;
+      }>;
     };
 
 // The box writes snake_case ("counts_by_severity", "generated_at"); tolerate
@@ -67,7 +71,8 @@ function validateIngestBody(body: Record<string, unknown>): IngestBody {
   }
 
   // The box sends "md" for markdown artifacts; store the canonical spelling.
-  const contentTypeRaw = body.contentType === "md" ? "markdown" : body.contentType;
+  const contentTypeRaw =
+    body.contentType === "md" ? "markdown" : body.contentType;
   if (!CONTENT_TYPES.includes(contentTypeRaw as ContentType)) {
     throw new Error("contentType_invalid");
   }
@@ -105,7 +110,8 @@ async function ingest(body: Record<string, unknown>) {
 }
 
 async function latestAlertCycle(): Promise<LatestAlertCycleResult | null> {
-  const artifact = await AgencyOpsArtifactsRepository.latestByKind("alert-cycle");
+  const artifact =
+    await AgencyOpsArtifactsRepository.latestByKind("alert-cycle");
   if (!artifact) return null;
 
   try {
@@ -117,7 +123,11 @@ async function latestAlertCycle(): Promise<LatestAlertCycleResult | null> {
     const record = parsed as Record<string, unknown>;
     const countsRaw = record.counts_by_severity ?? record.countsBySeverity;
     const countsBySeverity: Record<string, number> = {};
-    if (countsRaw && typeof countsRaw === "object" && !Array.isArray(countsRaw)) {
+    if (
+      countsRaw &&
+      typeof countsRaw === "object" &&
+      !Array.isArray(countsRaw)
+    ) {
       for (const [key, value] of Object.entries(
         countsRaw as Record<string, unknown>,
       )) {

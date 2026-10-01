@@ -21,7 +21,9 @@ export function parseOpenRouterPromptCacheFlag(
   return !["0", "false", "no", "off"].includes(value.trim().toLowerCase());
 }
 
-function hasCacheControl(providerOptions: ProviderOptions | undefined): boolean {
+function hasCacheControl(
+  providerOptions: ProviderOptions | undefined,
+): boolean {
   const openrouter = providerOptions?.openrouter;
   if (!openrouter || typeof openrouter !== "object") return false;
   return "cacheControl" in openrouter || "cache_control" in openrouter;
@@ -84,7 +86,8 @@ export function applyPromptCacheBreakpoints(params: CallOptions): CallOptions {
     }
     if (lastFunctionIndex >= 0) {
       tools = tools.map((tool, index) => {
-        if (index !== lastFunctionIndex || tool.type !== "function") return tool;
+        if (index !== lastFunctionIndex || tool.type !== "function")
+          return tool;
         return withFunctionToolCacheControl(tool);
       });
     }
@@ -135,8 +138,11 @@ function logCacheUsage(
     providerMetadata &&
     typeof providerMetadata === "object" &&
     "openrouter" in providerMetadata
-      ? (providerMetadata as { openrouter?: { usage?: Record<string, unknown> } })
-          .openrouter
+      ? (
+          providerMetadata as {
+            openrouter?: { usage?: Record<string, unknown> };
+          }
+        ).openrouter
       : undefined;
   const usageMeta = openrouter?.usage;
   const cachedTokens =
@@ -146,7 +152,8 @@ function logCacheUsage(
     usageMeta.promptTokensDetails &&
     typeof usageMeta.promptTokensDetails === "object" &&
     "cachedTokens" in usageMeta.promptTokensDetails
-      ? (usageMeta.promptTokensDetails as { cachedTokens?: number }).cachedTokens
+      ? (usageMeta.promptTokensDetails as { cachedTokens?: number })
+          .cachedTokens
       : undefined;
 
   console.log("[sam] cache", {

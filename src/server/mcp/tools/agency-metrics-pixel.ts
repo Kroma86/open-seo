@@ -21,7 +21,9 @@ export type AgencyPixelSlice = {
 /** Non-empty string entries only — the hermes export drops empty keys too. */
 function cleanStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((k): k is string => typeof k === "string" && k.length > 0);
+  return value.filter(
+    (k): k is string => typeof k === "string" && k.length > 0,
+  );
 }
 
 function cleanFixPaths(value: unknown): Record<string, string[]> {

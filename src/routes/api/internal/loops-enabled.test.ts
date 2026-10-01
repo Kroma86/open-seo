@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const {
-  mockEnv,
-  setLoopsEnabled,
-  getProjectRow,
-} = vi.hoisted(() => ({
+const { mockEnv, setLoopsEnabled, getProjectRow } = vi.hoisted(() => ({
   mockEnv: {} as { AGENCY_SCORE_EXPORT_TOKEN?: string; AUTH_MODE?: string },
   setLoopsEnabled: vi.fn(),
   getProjectRow: vi.fn(),
@@ -79,11 +75,7 @@ beforeEach(() => {
     },
   );
   setLoopsEnabled.mockImplementation(
-    async (
-      _organizationId: string,
-      projectId: string,
-      enabled: boolean,
-    ) => ({
+    async (_organizationId: string, projectId: string, enabled: boolean) => ({
       ...PROJECT,
       id: projectId,
       loopsEnabled: enabled,

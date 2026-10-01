@@ -54,7 +54,8 @@ const MISSION_STATUSES = ["completed", "failed", "running"] as const;
 const DEFAULT_MISSION_LIMIT = 12;
 
 function clampMissionLimit(limit: number | undefined): number {
-  if (limit === undefined || !Number.isFinite(limit)) return DEFAULT_MISSION_LIMIT;
+  if (limit === undefined || !Number.isFinite(limit))
+    return DEFAULT_MISSION_LIMIT;
   return Math.min(50, Math.max(1, Math.floor(limit)));
 }
 
@@ -216,8 +217,9 @@ export async function getAgencyHomePortfolio(
   const bestByProject = new Map<string, number>();
   await Promise.all(
     configs.map(async (config) => {
-      const snaps =
-        await RankTrackingRepository.getLatestSnapshotsForKeywords(config.id);
+      const snaps = await RankTrackingRepository.getLatestSnapshotsForKeywords(
+        config.id,
+      );
       for (const snap of snaps) {
         if (snap.position == null || !Number.isFinite(snap.position)) continue;
         const prev = bestByProject.get(config.projectId);

@@ -14,7 +14,7 @@ export function domainLetterTile(
   domain: string | null | undefined,
   projectName: string,
 ): { letter: string; hue: number } {
-  const source = (domain?.trim() || projectName.trim() || "?");
+  const source = domain?.trim() || projectName.trim() || "?";
   const letter = source.charAt(0).toUpperCase();
   return { letter, hue: hashDomainLabel(source.toLowerCase()) % 360 };
 }
@@ -39,7 +39,9 @@ export function portfolioRowStatus(
 }
 
 /** Relative time for mission rail timestamps (real ISO strings only). */
-export function formatRelativeFinishedAt(iso: string | null | undefined): string {
+export function formatRelativeFinishedAt(
+  iso: string | null | undefined,
+): string {
   if (!iso) return "in progress";
   const timestamp = new Date(iso).getTime();
   if (Number.isNaN(timestamp)) return "—";
@@ -65,7 +67,9 @@ export function formatCompactNumber(value: number): string {
   }).format(value);
 }
 
-export function projectFaviconUrl(domain: string | null | undefined): string | null {
+export function projectFaviconUrl(
+  domain: string | null | undefined,
+): string | null {
   if (!domain?.trim()) return null;
   const host = domain
     .trim()
@@ -95,7 +99,10 @@ export function storeSamAskDraft(projectId: string, draft: string): void {
   }
 }
 
-export function storeSamLoopRunSelection(projectId: string, runId: string): void {
+export function storeSamLoopRunSelection(
+  projectId: string,
+  runId: string,
+): void {
   try {
     sessionStorage.setItem(samLoopRunStorageKey(projectId), runId);
   } catch {

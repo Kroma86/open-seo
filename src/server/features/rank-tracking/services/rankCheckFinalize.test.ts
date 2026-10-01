@@ -66,9 +66,7 @@ describe("completeRankCheckRunFromSnapshots", () => {
   });
 
   it("skips when snapshot coverage is still incomplete and requireFullCoverage is set", async () => {
-    mocks.getSnapshotsForRun.mockResolvedValue([
-      { trackingKeywordId: "kw_1" },
-    ]);
+    mocks.getSnapshotsForRun.mockResolvedValue([{ trackingKeywordId: "kw_1" }]);
 
     await expect(
       completeRankCheckRunFromSnapshots({
@@ -80,9 +78,7 @@ describe("completeRankCheckRunFromSnapshots", () => {
   });
 
   it("completes partial coverage when requireFullCoverage is off", async () => {
-    mocks.getSnapshotsForRun.mockResolvedValue([
-      { trackingKeywordId: "kw_1" },
-    ]);
+    mocks.getSnapshotsForRun.mockResolvedValue([{ trackingKeywordId: "kw_1" }]);
 
     const result = await completeRankCheckRunFromSnapshots({ run: baseRun });
     expect(result).toMatchObject({ keywordsChecked: 1, keywordsTotal: 2 });

@@ -327,9 +327,7 @@ function pushRankKeyword(
   }
 }
 
-async function loadRankData(
-  projectId: string,
-): Promise<{
+async function loadRankData(projectId: string): Promise<{
   ranks: AgencyScoreInputs["ranks"];
   rankSummary: AgencyScoreInputs["rankSummary"];
 }> {
@@ -346,10 +344,7 @@ async function loadRankData(
     const { rows, run } = await getLatestResults(config.id, projectId, "7d");
     const checkedAt = run?.lastCheckedAt ?? null;
     if (checkedAt) {
-      if (
-        index < 3 &&
-        (!ranksCapturedAt || checkedAt > ranksCapturedAt)
-      ) {
+      if (index < 3 && (!ranksCapturedAt || checkedAt > ranksCapturedAt)) {
         ranksCapturedAt = checkedAt;
       }
       if (!summaryCapturedAt || checkedAt > summaryCapturedAt) {

@@ -73,7 +73,10 @@ export async function getAgencyLoopReports(
 
   return {
     // Filter guarantees completed|failed; drizzle still types the full enum.
-    runs: rows.map((row) => ({ ...row, report: row.report === null ? null : stripDraftEvidence(row.report) })) as AgencyLoopReport[],
+    runs: rows.map((row) => ({
+      ...row,
+      report: row.report === null ? null : stripDraftEvidence(row.report),
+    })) as AgencyLoopReport[],
     count: rows.length,
   };
 }

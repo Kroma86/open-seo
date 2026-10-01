@@ -31,9 +31,7 @@ export { parseOpenRouterPromptCacheFlag };
  * Parse OPENROUTER_ZDR. Default true (hosted privacy posture). Explicit
  * 0/false/no/off disables request-level ZDR.
  */
-export function parseOpenRouterZdrFlag(
-  value: string | undefined,
-): boolean {
+export function parseOpenRouterZdrFlag(value: string | undefined): boolean {
   if (value == null || value.trim() === "") return true;
   return !["0", "false", "no", "off"].includes(value.trim().toLowerCase());
 }

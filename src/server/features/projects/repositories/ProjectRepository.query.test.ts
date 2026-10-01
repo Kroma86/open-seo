@@ -53,9 +53,8 @@ beforeAll(async () => {
     );
   `);
 
-  ({ ProjectRepository, normalizeProjectDomain } = await import(
-    "./ProjectRepository"
-  ));
+  ({ ProjectRepository, normalizeProjectDomain } =
+    await import("./ProjectRepository"));
   ({ setLoopsEnabled } = await import("../services/ProjectService"));
 });
 

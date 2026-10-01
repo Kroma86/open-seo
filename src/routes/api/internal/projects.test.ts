@@ -64,7 +64,10 @@ beforeEach(() => {
   store.length = 0;
   listProjects.mockImplementation(async () => [...store]);
   createProject.mockImplementation(
-    async (_organizationId: string, input: { name: string; domain?: string }) => {
+    async (
+      _organizationId: string,
+      input: { name: string; domain?: string },
+    ) => {
       const project: StoredProject = {
         id: `project_${store.length + 1}`,
         name: input.name,
@@ -188,9 +191,7 @@ describe("internal projects handlePost", () => {
   });
 
   it("returns 400 invalid_body for overlong fields", async () => {
-    const longName = await handlePost(
-      post({ name: "a".repeat(121) }, auth),
-    );
+    const longName = await handlePost(post({ name: "a".repeat(121) }, auth));
     expect(longName.status).toBe(400);
     expect(await longName.json()).toEqual({ error: "invalid_body" });
 
