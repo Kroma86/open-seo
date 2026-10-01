@@ -68,7 +68,7 @@ describe("Postgres atomic daily admission", () => {
         );
       expect(execute).toHaveBeenCalledTimes(2);
       expect(
-        new PgDialect().sqlToQuery(execute.mock.calls[1]![0]).sql,
+        new PgDialect().sqlToQuery(execute.mock.calls[1][0]).sql,
       ).toContain("last_run_at");
       expect(mocks.directExecute).not.toHaveBeenCalled();
     },
@@ -95,14 +95,14 @@ describe("Postgres atomic daily admission", () => {
       true,
     );
     const dialect = new PgDialect();
-    expect(dialect.sqlToQuery(execute.mock.calls[0]![0]).sql).toBe(
+    expect(dialect.sqlToQuery(execute.mock.calls[0][0]).sql).toBe(
       "select pg_advisory_xact_lock(734629105)",
     );
-    const insert = dialect.sqlToQuery(execute.mock.calls[1]![0]);
+    const insert = dialect.sqlToQuery(execute.mock.calls[1][0]);
     expect(insert.sql).toContain("cost_note, created_at");
     expect(insert.params).toContain("subscription:fixture");
     expect(insert.params).toContain(false);
-    expect(dialect.sqlToQuery(execute.mock.calls[2]![0]).sql).toContain(
+    expect(dialect.sqlToQuery(execute.mock.calls[2][0]).sql).toContain(
       'update "sam_loops" set next_run_at',
     );
     expect(mocks.directExecute).not.toHaveBeenCalled();
@@ -158,7 +158,7 @@ describe("Postgres atomic daily admission", () => {
     await lockSeen;
     try {
       expect(execute).toHaveBeenCalledTimes(1);
-      const lock = new PgDialect().sqlToQuery(execute.mock.calls[0]![0]);
+      const lock = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
       expect(lock.sql).toBe("select pg_advisory_xact_lock(734629105)");
     } finally {
       releaseLock();
@@ -167,7 +167,7 @@ describe("Postgres atomic daily admission", () => {
 
     expect(mocks.transaction).toHaveBeenCalledTimes(1);
     expect(execute).toHaveBeenCalledTimes(2);
-    const insert = new PgDialect().sqlToQuery(execute.mock.calls[1]![0]);
+    const insert = new PgDialect().sqlToQuery(execute.mock.calls[1][0]);
     expect(insert.sql).toMatch(/insert into "sam_loop_runs"/);
     expect(insert.sql).toContain("select count(*)");
     expect(insert.sql).toContain('"sam_loop_runs"."created_at" >= $4');

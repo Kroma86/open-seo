@@ -6,7 +6,7 @@ import { countProposalsQueued } from "./countProposalsQueued";
 import type { HeadlessSamLoopResult } from "./runHeadlessSamLoop";
 import { validateSamLoopOutput } from "./samLoopResult";
 
-export const subscriptionFinalSchema = z
+const subscriptionFinalSchema = z
   .object({
     kind: z.literal("final"),
     status: z.enum(["completed", "failed"]),

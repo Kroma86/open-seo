@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { drizzle } from "drizzle-orm/d1";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -35,6 +35,27 @@ const input = {
 };
 const admission = { sinceDate: scheduledFor, cap: 1 };
 
+function sqlParameter(value: unknown): SQLInputValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "bigint" ||
+    value instanceof Uint8Array ||
+    value instanceof DataView
+  )
+    return value;
+  throw new Error("Invalid fixture SQL parameter");
+}
+function isD1Binding(value: unknown): value is D1Database {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    ["prepare", "batch", "exec", "dump", "withSession"].every(
+      (name) => name in value && typeof Reflect.get(value, name) === "function",
+    )
+  );
+}
 class Prepared {
   constructor(
     readonly query: string,
@@ -49,7 +70,7 @@ class Prepared {
   async raw() {
     const statement = database.prepare(this.query);
     statement.setReturnArrays(true);
-    return statement.all(...(this.parameters as never[]));
+    return statement.all(...this.parameters.map(sqlParameter));
   }
   async run() {
     return this.result();
@@ -59,8 +80,8 @@ class Prepared {
       throw new Error("fixture update failure");
     const statement = database.prepare(this.query);
     const results = statement.columns().length
-      ? statement.all(...(this.parameters as never[]))
-      : (statement.run(...(this.parameters as never[])), []);
+      ? statement.all(...this.parameters.map(sqlParameter))
+      : (statement.run(...this.parameters.map(sqlParameter)), []);
     return { results, success: true, meta: {} };
   }
 }
@@ -79,6 +100,15 @@ beforeEach(() => {
     insert into sam_loops values ('loop-one', 'project-one', 1, '${scheduledFor}', null);
   `);
   const binding = {
+    exec: () => {
+      throw new Error("Unused fixture exec");
+    },
+    dump: () => {
+      throw new Error("Unused fixture dump");
+    },
+    withSession: () => {
+      throw new Error("Unused fixture session");
+    },
     prepare: (query: string) => new Prepared(query),
     batch: async (statements: Prepared[]) => {
       database.exec("begin immediate");
@@ -92,7 +122,8 @@ beforeEach(() => {
       }
     },
   };
-  mocks.db = drizzle(binding as unknown as D1Database);
+  if (!isD1Binding(binding)) throw new Error("Incomplete fixture D1 binding");
+  mocks.db = drizzle(binding);
 });
 
 afterEach(() => database.close());

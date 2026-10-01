@@ -16,8 +16,15 @@ import {
   subscriptionTurnSchema,
   validateSubscriptionFinal,
   type SubscriptionRequest,
-  type SubscriptionSteps,
 } from "./subscriptionContract";
+import {
+  SubscriptionLoopError,
+  signReceipt,
+  readReceipt,
+  wireJson,
+  receiptState,
+} from "./subscriptionReceipt";
+export { SubscriptionLoopError } from "./subscriptionReceipt";
 import { countProposalsQueued } from "./countProposalsQueued";
 
 const FREE_TOOLS = new Set([
@@ -53,163 +60,6 @@ const FREE_TOOLS = new Set([
   "propose_homegrown_otto_fixes",
 ]);
 const DEADLINE_MS = 15 * 60_000;
-const RECEIPT_MAX_BYTES = 700_000;
-
-export class SubscriptionLoopError extends Error {
-  constructor(
-    message: string,
-    readonly status = 409,
-  ) {
-    super(message);
-  }
-}
-
-type Receipt = {
-  runId: string;
-  loopId: string;
-  projectId: string;
-  model: string;
-  startedAt: string;
-  scheduledFor: string;
-  steps: SubscriptionSteps;
-};
-const receiptSchema = z
-  .object({
-    runId: z.string().uuid(),
-    loopId: z.string().uuid(),
-    projectId: z.string().uuid(),
-    model: z.enum(["grok-4.7", "grok-4.7-build-fast"]),
-    startedAt: z.iso.datetime(),
-    scheduledFor: z.iso.datetime(),
-    steps: z
-      .array(
-        z
-          .object({
-            toolCalls: z
-              .array(
-                z
-                  .object({
-                    toolName: z.string(),
-                    input: z.record(z.string(), z.unknown()),
-                  })
-                  .strict(),
-              )
-              .length(1),
-            toolResults: z
-              .array(
-                z
-                  .object({ toolName: z.string(), output: z.unknown() })
-                  .strict(),
-              )
-              .length(1),
-          })
-          .strict(),
-      )
-      .max(SAM_LOOP_STEP_CAP),
-  })
-  .strict();
-
-function encode(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-function decode(value: string): Uint8Array {
-  return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
-}
-async function signingKey() {
-  const secret = (env as { AGENCY_SCORE_EXPORT_TOKEN?: string })
-    .AGENCY_SCORE_EXPORT_TOKEN;
-  if (!secret) throw new SubscriptionLoopError("subscription_disabled", 503);
-  return crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign", "verify"],
-  );
-}
-async function signReceipt(receipt: Receipt): Promise<string> {
-  const serialized = wireJson(receipt);
-  receiptSchema.parse(JSON.parse(serialized));
-  const bytes = new TextEncoder().encode(serialized);
-  if (bytes.length > RECEIPT_MAX_BYTES)
-    throw new SubscriptionLoopError("evidence_limit");
-  const signature = await crypto.subtle.sign("HMAC", await signingKey(), bytes);
-  return `${encode(bytes)}.${encode(new Uint8Array(signature))}`;
-}
-async function readReceipt(token: string): Promise<Receipt> {
-  const key = await signingKey();
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 2) throw new Error();
-    const bytes = decode(parts[0]!);
-    if (
-      bytes.length > RECEIPT_MAX_BYTES ||
-      !(await crypto.subtle.verify(
-        "HMAC",
-        key,
-        new Uint8Array(decode(parts[1]!)).buffer,
-        new Uint8Array(bytes).buffer,
-      ))
-    )
-      throw new Error();
-    return receiptSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
-  } catch {
-    throw new SubscriptionLoopError("invalid_receipt", 400);
-  }
-}
-function wireJson(value: unknown): string {
-  const ancestors = new Set<object>();
-  const check = (item: unknown, depth: number): void => {
-    if (depth > 64) throw new SubscriptionLoopError("invalid_tool_evidence");
-    if (item === null || typeof item === "string" || typeof item === "boolean")
-      return;
-    if (typeof item === "number" && Number.isFinite(item)) return;
-    if (typeof item !== "object" || ancestors.has(item))
-      throw new SubscriptionLoopError("invalid_tool_evidence");
-    ancestors.add(item);
-    if (Array.isArray(item)) {
-      if (
-        Object.getPrototypeOf(item) !== Array.prototype ||
-        Object.getOwnPropertySymbols(item).length
-      )
-        throw new SubscriptionLoopError("invalid_tool_evidence");
-      const descriptors = Object.getOwnPropertyDescriptors(item);
-      if (Object.keys(descriptors).length !== item.length + 1)
-        throw new SubscriptionLoopError("invalid_tool_evidence");
-      for (let index = 0; index < item.length; index++) {
-        const descriptor = descriptors[String(index)];
-        if (!descriptor?.enumerable || descriptor.get || descriptor.set)
-          throw new SubscriptionLoopError("invalid_tool_evidence");
-        check(descriptor.value, depth + 1);
-      }
-    } else {
-      if (
-        ![Object.prototype, null].includes(Object.getPrototypeOf(item)) ||
-        Object.getOwnPropertySymbols(item).length
-      )
-        throw new SubscriptionLoopError("invalid_tool_evidence");
-      for (const descriptor of Object.values(
-        Object.getOwnPropertyDescriptors(item),
-      )) {
-        if (!descriptor.enumerable || descriptor.get || descriptor.set)
-          throw new SubscriptionLoopError("invalid_tool_evidence");
-        check(descriptor.value, depth + 1);
-      }
-    }
-    ancestors.delete(item);
-  };
-  check(value, 0);
-  return JSON.stringify(value);
-}
-async function receiptState(token: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(token),
-  );
-  return `subscription:${encode(new Uint8Array(digest))}`;
-}
 
 async function prepare(projectId: string, loopId: string, baseUrl: string) {
   const project = await ProjectRepository.getProjectById(projectId);
@@ -301,130 +151,15 @@ export async function postSubscriptionLoopRequest(input: SubscriptionRequest) {
     (env as { SAM_LOOP_EXECUTOR?: string }).SAM_LOOP_EXECUTOR !== "subscription"
   )
     throw new SubscriptionLoopError("subscription_mode_required");
-  if (input.action === "fail") {
-    const run = await SamLoopRepository.getRunById(input.runId);
-    if (
-      !run ||
-      run.loopId !== input.loopId ||
-      run.projectId !== input.projectId ||
-      !run.costNote?.startsWith("subscription:")
-    )
-      throw new SubscriptionLoopError("run_not_active");
-    const mutationUnknown = run.costNote.startsWith(
-      "subscription:pending:propose_homegrown_otto_fixes:",
-    );
-    const updated = await SamLoopRepository.compareAndSwapSubscriptionRun(
-      run.id,
-      run.costNote,
-      {
-        status: "failed",
-        finishedAt: new Date().toISOString(),
-        error: `Generation did not return a complete valid result: ${input.reason}. Consumed steps are not retried.${mutationUnknown ? " Proposal outcome unknown; future runs held for operator inspection." : ""}`,
-        report: "Not measured — subscription runner did not finish.",
-        costNote: mutationUnknown
-          ? "subscription:hold:proposal_outcome_unknown; model API cost $0"
-          : "subscription; model API cost $0",
-      },
-    );
-    if (!updated) throw new SubscriptionLoopError("state_changed");
-    return { runId: run.id, status: "failed" };
-  }
+  if (input.action === "fail") return failSubscriptionRun(input);
   const baseUrl = "https://seo.niceseo.ai";
   const { project, loop, prepared } = await prepare(
     input.projectId,
     input.loopId,
     baseUrl,
   );
-  if (input.action === "claim") {
-    const now = new Date().toISOString();
-    const recent = await SamLoopRepository.getRunsForLoop({
-      loopId: loop.id,
-      projectId: loop.projectId,
-      limit: 1,
-    });
-    if (recent[0]?.costNote?.startsWith("subscription:hold:"))
-      throw new SubscriptionLoopError("proposal_outcome_unknown_hold");
-    const blocker = await SamLoopRepository.getActiveRunForLoop(loop.id);
-    if (
-      blocker?.costNote?.startsWith(
-        "subscription:pending:propose_homegrown_otto_fixes:",
-      )
-    )
-      throw new SubscriptionLoopError("proposal_outcome_unknown_hold");
-    if (
-      blocker?.costNote?.startsWith("subscription:") &&
-      blocker.startedAt &&
-      Date.now() - Date.parse(blocker.startedAt) >= DEADLINE_MS
-    ) {
-      if (
-        !(await SamLoopRepository.compareAndSwapSubscriptionRun(
-          blocker.id,
-          blocker.costNote,
-          {
-            status: "failed",
-            finishedAt: now,
-            error:
-              "Subscription runner deadline expired; consumed steps are not retried. Pending proposal outcomes may be unknown.",
-            report: "Not measured — runner did not finish.",
-            costNote: "subscription; model API cost $0",
-          },
-        ))
-      )
-        throw new SubscriptionLoopError("state_changed");
-    } else if (blocker) throw new SubscriptionLoopError("already_running");
-    if (
-      !loop.nextRunAt ||
-      loop.nextRunAt !== input.scheduledFor ||
-      Date.parse(loop.nextRunAt) > Date.now()
-    )
-      throw new SubscriptionLoopError("schedule_changed");
-    if (
-      (await SamLoopRepository.countRunsCreatedSince(startOfUtcDay())) >=
-      getSamLoopDailyRunCap(env)
-    )
-      throw new SubscriptionLoopError("daily_cap");
-    const runId = crypto.randomUUID();
-    const receipt = await signReceipt({
-      runId,
-      loopId: loop.id,
-      projectId: loop.projectId,
-      model: input.model,
-      startedAt: now,
-      scheduledFor: input.scheduledFor,
-      steps: [],
-    });
-    const wire = await buildSubscriptionPrompt(prepared);
-    const admitted = await SamLoopRepository.claimSubscriptionRun(
-      {
-        id: runId,
-        loopId: loop.id,
-        projectId: loop.projectId,
-        scheduledFor: input.scheduledFor,
-        nextRunAt: computeNextSamLoopRunAt(
-          loop.cadence,
-          input.scheduledFor,
-          `${loop.projectId}:${loop.name}`,
-        ),
-        startedAt: now,
-        costNote: await receiptState(receipt),
-        domain: project.domain,
-        loopsEnabled: project.loopsEnabled,
-      },
-      { sinceDate: startOfUtcDay(), cap: getSamLoopDailyRunCap(env) },
-    );
-    if (!admitted) throw new SubscriptionLoopError("admission_refused");
-    return {
-      runId,
-      receipt,
-      loop: {
-        id: loop.id,
-        projectId: loop.projectId,
-        scheduledFor: input.scheduledFor,
-        name: loop.name,
-      },
-      ...wire,
-    };
-  }
+  if (input.action === "claim")
+    return claimSubscriptionLoop(input, { project, loop, prepared });
   const run = await SamLoopRepository.getRunById(input.runId);
   if (
     !run ||
@@ -476,10 +211,9 @@ export async function postSubscriptionLoopRequest(input: SubscriptionRequest) {
   const validated = await schema.validate?.(input.arguments);
   if (!validated?.success)
     throw new SubscriptionLoopError("invalid_tool_arguments", 400);
-  const scopedInput = JSON.parse(wireJson(validated.value)) as Record<
-    string,
-    unknown
-  >;
+  const scopedInput = z
+    .record(z.string(), z.unknown())
+    .parse(JSON.parse(wireJson(validated.value)));
   const pending = `subscription:pending:${input.tool}:${crypto.randomUUID()}`;
   if (
     !(await SamLoopRepository.compareAndSwapSubscriptionRun(
@@ -489,7 +223,7 @@ export async function postSubscriptionLoopRequest(input: SubscriptionRequest) {
     ))
   )
     throw new SubscriptionLoopError("state_changed");
-  const output = await tool.execute(structuredClone(scopedInput), {
+  const output: unknown = await tool.execute(structuredClone(scopedInput), {
     toolCallId: `${run.id}:${input.step}`,
     messages: [],
     abortSignal: AbortSignal.timeout(
@@ -535,4 +269,130 @@ export async function postSubscriptionLoopRequest(input: SubscriptionRequest) {
   )
     throw new SubscriptionLoopError("tool_outcome_unknown");
   return { runId: run.id, receipt: nextReceipt, output, step: input.step };
+}
+
+async function failSubscriptionRun(
+  input: Extract<SubscriptionRequest, { action: "fail" }>,
+) {
+  const run = await SamLoopRepository.getRunById(input.runId);
+  if (
+    !run ||
+    run.loopId !== input.loopId ||
+    run.projectId !== input.projectId ||
+    !run.costNote?.startsWith("subscription:")
+  )
+    throw new SubscriptionLoopError("run_not_active");
+  const mutationUnknown = run.costNote.startsWith(
+    "subscription:pending:propose_homegrown_otto_fixes:",
+  );
+  const updated = await SamLoopRepository.compareAndSwapSubscriptionRun(
+    run.id,
+    run.costNote,
+    {
+      status: "failed",
+      finishedAt: new Date().toISOString(),
+      error: `Generation did not return a complete valid result: ${input.reason}. Consumed steps are not retried.${mutationUnknown ? " Proposal outcome unknown; future runs held for operator inspection." : ""}`,
+      report: "Not measured — subscription runner did not finish.",
+      costNote: mutationUnknown
+        ? "subscription:hold:proposal_outcome_unknown; model API cost $0"
+        : "subscription; model API cost $0",
+    },
+  );
+  if (!updated) throw new SubscriptionLoopError("state_changed");
+  return { runId: run.id, status: "failed" };
+}
+
+async function claimSubscriptionLoop(
+  input: Extract<SubscriptionRequest, { action: "claim" }>,
+  context: Awaited<ReturnType<typeof prepare>>,
+) {
+  const { project, loop, prepared } = context;
+  const now = new Date().toISOString();
+  const recent = await SamLoopRepository.getRunsForLoop({
+    loopId: loop.id,
+    projectId: loop.projectId,
+    limit: 1,
+  });
+  if (recent[0]?.costNote?.startsWith("subscription:hold:"))
+    throw new SubscriptionLoopError("proposal_outcome_unknown_hold");
+  const blocker = await SamLoopRepository.getActiveRunForLoop(loop.id);
+  if (
+    blocker?.costNote?.startsWith(
+      "subscription:pending:propose_homegrown_otto_fixes:",
+    )
+  )
+    throw new SubscriptionLoopError("proposal_outcome_unknown_hold");
+  if (
+    blocker?.costNote?.startsWith("subscription:") &&
+    blocker.startedAt &&
+    Date.now() - Date.parse(blocker.startedAt) >= DEADLINE_MS
+  ) {
+    if (
+      !(await SamLoopRepository.compareAndSwapSubscriptionRun(
+        blocker.id,
+        blocker.costNote,
+        {
+          status: "failed",
+          finishedAt: now,
+          error:
+            "Subscription runner deadline expired; consumed steps are not retried. Pending proposal outcomes may be unknown.",
+          report: "Not measured — runner did not finish.",
+          costNote: "subscription; model API cost $0",
+        },
+      ))
+    )
+      throw new SubscriptionLoopError("state_changed");
+  } else if (blocker) throw new SubscriptionLoopError("already_running");
+  if (
+    !loop.nextRunAt ||
+    loop.nextRunAt !== input.scheduledFor ||
+    Date.parse(loop.nextRunAt) > Date.now()
+  )
+    throw new SubscriptionLoopError("schedule_changed");
+  if (
+    (await SamLoopRepository.countRunsCreatedSince(startOfUtcDay())) >=
+    getSamLoopDailyRunCap(env)
+  )
+    throw new SubscriptionLoopError("daily_cap");
+  const runId = crypto.randomUUID();
+  const receipt = await signReceipt({
+    runId,
+    loopId: loop.id,
+    projectId: loop.projectId,
+    model: input.model,
+    startedAt: now,
+    scheduledFor: input.scheduledFor,
+    steps: [],
+  });
+  const wire = await buildSubscriptionPrompt(prepared);
+  const admitted = await SamLoopRepository.claimSubscriptionRun(
+    {
+      id: runId,
+      loopId: loop.id,
+      projectId: loop.projectId,
+      scheduledFor: input.scheduledFor,
+      nextRunAt: computeNextSamLoopRunAt(
+        loop.cadence,
+        input.scheduledFor,
+        `${loop.projectId}:${loop.name}`,
+      ),
+      startedAt: now,
+      costNote: await receiptState(receipt),
+      domain: project.domain,
+      loopsEnabled: project.loopsEnabled,
+    },
+    { sinceDate: startOfUtcDay(), cap: getSamLoopDailyRunCap(env) },
+  );
+  if (!admitted) throw new SubscriptionLoopError("admission_refused");
+  return {
+    runId,
+    receipt,
+    loop: {
+      id: loop.id,
+      projectId: loop.projectId,
+      scheduledFor: input.scheduledFor,
+      name: loop.name,
+    },
+    ...wire,
+  };
 }
