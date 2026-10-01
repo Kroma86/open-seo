@@ -177,9 +177,8 @@ const resolveSelfHostAccess = (
   Effect.gen(function* () {
     let teamDomain = yield* optionalVar("TEAM_DOMAIN");
     let policyAud: Alchemy.Input<string> = yield* optionalVar("POLICY_AUD");
-    let mcpPolicyAud: Alchemy.Input<string> | undefined = yield* optionalVar(
-      "MCP_POLICY_AUD",
-    );
+    let mcpPolicyAud: Alchemy.Input<string> | undefined =
+      yield* optionalVar("MCP_POLICY_AUD");
     // A hand-set TEAM_DOMAIN+POLICY_AUD short-circuits ALL Access
     // provisioning — including the MCP service-auth app (never created on
     // this path) and any comparison of a hand-set MCP_POLICY_AUD against a
@@ -347,6 +346,7 @@ const dataEnv = {
   AGENCY_SCORE_EXPORT_TOKEN: optionalSecret("AGENCY_SCORE_EXPORT_TOKEN"),
   // Sam loop daily run cap (scheduled + manual); unset keeps the code default.
   SAM_LOOP_DAILY_RUN_CAP: optionalVar("SAM_LOOP_DAILY_RUN_CAP"),
+  SAM_LOOP_EXECUTOR: optionalVar("SAM_LOOP_EXECUTOR"),
   // Agency board metrics (pixel status for SAM get_niceseo_ops_status).
   AGENCY_METRICS_URL: optionalVar("AGENCY_METRICS_URL"),
   AGENCY_DASH_TOKEN: optionalSecret("AGENCY_DASH_TOKEN"),
@@ -374,9 +374,9 @@ export default Alchemy.Stack(
     const workersSubdomain = yield* readWorkersSubdomain({ required: false });
     // Public hostname for self-host (e.g. seo.niceseo.ai). Must be a zone on
     // this Cloudflare account. Kept behind Cloudflare Access with workers.dev.
-    const customDomain = (
-      yield* optionalVar("SELFHOST_CUSTOM_DOMAIN")
-    ).toLowerCase();
+    const customDomain = (yield* optionalVar(
+      "SELFHOST_CUSTOM_DOMAIN",
+    )).toLowerCase();
 
     // Auth needs an absolute BETTER_AUTH_URL. Prod sets it explicitly;
     // previews always derive it from the deterministic worker name — a wrong
@@ -474,9 +474,7 @@ export default Alchemy.Stack(
         POLICY_AUD: access.policyAud,
         // Absent entirely when no MCP app was provisioned — the Worker's
         // service-token branch is visibly off, never an empty-string AUD.
-        ...(access.mcpPolicyAud
-          ? { MCP_POLICY_AUD: access.mcpPolicyAud }
-          : {}),
+        ...(access.mcpPolicyAud ? { MCP_POLICY_AUD: access.mcpPolicyAud } : {}),
 
         // Prod-only: pooled Postgres via the existing Hyperdrive config.
         ...(prod ? { HYPERDRIVE: makeHyperdrive() } : {}),

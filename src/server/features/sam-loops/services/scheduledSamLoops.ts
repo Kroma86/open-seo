@@ -14,10 +14,14 @@ const ALREADY_RUNNING_IDS_CAP = 20;
 
 /** Cron body: claim due enabled loops and start SamLoopWorkflow for each. */
 export async function runScheduledSamLoops(env: Env) {
+  if (
+    (env as Env & { SAM_LOOP_EXECUTOR?: string }).SAM_LOOP_EXECUTOR ===
+    "subscription"
+  )
+    return;
   const dailyRunCap = getSamLoopDailyRunCap(env);
-  const runsToday = await SamLoopRepository.countRunsCreatedSince(
-    startOfUtcDay(),
-  );
+  const runsToday =
+    await SamLoopRepository.countRunsCreatedSince(startOfUtcDay());
   if (runsToday >= dailyRunCap) {
     console.error({
       event: "sam_loops_daily_cap_hit",
@@ -29,8 +33,7 @@ export async function runScheduledSamLoops(env: Env) {
   let budget = dailyRunCap - runsToday;
 
   const nowIso = new Date().toISOString();
-  const dueLoops =
-    await SamLoopRepository.getDueLoopsWithOrganization(nowIso);
+  const dueLoops = await SamLoopRepository.getDueLoopsWithOrganization(nowIso);
 
   const deadline = Date.now() + TICK_DEADLINE_MS;
   let started = 0;

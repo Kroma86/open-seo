@@ -1,6 +1,8 @@
 import { getDatabaseProvider } from "./provider";
 import { d1Db } from "./d1/client";
 import { pgDb } from "./pg/client";
+import type { SQL } from "drizzle-orm";
+import { SQLiteAsyncDialect } from "drizzle-orm/sqlite-core";
 
 // The executor handed to the `build` callback. Typed as the D1 client so call
 // sites get full Drizzle inference; at runtime it is either `d1Db` or a Postgres
@@ -12,6 +14,18 @@ type BatchStatement = Parameters<typeof d1Db.batch>[0][number];
 // runBatch call stays under that limit. (Postgres allows far more, but the same
 // chunk size is harmless there.)
 export const DB_BATCH_SIZE = 100;
+
+export async function runD1RawBatch(statements: SQL[]): Promise<D1Result[]> {
+  if (getDatabaseProvider() !== "d1")
+    throw new Error("D1 raw batch requires the D1 provider");
+  const dialect = new SQLiteAsyncDialect();
+  return d1Db.$client.batch(
+    statements.map((statement) => {
+      const query = dialect.sqlToQuery(statement);
+      return d1Db.$client.prepare(query.sql).bind(...query.params);
+    }),
+  );
+}
 
 /**
  * Run a set of write statements atomically on either backend.

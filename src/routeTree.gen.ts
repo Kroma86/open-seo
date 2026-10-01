@@ -32,6 +32,7 @@ import { Route as Char91DotwellKnownChar93OpenaiAppsChallengeRouteImport } from 
 import { Route as AuthenticatedOnboardingIndexRouteImport } from './routes/_authenticated.onboarding.index'
 import { Route as ApiInternalTriggerSamLoopsRouteImport } from './routes/api/internal/trigger-sam-loops'
 import { Route as ApiInternalTrackerRouteImport } from './routes/api/internal/tracker'
+import { Route as ApiInternalSamLoopSubscriptionRouteImport } from './routes/api/internal/sam-loop-subscription'
 import { Route as ApiInternalProjectsRouteImport } from './routes/api/internal/projects'
 import { Route as ApiInternalLoopsEnabledRouteImport } from './routes/api/internal/loops-enabled'
 import { Route as ApiInternalGscRouteImport } from './routes/api/internal/gsc'
@@ -188,6 +189,12 @@ const ApiInternalTrackerRoute = ApiInternalTrackerRouteImport.update({
   path: '/api/internal/tracker',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalSamLoopSubscriptionRoute =
+  ApiInternalSamLoopSubscriptionRouteImport.update({
+    id: '/api/internal/sam-loop-subscription',
+    path: '/api/internal/sam-loop-subscription',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiInternalProjectsRoute = ApiInternalProjectsRouteImport.update({
   id: '/api/internal/projects',
   path: '/api/internal/projects',
@@ -445,6 +452,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/gsc': typeof ApiInternalGscRoute
   '/api/internal/loops-enabled': typeof ApiInternalLoopsEnabledRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
+  '/api/internal/sam-loop-subscription': typeof ApiInternalSamLoopSubscriptionRoute
   '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/onboarding/': typeof AuthenticatedOnboardingIndexRoute
@@ -505,6 +513,7 @@ export interface FileRoutesByTo {
   '/api/internal/gsc': typeof ApiInternalGscRoute
   '/api/internal/loops-enabled': typeof ApiInternalLoopsEnabledRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
+  '/api/internal/sam-loop-subscription': typeof ApiInternalSamLoopSubscriptionRoute
   '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/onboarding': typeof AuthenticatedOnboardingIndexRoute
@@ -568,6 +577,7 @@ export interface FileRoutesById {
   '/api/internal/gsc': typeof ApiInternalGscRoute
   '/api/internal/loops-enabled': typeof ApiInternalLoopsEnabledRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
+  '/api/internal/sam-loop-subscription': typeof ApiInternalSamLoopSubscriptionRoute
   '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/_authenticated/onboarding/': typeof AuthenticatedOnboardingIndexRoute
@@ -631,6 +641,7 @@ export interface FileRouteTypes {
     | '/api/internal/gsc'
     | '/api/internal/loops-enabled'
     | '/api/internal/projects'
+    | '/api/internal/sam-loop-subscription'
     | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
     | '/onboarding/'
@@ -691,6 +702,7 @@ export interface FileRouteTypes {
     | '/api/internal/gsc'
     | '/api/internal/loops-enabled'
     | '/api/internal/projects'
+    | '/api/internal/sam-loop-subscription'
     | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
     | '/onboarding'
@@ -753,6 +765,7 @@ export interface FileRouteTypes {
     | '/api/internal/gsc'
     | '/api/internal/loops-enabled'
     | '/api/internal/projects'
+    | '/api/internal/sam-loop-subscription'
     | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
     | '/_authenticated/onboarding/'
@@ -804,6 +817,7 @@ export interface RootRouteChildren {
   ApiInternalGscRoute: typeof ApiInternalGscRoute
   ApiInternalLoopsEnabledRoute: typeof ApiInternalLoopsEnabledRoute
   ApiInternalProjectsRoute: typeof ApiInternalProjectsRoute
+  ApiInternalSamLoopSubscriptionRoute: typeof ApiInternalSamLoopSubscriptionRoute
   ApiInternalTrackerRoute: typeof ApiInternalTrackerRoute
   ApiInternalTriggerSamLoopsRoute: typeof ApiInternalTriggerSamLoopsRoute
   ApiGa4OauthCallbackRoute: typeof ApiGa4OauthCallbackRoute
@@ -971,6 +985,13 @@ declare module '@tanstack/react-router' {
       path: '/api/internal/tracker'
       fullPath: '/api/internal/tracker'
       preLoaderRoute: typeof ApiInternalTrackerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/sam-loop-subscription': {
+      id: '/api/internal/sam-loop-subscription'
+      path: '/api/internal/sam-loop-subscription'
+      fullPath: '/api/internal/sam-loop-subscription'
+      preLoaderRoute: typeof ApiInternalSamLoopSubscriptionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/internal/projects': {
@@ -1447,6 +1468,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalGscRoute: ApiInternalGscRoute,
   ApiInternalLoopsEnabledRoute: ApiInternalLoopsEnabledRoute,
   ApiInternalProjectsRoute: ApiInternalProjectsRoute,
+  ApiInternalSamLoopSubscriptionRoute: ApiInternalSamLoopSubscriptionRoute,
   ApiInternalTrackerRoute: ApiInternalTrackerRoute,
   ApiInternalTriggerSamLoopsRoute: ApiInternalTriggerSamLoopsRoute,
   ApiGa4OauthCallbackRoute: ApiGa4OauthCallbackRoute,
