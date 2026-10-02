@@ -20,6 +20,7 @@ type Receipt = {
   model: string;
   startedAt: string;
   scheduledFor: string;
+  houseOnly?: true;
   steps: SubscriptionSteps;
 };
 const receiptSchema = z
@@ -30,6 +31,7 @@ const receiptSchema = z
     model: z.enum(["grok-4.7", "grok-4.7-build-fast"]),
     startedAt: z.iso.datetime(),
     scheduledFor: z.iso.datetime(),
+    houseOnly: z.literal(true).optional(),
     steps: z
       .array(
         z

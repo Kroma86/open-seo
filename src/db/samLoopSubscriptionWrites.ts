@@ -12,6 +12,12 @@ import { pgDb } from "./pg/client";
 import { runD1RawBatch } from "./runBatch";
 import { projects, samLoopRuns, samLoops } from "./schema";
 
+export type SubscriptionHouseScope = {
+  projectId: string;
+  loopId: string;
+  domain: "niceseo.ai";
+};
+
 export async function tryCreateAdmittedSamLoopRun(
   data: { id: string; loopId: string; projectId: string },
   admission: { sinceDate: string; cap: number },
@@ -36,6 +42,7 @@ export async function compareAndSwapSubscriptionRun(
   expectedCostNote: string | null,
   data: Partial<InferInsertModel<typeof samLoopRuns>>,
   terminalLoop?: { loopId: string; projectId: string; finishedAt: string },
+  houseScope?: SubscriptionHouseScope,
 ) {
   const update = db
     .update(samLoopRuns)
@@ -47,6 +54,17 @@ export async function compareAndSwapSubscriptionRun(
         expectedCostNote === null
           ? isNull(samLoopRuns.costNote)
           : eq(samLoopRuns.costNote, expectedCostNote),
+        houseScope
+          ? and(
+              eq(samLoopRuns.projectId, houseScope.projectId),
+              eq(samLoopRuns.loopId, houseScope.loopId),
+              sql`exists (select 1 from ${projects} inner join ${samLoops}
+                on ${samLoops.projectId} = ${projects.id}
+                where ${projects.id} = ${houseScope.projectId} and ${samLoops.id} = ${houseScope.loopId}
+                and ${projects.domain} = ${houseScope.domain} and ${projects.archivedAt} is null
+                and ${eq(samLoops.isEnabled, true)})`,
+            )
+          : undefined,
       ),
     )
     .returning({ id: samLoopRuns.id });
