@@ -72,6 +72,37 @@ import {
   storeSamAskDraft,
 } from "./agencyHomeUtils";
 
+function toStorageString(value: unknown) {
+  if (typeof value === "symbol") {
+    throw new TypeError("Storage cannot convert a Symbol to a string");
+  }
+  return String(value);
+}
+
+function createMemoryStorage() {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: () => {
+      values.clear();
+    },
+    getItem: (key: unknown) => {
+      return values.get(toStorageString(key)) ?? null;
+    },
+    key: (index: number) => {
+      return [...values.keys()][index >>> 0] ?? null;
+    },
+    removeItem: (key: unknown) => {
+      values.delete(toStorageString(key));
+    },
+    setItem: (key: unknown, value: unknown) => {
+      values.set(toStorageString(key), toStorageString(value));
+    },
+  } satisfies Storage;
+}
+
 describe("agency home smoke", () => {
   it("renders the home shell with prompt and workflows", () => {
     const markup = renderToStaticMarkup(createElement(AgencyHomePage));
@@ -110,16 +141,52 @@ describe("agency home smoke", () => {
   });
 
   it("stores Ask-Sam drafts under the shared sessionStorage key", () => {
-    const setItem = vi.fn();
-    vi.stubGlobal("sessionStorage", { setItem });
+    const storage = createMemoryStorage();
+    const setItem = vi.spyOn(storage, "setItem");
+    vi.stubGlobal("sessionStorage", storage);
     try {
       storeSamAskDraft("proj_1", "  Run a site health check  ");
       expect(setItem).toHaveBeenCalledWith(
         "sam-loops-ask:proj_1",
         "Run a site health check",
       );
+      expect(storage.getItem("sam-loops-ask:proj_1")).toBe(
+        "Run a site health check",
+      );
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("keeps the in-memory Storage contract", () => {
+    const storage = createMemoryStorage();
+    expect(storage.length).toBe(0);
+    expect(storage.getItem("missing")).toBeNull();
+    expect(storage.key(0)).toBeNull();
+    Reflect.apply(storage.setItem, storage, [123, 456]);
+    expect(storage.getItem("123")).toBe("456");
+    expect(Reflect.apply(storage.getItem, storage, [123])).toBe("456");
+    storage.setItem("second", "value");
+    storage.setItem("123", "updated");
+    expect(storage.length).toBe(2);
+    expect(storage.key(0)).toBe("123");
+    expect(storage.key(1)).toBe("second");
+    expect(storage.key(2)).toBeNull();
+    expect(storage.key(-1)).toBeNull();
+    expect(storage.getItem("123")).toBe("updated");
+    Reflect.apply(storage.removeItem, storage, [123]);
+    expect(storage.getItem("123")).toBeNull();
+    expect(storage.length).toBe(1);
+    expect(storage.key(0)).toBe("second");
+    storage.setItem("empty", "");
+    expect(storage.getItem("empty")).toBe("");
+    Reflect.apply(storage.setItem, storage, ["nullish", null]);
+    expect(storage.getItem("nullish")).toBe("null");
+    expect(() => storage.setItem("symbol", Symbol("value"))).toThrow(TypeError);
+    expect(storage.getItem("symbol")).toBeNull();
+    storage.clear();
+    expect(storage.length).toBe(0);
+    expect(storage.key(0)).toBeNull();
+    expect(storage.getItem("second")).toBeNull();
   });
 });
