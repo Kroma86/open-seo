@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as SamLoopRunGuards from "@/server/features/sam-loops/services/samLoopRunGuards";
 
 type DueLoopRow = {
   id: string;
@@ -47,10 +48,7 @@ vi.mock("@/server/features/sam-loops/repositories/SamLoopRepository", () => ({
 vi.mock(
   "@/server/features/sam-loops/services/samLoopRunGuards",
   async (importOriginal) => {
-    const actual =
-      await importOriginal<
-        typeof import("@/server/features/sam-loops/services/samLoopRunGuards")
-      >();
+    const actual = await importOriginal<typeof SamLoopRunGuards>();
     return {
       ...actual,
       beginSamLoopRun: mocks.beginSamLoopRun,
@@ -58,15 +56,63 @@ vi.mock(
   },
 );
 
-const testEnv = { SAM_LOOP_WORKFLOW: {} } as unknown as Env;
+function unusedBinding(): never {
+  throw new Error("This scheduler test must not access an unused binding");
+}
 
 function capEnv(value?: string): Env {
-  const env = { SAM_LOOP_WORKFLOW: {} } as unknown as Env;
+  const env: Env = {
+    SAM_LOOP_WORKFLOW: {
+      create: unusedBinding,
+      get: unusedBinding,
+      createBatch: unusedBinding,
+    },
+    get KV() {
+      return unusedBinding();
+    },
+    get R2() {
+      return unusedBinding();
+    },
+    get DB() {
+      return unusedBinding();
+    },
+    get OAUTH_KV() {
+      return unusedBinding();
+    },
+    get ONBOARDING_CHAT() {
+      return unusedBinding();
+    },
+    get SAM_CHAT() {
+      return unusedBinding();
+    },
+    get AUDIT_SCRATCHPAD() {
+      return unusedBinding();
+    },
+    get SITE_AUDIT_WORKFLOW() {
+      return unusedBinding();
+    },
+    get RANK_CHECK_WORKFLOW() {
+      return unusedBinding();
+    },
+    DATAFORSEO_API_KEY: "",
+    PORT: "",
+    AUTH_MODE: "local_noauth",
+    BETTER_AUTH_SECRET: "",
+    BETTER_AUTH_URL: "",
+    AUTUMN_SECRET_KEY: "",
+    LOOPS_API_KEY: "",
+    LOOPS_TRANSACTIONAL_VERIFY_EMAIL_ID: "",
+    LOOPS_TRANSACTIONAL_RESET_PASSWORD_ID: "",
+    POSTHOG_HOST: "",
+    POSTHOG_PUBLIC_KEY: "",
+  };
   if (value !== undefined) {
-    (env as { SAM_LOOP_DAILY_RUN_CAP?: string }).SAM_LOOP_DAILY_RUN_CAP = value;
+    env.SAM_LOOP_DAILY_RUN_CAP = value;
   }
   return env;
 }
+
+const testEnv = capEnv();
 
 function dueLoop(overrides: Partial<DueLoopRow> = {}): DueLoopRow {
   return {
@@ -354,7 +400,9 @@ describe("runScheduledSamLoops", () => {
 
 it("does not start Worker model runs in subscription mode", async () => {
   vi.clearAllMocks();
-  await runTick({ ...testEnv, SAM_LOOP_EXECUTOR: "subscription" } as Env);
+  const subscriptionEnv = capEnv();
+  subscriptionEnv.SAM_LOOP_EXECUTOR = "subscription";
+  await runTick(subscriptionEnv);
   expect(mocks.getDueLoopsWithOrganization).not.toHaveBeenCalled();
   expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
 });
