@@ -110,12 +110,16 @@ describe("agency home smoke", () => {
   });
 
   it("stores Ask-Sam drafts under the shared sessionStorage key", () => {
-    const setItem = vi.spyOn(Storage.prototype, "setItem");
-    storeSamAskDraft("proj_1", "  Run a site health check  ");
-    expect(setItem).toHaveBeenCalledWith(
-      "sam-loops-ask:proj_1",
-      "Run a site health check",
-    );
-    setItem.mockRestore();
+    const setItem = vi.fn();
+    vi.stubGlobal("sessionStorage", { setItem });
+    try {
+      storeSamAskDraft("proj_1", "  Run a site health check  ");
+      expect(setItem).toHaveBeenCalledWith(
+        "sam-loops-ask:proj_1",
+        "Run a site health check",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
