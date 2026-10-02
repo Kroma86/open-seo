@@ -135,7 +135,7 @@ export async function prepareSamLoop(
       const pages = audit
         ? await AuditRepository.getPagesForAudit(audit.id)
         : [];
-      readiness = checkAuditReadiness(audit, pages, row!.domain, new Date());
+      readiness = checkAuditReadiness(audit, pages, row.domain, new Date());
     } catch {
       readiness = {
         ready: false,
@@ -201,7 +201,7 @@ export async function prepareSamLoop(
       {
         projectId: input.project.id,
         projectName: input.project.name,
-        domain: row!.domain,
+        domain: row.domain,
         locationCode: input.project.locationCode,
         languageCode: input.project.languageCode,
       },
@@ -225,7 +225,7 @@ export async function prepareSamLoop(
   const tools = buildScopedLoopTools(
     buildSamMcpTools(input.authContext, {
       id: input.project.id,
-      domain: row!.domain,
+      domain: row.domain,
     }),
     {
       sourceType: input.sourceType,
@@ -239,7 +239,7 @@ export async function prepareSamLoop(
     prompt: taskBody,
     tools,
     monthly,
-    domain: row!.domain ?? "",
+    domain: row.domain ?? "",
   };
 }
 
