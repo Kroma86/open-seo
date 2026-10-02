@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
       expected: string | null,
       changes: Partial<Run>,
       terminal?: { loopId: string; projectId: string; finishedAt: string },
+      houseScope?: { projectId: string; loopId: string; domain: "niceseo.ai" },
     ) => Promise<boolean>
   >(),
   updateLoop: vi.fn(),

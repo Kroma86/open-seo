@@ -128,6 +128,66 @@ beforeEach(() => {
 
 afterEach(() => database.close());
 
+it.each([
+  "update projects set domain = 'client.example.test', loops_enabled = 1",
+  "update projects set archived_at = '2026-10-01'",
+  "update sam_loops set is_enabled = 0",
+  "update sam_loops set project_id = 'client-project'",
+])("house reservation refuses a changed scope: %s", async (change) => {
+  await SamLoopRepository.claimSubscriptionRun(input, admission);
+  database.exec(change);
+  expect(
+    await SamLoopRepository.compareAndSwapSubscriptionRun(
+      input.id,
+      input.costNote,
+      { costNote: "subscription:pending:fixture" },
+      undefined,
+      {
+        projectId: input.projectId,
+        loopId: input.loopId,
+        domain: "niceseo.ai",
+      },
+    ),
+  ).toBe(false);
+  expect(
+    database.prepare("select cost_note from sam_loop_runs").get(),
+  ).toMatchObject({
+    cost_note: input.costNote,
+  });
+});
+
+it("house reservation requires exact run identities and accepts unchanged scope", async () => {
+  await SamLoopRepository.claimSubscriptionRun(input, admission);
+  for (const wrong of [{ projectId: "other" }, { loopId: "other" }])
+    expect(
+      await SamLoopRepository.compareAndSwapSubscriptionRun(
+        input.id,
+        input.costNote,
+        { costNote: "subscription:pending:fixture" },
+        undefined,
+        {
+          projectId: input.projectId,
+          loopId: input.loopId,
+          domain: "niceseo.ai",
+          ...wrong,
+        },
+      ),
+    ).toBe(false);
+  expect(
+    await SamLoopRepository.compareAndSwapSubscriptionRun(
+      input.id,
+      input.costNote,
+      { costNote: "subscription:pending:fixture" },
+      undefined,
+      {
+        projectId: input.projectId,
+        loopId: input.loopId,
+        domain: "niceseo.ai",
+      },
+    ),
+  ).toBe(true);
+});
+
 it("atomically commits a terminal result and stamps its loop once", async () => {
   await SamLoopRepository.claimSubscriptionRun(input, admission);
   const finishedAt = "2026-10-01T12:05:00.000Z";
