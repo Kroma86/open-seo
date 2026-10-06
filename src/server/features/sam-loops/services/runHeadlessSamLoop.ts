@@ -67,6 +67,138 @@ export type HeadlessSamLoopResult = {
   costNote: string | null;
 };
 
+const GENERATION_ERROR_NAME_ALLOWLIST = new Set([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "ReferenceError",
+  "AbortError",
+  "TimeoutError",
+  "DOMException",
+  "AI_NoObjectGeneratedError",
+  "AI_APICallError",
+  "AI_RetryError",
+  "AI_TypeValidationError",
+  "AI_JSONParseError",
+  "AI_InvalidPromptError",
+  "AI_InvalidArgumentError",
+  "AI_NoSuchToolError",
+  "AI_InvalidToolArgumentsError",
+  "AI_ToolExecutionError",
+  "AI_NoOutputGeneratedError",
+  "AI_NoContentGeneratedError",
+  "AI_UnsupportedFunctionalityError",
+  "AI_EmptyResponseBodyError",
+  "AI_NoSuchModelError",
+  "AI_InvalidResponseDataError",
+  "AI_DownloadError",
+  "AI_MessageConversionError",
+]);
+
+function generationErrorDetail(error: unknown): string {
+  // Only these fields may reach run records or Slack; never serialize the error.
+  // Provider error text, not attacker prose: plain unlabeled hunter2 is undetectable
+  // and out of scope. Credential shapes, labels, userinfo and bounded lookback are covered.
+  try {
+    const labels = ["bearer", "basic", "authorization", "token", "secret", "password", "passwd", "passphrase", "passcode", "pwd", "apikey", "apitoken", "privatekey", "cookie", "credential", "signature", "session"];
+    const digitLetters: Record<string, string> = { "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "$": "s" };
+    const foldDigits = (word: string) => word.replace(/[013457$]/g, digit => digitLetters[digit]!);
+    const hasCredentialLabel = (word: string, next = "") => {
+      const normalized = word.toLowerCase().replace(/[^a-z0-9$]/g, "");
+      const folded = foldDigits(normalized);
+      return [normalized, folded].some(value => labels.some(label => value.includes(label)) || value.includes("key"))
+        || (folded === "api" && /^keys?$/i.test(foldDigits(next).replace(/[.,;:]+$/, "")));
+    };
+    const secretDelimiters = /[._~+-]/;
+    const knownSecretPrefix = new RegExp(`(?:^|${secretDelimiters.source})(?:sk|pk|rk|ghp|gho|ghs|ghu|github_pat|xox[a-z]|glpat|npm|shpat|whsec|sk_live|sk_test)(?:${secretDelimiters.source}|$)`, "i");
+    const hasSecretShape = (word: string) => {
+      let randomLookingRuns = 0;
+      for (const run of word.match(/[A-Za-z0-9]+/g) ?? []) {
+        // Look ahead so adjacent case flips sharing a character are all counted.
+        const caseFlips = (run.match(/[a-z](?=[A-Z])|[A-Z](?=[a-z])/g) ?? []).length;
+        const mixed = /[A-Za-z]/.test(run) && /[0-9]/.test(run);
+        if (run.length >= 24 || (run.length >= 12 && (mixed || caseFlips >= 4))) return true;
+        if ((run.length >= 8 && caseFlips >= 3) || (run.length >= 6 && mixed)) randomLookingRuns++;
+      }
+      return randomLookingRuns >= 2 || word.split("/").some(segment =>
+        /AKIA|ASIA|AIza|eyJ/.test(segment) || knownSecretPrefix.test(segment));
+    };
+    const record = error != null && typeof error === "object" ? error as Record<string, unknown> : null;
+    const name = typeof record?.name === "string" && (GENERATION_ERROR_NAME_ALLOWLIST.has(record.name)
+      || /^[A-Za-z_$][\w.$]{0,79}$/.test(record.name) && !hasCredentialLabel(record.name) && !hasSecretShape(record.name))
+      ? record.name : error instanceof Error ? "Error" : "NonError";
+    const status = [record?.statusCode, record?.status].find((value): value is number =>
+      typeof value === "number" && Number.isInteger(value) && value >= 100 && value <= 599);
+    const message = typeof record?.message === "string" ? record.message : typeof error === "string" ? error : "Unknown error";
+    const redact = (value: string) => {
+      // Bound scanning, then stop before Unicode separators or look-alikes.
+      let text = value.slice(0, 2000);
+      const nonAscii = text.search(/[^\x20-\x7E\t\r\n]/);
+      if (nonAscii !== -1) {
+        let wordStart = nonAscii;
+        while (wordStart > 0 && !/[ \t\r\n]/.test(text[wordStart - 1]!)) wordStart--;
+        text = text.slice(0, wordStart);
+      }
+      let suspicious = false;
+      const words = text.split(/[ \t\r\n]+/);
+      const output: string[] = [];
+      const readable = (word: string) => {
+        const remainder = word.replace(/^[A-Za-z][A-Za-z0-9+.-]*:\/\//, "");
+        const path = remainder !== word || remainder.includes("/");
+        return !remainder.includes(":") && (path
+            ? /^[A-Za-z0-9._\/+~-]{1,60}$/.test(remainder) && remainder.split("/").every(segment => segment.length < 32)
+            : /^[A-Za-z0-9._\/+~-]{1,31}$/.test(remainder));
+      };
+      for (let index = 0; index < words.length; index++) {
+        let word = words[index]!;
+        if (!word) continue;
+        let end = word.length;
+        while (end > 0 && ".,;:".includes(word[end - 1]!)) end--;
+        const punctuation = word.slice(end);
+        word = word.slice(0, end);
+        // Any ampersand may introduce an entity, including incomplete or split ones.
+        if (/[@=&$!*^(){}\[\]<>"'\x60|\\]/.test(word)
+          || /.\+.|^\+[a-z]+-/i.test(words[index]!)
+          || /%(?!3f|23)(?:[0-9a-f]{2}|u[0-9a-f]{4}|u)/i.test(words[index]!)) {
+          // Split userinfo or assignments may include two preceding words.
+          output.pop();
+          output.pop();
+          suspicious = true;
+          break;
+        }
+        if (hasCredentialLabel(word, words[index + 1]) || hasSecretShape(word)) {
+          output.pop();
+          suspicious = true;
+          break;
+        }
+        const cut = word.search(/[?#]|%3[fF]|%23/);
+        if (cut !== -1) {
+          const prefix = word.slice(0, cut);
+          if (prefix && readable(prefix)) output.push(prefix);
+          suspicious = true;
+          break;
+        }
+        if (!readable(word)) {
+          suspicious = true;
+          break;
+        }
+        output.push(word + punctuation);
+      }
+      if (!suspicious && nonAscii !== -1) {
+        output.pop();
+        output.pop();
+        suspicious = true;
+      }
+      if (suspicious) output.push("[redacted]");
+      return output.join(" ").trim().slice(0, 200);
+    };
+    return `${GENERATION_ERROR_NAME_ALLOWLIST.has(name) ? name : redact(name)}${status === undefined ? "" : ` (HTTP ${status})`}: ${redact(message).slice(0, 200)}`;
+  } catch {
+    return "UnknownError: Unreadable error details";
+  }
+}
+
 /**
  * Run Sam once for a loop: project system prompt + skill/custom body,
  * propose-only write path, step cap 24.
@@ -279,10 +411,10 @@ export async function runHeadlessSamLoop(
       }
     },
     });
-  } catch {
+  } catch (error) {
     return {
       status: "failed",
-      error: "Generation did not return a complete valid result.",
+      error: `Generation did not return a complete valid result. ${generationErrorDetail(error)}`,
       ...progress(),
     };
   }
@@ -302,8 +434,8 @@ export async function runHeadlessSamLoop(
       const article = await validateMonthlyContent(result.output, [...(topic?.evidence ?? []), ...result.steps], row!.domain ?? "");
       report = article.report;
       error = article.error;
-    } catch {
-      error = "The run did not finish a valid structured article result.";
+    } catch (generationError) {
+      error = `The run did not finish a valid structured article result. ${generationErrorDetail(generationError)}`;
     }
   } else if (!report) {
     error = "The run ended without a written report.";
