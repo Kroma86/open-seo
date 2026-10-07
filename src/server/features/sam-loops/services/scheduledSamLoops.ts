@@ -1,4 +1,7 @@
 import { SamLoopRepository } from "@/server/features/sam-loops/repositories/SamLoopRepository";
+import { samBoxKindForLoop } from "@/server/features/sam-loops/services/samBoxKinds";
+import { getSamBoxMode } from "@/server/features/sam-loops/services/samBoxMode";
+import { sweepExpiredBoxRuns } from "@/server/features/sam-loops/services/samBoxSweep";
 import {
   beginSamLoopRun,
   getSamLoopDailyRunCap,
@@ -14,6 +17,11 @@ const ALREADY_RUNNING_IDS_CAP = 20;
 
 /** Cron body: claim due enabled loops and start SamLoopWorkflow for each. */
 export async function runScheduledSamLoops(env: Env) {
+  try {
+    await sweepExpiredBoxRuns();
+  } catch {
+    console.error({ event: "sam_box_sweep_failed" });
+  }
   const dailyRunCap = getSamLoopDailyRunCap(env);
   const runsToday = await SamLoopRepository.countRunsCreatedSince(
     startOfUtcDay(),
@@ -42,6 +50,7 @@ export async function runScheduledSamLoops(env: Env) {
   let workflowStartErrors = 0;
   let loopErrors = 0;
   let domainSkips = 0;
+  let boxDeferred = 0;
 
   for (const loop of dueLoops) {
     if (Date.now() >= deadline) {
@@ -51,6 +60,10 @@ export async function runScheduledSamLoops(env: Env) {
 
     try {
       if (!loop.nextRunAt) continue;
+      if (getSamBoxMode(env) === "on" && samBoxKindForLoop(loop)) {
+        boxDeferred++;
+        continue;
+      }
 
       const observedNextRunAt = loop.nextRunAt;
       const nextRunAt = computeNextSamLoopRunAt(
@@ -164,6 +177,7 @@ export async function runScheduledSamLoops(env: Env) {
     workflowStartErrors,
     loopErrors,
     domainSkips,
+    boxDeferred,
     oldestDueAgeMs: oldestDue
       ? Date.now() - new Date(oldestDue).getTime()
       : null,

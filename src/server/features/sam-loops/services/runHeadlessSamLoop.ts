@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { z } from "zod";
 import { getOptionalEnvValue } from "@/server/lib/runtime-env";
 import { selectMonthlyTopic } from "./monthlyTopic";
+import { onPageExecutionPrompt } from "./onPageExecutionPrompt";
 import { loopPartialReport } from "./loopPartialReport";
 import { MONTHLY_CONTENT_INSTRUCTION, monthlyContentSchema, stripDraftEvidence, validateMonthlyContent, verifiedMonthlyTopics } from "./monthlyContentResult";
 import { SamLoopRepository } from "../repositories/SamLoopRepository";
@@ -96,7 +97,7 @@ const GENERATION_ERROR_NAME_ALLOWLIST = new Set([
   "AI_MessageConversionError",
 ]);
 
-function generationErrorDetail(error: unknown): string {
+export function generationErrorDetail(error: unknown): string {
   // Only these fields may reach run records or Slack; never serialize the error.
   // Provider error text, not attacker prose: plain unlabeled hunter2 is undetectable
   // and out of scope. Credential shapes, labels, userinfo and bounded lookback are covered.
@@ -281,24 +282,9 @@ export async function runHeadlessSamLoop(
   } else if (monthly) {
     taskBody = `Loop: ${input.loopName}\n\n${MONTHLY_CONTENT_INSTRUCTION}`;
   } else if (input.customPrompt) {
-    const onPageTemplate = DEFAULT_SAM_LOOP_TEMPLATES.find(
-      (template) => template.name === "On-page priorities",
-    );
-    let executionPrompt = input.customPrompt;
-    if (
-      input.sourceType === "custom" &&
-      input.customPrompt === onPageTemplate?.customPrompt
-    ) {
-      // Preserve the reserved stored identity used to grant proposal access.
-      // A completed skip report must never suppress the next scheduled pass.
-      const bodyStart = input.customPrompt.indexOf("Queue-only on-page pass");
-      if (bodyStart < 0) throw new Error("On-page execution template is missing");
-      executionPrompt = [
-        "Perform this pass on every scheduled run. The configured cadence controls timing.",
-        "First list existing proposals. Skip a page/field when the same replacement is already pending or approved.",
-        input.customPrompt.slice(bodyStart),
-      ].join("\n\n");
-    }
+    const executionPrompt = input.sourceType === "custom"
+      ? onPageExecutionPrompt(input.customPrompt)
+      : input.customPrompt;
     taskBody = `Loop: ${input.loopName}\n\n${executionPrompt}`;
   } else {
     throw new Error("Loop has neither skill nor custom prompt");

@@ -166,6 +166,41 @@ async function checkpointRun(
   await db.update(samLoopRuns).set(data).where(and(eq(samLoopRuns.id, runId), eq(samLoopRuns.status, "running")));
 }
 
+/** Only the first terminal writer may finish a running box lease. */
+async function finishRunIfRunning(
+  runId: string,
+  data: Pick<
+    InferInsertModel<typeof samLoopRuns>,
+    "status" | "error" | "report" | "finishedAt" | "proposalsQueued" | "stepsUsed" | "costNote"
+  >,
+): Promise<boolean> {
+  const finished = await db
+    .update(samLoopRuns)
+    .set(data)
+    .where(and(eq(samLoopRuns.id, runId), eq(samLoopRuns.status, "running")))
+    .returning({ id: samLoopRuns.id });
+  return finished.length > 0;
+}
+
+async function getExpiredBoxRuns(nowIso: string, leaseSeconds: number) {
+  const cutoff = new Date(Date.parse(nowIso) - leaseSeconds * 1000).toISOString();
+  return db
+    .select({
+      id: samLoopRuns.id,
+      loopId: samLoopRuns.loopId,
+      projectId: samLoopRuns.projectId,
+      startedAt: samLoopRuns.startedAt,
+    })
+    .from(samLoopRuns)
+    .where(and(
+      eq(samLoopRuns.status, "running"),
+      sql`${samLoopRuns.costNote} like 'box:grok-sub%'`,
+      lte(samLoopRuns.startedAt, cutoff),
+    ))
+    .orderBy(samLoopRuns.startedAt)
+    .limit(50);
+}
+
 async function getRunById(runId: string) {
   const rows = await db
     .select()
@@ -365,6 +400,8 @@ export const SamLoopRepository = {
   tryCreateRun,
   updateRun,
   checkpointRun,
+  finishRunIfRunning,
+  getExpiredBoxRuns,
   getRunById,
   getActiveRunForLoop,
   getRunsForLoop,

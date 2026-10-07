@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { SamLoopRepository } from "@/server/features/sam-loops/repositories/SamLoopRepository";
+import { SAM_BOX_COST_PREFIX, SAM_BOX_LEASE_SECONDS } from "./samBoxTypes";
 import {
   SAM_LOOP_DAILY_RUN_CAP_DEFAULT,
   startOfUtcDay,
@@ -96,6 +97,17 @@ async function getStaleRunReason(input: {
   runId: string;
   ageMs: number;
 }) {
+  if (
+    input.run?.costNote?.startsWith(SAM_BOX_COST_PREFIX) &&
+    input.run.status === "running"
+  ) {
+    const startedMs = input.run.startedAt ? Date.parse(input.run.startedAt) : NaN;
+    // A corrupt lease stays a blocker; its expiry cannot be established safely.
+    if (!Number.isFinite(startedMs)) return null;
+    return Date.now() <= startedMs + SAM_BOX_LEASE_SECONDS * 1000
+      ? null
+      : "Box lease expired before a result was posted.";
+  }
   const workflowStatus = await getWorkflowStatus(input.runId);
 
   if (workflowStatus && ACTIVE_WORKFLOW_STATUSES.has(workflowStatus.status)) {

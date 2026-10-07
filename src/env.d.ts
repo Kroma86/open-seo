@@ -43,6 +43,8 @@ declare namespace Cloudflare {
     AGENCY_SCORE_EXPORT_TOKEN?: string;
     // Optional override for the Sam loop daily run cap (1..1000; default 40).
     SAM_LOOP_DAILY_RUN_CAP?: string;
+    SAM_LOOP_GROK_BOX?: string;
+    SAM_LOOP_BOX_TOKEN?: string;
     // Agency board metrics for SAM pixel/OTTO status.
     AGENCY_METRICS_URL?: string;
     AGENCY_DASH_TOKEN?: string;
