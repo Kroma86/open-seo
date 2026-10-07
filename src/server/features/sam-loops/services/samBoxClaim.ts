@@ -41,7 +41,7 @@ const claimBodySchema = z
   })
   .strict();
 
-const CLAIM_DEADLINE_MS = 100_000;
+const CLAIM_DEADLINE_MS = 80_000;
 const CLAIM_SCAN_LIMIT = 10;
 type ClaimedRun = { id: string; loopId: string; projectId: string };
 

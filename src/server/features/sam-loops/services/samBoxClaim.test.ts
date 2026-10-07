@@ -335,7 +335,7 @@ describe("handleSamBoxClaim", () => {
     ]);
     mocks.tryCreateRun.mockResolvedValue(false);
     mocks.getActiveRunForLoop.mockImplementation(async () => {
-      vi.advanceTimersByTime(100_000);
+      vi.advanceTimersByTime(85_000);
       return { id: "active-run" };
     });
     expect((await claim()).body).toEqual({
