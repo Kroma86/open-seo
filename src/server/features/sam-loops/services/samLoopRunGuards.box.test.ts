@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { computeNextSamLoopRunAt } from "@/shared/sam-loops";
 import type { SamLoopRepository } from "../repositories/SamLoopRepository";
-import { beginSamLoopRun } from "./samLoopRunGuards";
+import { beginSamLoopRun, failSamLoopRunIfActive } from "./samLoopRunGuards";
 
 type RunRow = NonNullable<Awaited<ReturnType<typeof SamLoopRepository.getRunById>>>;
 
@@ -10,6 +11,12 @@ const mocks = vi.hoisted(() => ({
   getActiveRunForLoop: vi.fn<typeof SamLoopRepository.getActiveRunForLoop>(),
   getRunById: vi.fn<typeof SamLoopRepository.getRunById>(),
   updateRun: vi.fn<typeof SamLoopRepository.updateRun>(),
+  finishRunIfRunning: vi.fn<typeof SamLoopRepository.finishRunIfRunning>(),
+  updateLoop:
+    vi.fn<(loopId: string, projectId: string, data: { lastRunAt: string }) => Promise<void>>(),
+  getLoopById:
+    vi.fn<() => Promise<{ name: string; cadence: "monthly"; nextRunAt: string }>>(),
+  claimDueLoop: vi.fn<typeof SamLoopRepository.claimDueLoop>(),
   getWorkflow: vi.fn(),
   createWorkflow: vi.fn(),
 }));
@@ -29,6 +36,20 @@ const input = {
   organizationId: "org-1",
   trigger: "manual" as const,
   workflowStartErrorMessage: "Failed to start Sam loop",
+};
+const loop = {
+  name: "CTR opportunities",
+  cadence: "monthly" as const,
+  nextRunAt: "2026-10-01T13:00:00.000Z",
+};
+const expiredData = {
+  status: "failed",
+  error: "Box lease expired before a result was posted.",
+  report: "Not measured — Box lease expired before a result was posted.",
+  finishedAt: now.toISOString(),
+  costNote: "box:grok-sub (lease expired)",
+  stepsUsed: null,
+  proposalsQueued: 0,
 };
 
 function boxRun(startedAt: string | null): RunRow {
@@ -56,6 +77,10 @@ describe("beginSamLoopRun with a box lease", () => {
     mocks.tryCreateRun.mockResolvedValue(false);
     mocks.getWorkflow.mockRejectedValue(new Error("No Workflow for box run"));
     mocks.updateRun.mockResolvedValue(undefined);
+    mocks.finishRunIfRunning.mockResolvedValue(true);
+    mocks.updateLoop.mockResolvedValue(undefined);
+    mocks.getLoopById.mockResolvedValue(loop);
+    mocks.claimDueLoop.mockResolvedValue(true);
     mocks.createWorkflow.mockResolvedValue(undefined);
   });
 
@@ -77,6 +102,7 @@ describe("beginSamLoopRun with a box lease", () => {
       });
       expect(mocks.getWorkflow).not.toHaveBeenCalled();
       expect(mocks.updateRun).not.toHaveBeenCalled();
+      expect(mocks.finishRunIfRunning).not.toHaveBeenCalled();
       expect(mocks.createWorkflow).not.toHaveBeenCalled();
     },
   );
@@ -88,26 +114,58 @@ describe("beginSamLoopRun with a box lease", () => {
     mocks.tryCreateRun.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
 
     expect(await beginSamLoopRun(input)).toMatchObject({ ok: true });
-    expect(mocks.updateRun).toHaveBeenCalledWith("box-run", {
-      status: "failed",
-      error: "Box lease expired before a result was posted.",
-      finishedAt: now.toISOString(),
+    expect(mocks.finishRunIfRunning).toHaveBeenCalledExactlyOnceWith("box-run", expiredData);
+    expect(mocks.updateRun).not.toHaveBeenCalled();
+    expect(mocks.updateLoop).toHaveBeenCalledExactlyOnceWith(input.loopId, input.projectId, {
+      lastRunAt: now.toISOString(),
+    });
+    expect(mocks.claimDueLoop).toHaveBeenCalledExactlyOnceWith({
+      loopId: input.loopId,
+      projectId: input.projectId,
+      observedNextRunAt: loop.nextRunAt,
+      nextRunAt: computeNextSamLoopRunAt(loop.cadence, loop.nextRunAt, `${input.projectId}:${loop.name}`),
     });
     expect(mocks.getWorkflow).not.toHaveBeenCalled();
     expect(mocks.createWorkflow).toHaveBeenCalledTimes(1);
   });
 
   it.each([null, "", "invalid-date"])(
-    "leaves a lease with corrupt startedAt %j blocking without writes",
+    "expires a lease with corrupt startedAt %j through the same CAS payload",
     async (startedAt) => {
       mocks.getActiveRunForLoop.mockResolvedValue(boxRun(startedAt));
+      mocks.tryCreateRun.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
       expect(await beginSamLoopRun(input)).toMatchObject({
-        ok: false,
-        reason: "already_running",
+        ok: true,
       });
+      expect(mocks.finishRunIfRunning).toHaveBeenCalledExactlyOnceWith("box-run", expiredData);
+      expect(mocks.updateLoop).toHaveBeenCalledExactlyOnceWith(input.loopId, input.projectId, {
+        lastRunAt: now.toISOString(),
+      });
+      expect(mocks.claimDueLoop).toHaveBeenCalledTimes(1);
       expect(mocks.updateRun).not.toHaveBeenCalled();
-      expect(mocks.createWorkflow).not.toHaveBeenCalled();
+      expect(mocks.createWorkflow).toHaveBeenCalledTimes(1);
       expect(mocks.getWorkflow).not.toHaveBeenCalled();
     },
   );
+
+  it("leaves a concurrent terminal winner untouched when a passed box row is stale", async () => {
+    mocks.finishRunIfRunning.mockResolvedValueOnce(false);
+    await failSamLoopRunIfActive("box-run", expiredData.error, boxRun(null));
+
+    expect(mocks.finishRunIfRunning).toHaveBeenCalledExactlyOnceWith("box-run", expiredData);
+    expect(mocks.updateRun).not.toHaveBeenCalled();
+    expect(mocks.updateLoop).not.toHaveBeenCalled();
+    expect(mocks.claimDueLoop).not.toHaveBeenCalled();
+  });
+
+  it("uses the expiry CAS payload when the active box row is re-read", async () => {
+    mocks.getRunById.mockResolvedValue(boxRun(null));
+    await failSamLoopRunIfActive("box-run", expiredData.error);
+
+    expect(mocks.getRunById).toHaveBeenCalledExactlyOnceWith("box-run");
+    expect(mocks.finishRunIfRunning).toHaveBeenCalledExactlyOnceWith("box-run", expiredData);
+    expect(mocks.updateRun).not.toHaveBeenCalled();
+    expect(mocks.updateLoop).toHaveBeenCalledTimes(1);
+    expect(mocks.claimDueLoop).toHaveBeenCalledTimes(1);
+  });
 });

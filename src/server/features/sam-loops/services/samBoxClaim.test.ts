@@ -19,6 +19,9 @@ const mocks = vi.hoisted(() => ({
   claimDueLoop: vi.fn<typeof SamLoopRepository.claimDueLoop>(),
   tryCreateRun: vi.fn<typeof SamLoopRepository.tryCreateRun>(),
   updateRun: vi.fn<typeof SamLoopRepository.updateRun>(),
+  getRunById: vi.fn<
+    (runId: string) => Promise<{ status: string } | null>
+  >(),
   getActiveRunForLoop:
     vi.fn<(loopId: string) => Promise<{ id: string } | null>>(),
   finishRunIfRunning:
@@ -121,6 +124,7 @@ beforeEach(() => {
   mocks.claimDueLoop.mockResolvedValue(true);
   mocks.tryCreateRun.mockResolvedValue(true);
   mocks.updateRun.mockResolvedValue(undefined);
+  mocks.getRunById.mockResolvedValue({ status: "pending" });
   mocks.getActiveRunForLoop.mockResolvedValue(null);
   mocks.finishRunIfRunning.mockResolvedValue(true);
   mocks.updateLoop.mockResolvedValue(undefined);
@@ -541,6 +545,154 @@ describe("handleSamBoxClaim", () => {
       }),
     );
     expect(mocks.claimDueLoop).toHaveBeenCalledOnce();
+  });
+
+  it.each([false, true])(
+    "fails the created run when the running update throws (committed: %s)",
+    async (committed) => {
+      let status = "pending";
+      mocks.getRunById.mockImplementation(async () => ({ status }));
+      mocks.updateRun.mockImplementation(async (_runId, data) => {
+        if (data.status === "running") {
+          if (committed) status = "running";
+          throw new Error("storage unavailable");
+        }
+        if (data.status) status = data.status;
+      });
+      mocks.finishRunIfRunning.mockImplementation(async (_runId, data) => {
+        if (status !== "running") return false;
+        status = data.status;
+        return true;
+      });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+
+      expect(await claim()).toEqual({
+        status: 500,
+        body: { error: "claim_failed" },
+      });
+      const runId = mocks.tryCreateRun.mock.calls[0]?.[0].id;
+      const failure = {
+        status: "failed",
+        error: "Box claim could not start the run.",
+        finishedAt: NOW,
+        report:
+          "Not measured — Box claim could not start the run. No model was called.",
+        costNote: "no model call",
+        stepsUsed: 0,
+        proposalsQueued: 0,
+      };
+      expect(status).toBe("failed");
+      expect(mocks.finishRunIfRunning).toHaveBeenCalledExactlyOnceWith(
+        runId,
+        failure,
+      );
+      expect(mocks.updateRun).toHaveBeenCalledTimes(committed ? 1 : 2);
+      if (!committed) {
+        expect(mocks.updateRun).toHaveBeenLastCalledWith(runId, failure);
+        expect(mocks.finishRunIfRunning.mock.invocationCallOrder[0]).toBeLessThan(
+          mocks.updateRun.mock.invocationCallOrder[1] ?? 0,
+        );
+      }
+      expect(mocks.updateLoop).toHaveBeenCalledExactlyOnceWith(
+        "loop-1",
+        "project-1",
+        { lastRunAt: NOW },
+      );
+      expect(mocks.claimDueLoop).toHaveBeenCalledExactlyOnceWith({
+        loopId: "loop-1",
+        projectId: "project-1",
+        observedNextRunAt: DUE,
+        nextRunAt: computeNextSamLoopRunAt(
+          "monthly",
+          DUE,
+          "project-1:On-page priorities",
+        ),
+      });
+      expect(mocks.prepare).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["terminal", "missing"])(
+    "preserves the concurrent winner after a committed start throws (%s row)",
+    async (rowState) => {
+      const terminal = {
+        status: "failed",
+        finishedAt: "2026-10-07T13:20:00.122Z",
+        report: "Not measured — Box lease expired before a result was posted.",
+        costNote: "box:grok-sub (lease expired)",
+        error: "Box lease expired before a result was posted.",
+        stepsUsed: null,
+        proposalsQueued: 0,
+      };
+      const row = { ...terminal, status: "pending" };
+      mocks.updateRun.mockImplementation(async (_runId, data) => {
+        if (data.status === "running") {
+          row.status = "running";
+          throw new Error("committed but response lost");
+        }
+        Object.assign(row, data);
+      });
+      mocks.finishRunIfRunning.mockImplementation(async () => {
+        Object.assign(row, terminal);
+        return false;
+      });
+      mocks.getRunById.mockImplementation(async () =>
+        rowState === "missing" ? null : row,
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+
+      expect(await claim()).toEqual({
+        status: 500,
+        body: { error: "claim_failed" },
+      });
+      expect(row).toEqual(terminal);
+      expect(mocks.updateRun).toHaveBeenCalledOnce();
+      expect(mocks.finishRunIfRunning).toHaveBeenCalledOnce();
+      expect(mocks.getRunById).toHaveBeenCalledExactlyOnceWith(
+        mocks.tryCreateRun.mock.calls[0]?.[0].id,
+      );
+      expect(mocks.updateLoop).not.toHaveBeenCalled();
+      expect(mocks.claimDueLoop).not.toHaveBeenCalled();
+      expect(mocks.prepare).not.toHaveBeenCalled();
+    },
+  );
+
+  it("logs pending cleanup failures without masking claim_failed", async () => {
+    const error = new Error("Bearer private-token");
+    mocks.updateRun.mockRejectedValue(error);
+    mocks.finishRunIfRunning.mockResolvedValue(false);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await claim()).toEqual({
+      status: 500,
+      body: { error: "claim_failed" },
+    });
+    expect(mocks.updateRun).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledWith({
+      event: "sam_box_claim_cleanup_failed",
+      runId: mocks.tryCreateRun.mock.calls[0]?.[0].id,
+    });
+    expect(mocks.updateLoop).not.toHaveBeenCalled();
+    expect(mocks.claimDueLoop).not.toHaveBeenCalled();
+    expect(JSON.stringify(log.mock.calls)).not.toContain(error.message);
+  });
+
+  it("does not overwrite a lost cleanup CAS after the running update succeeded", async () => {
+    mocks.prepare.mockResolvedValue({
+      ...modelPrepared(),
+      staleNotice: "STALE AUDIT — Old crawl.\n\n",
+    });
+    mocks.updateRun
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("storage unavailable"));
+    mocks.finishRunIfRunning.mockResolvedValue(false);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await claim()).toEqual({
+      status: 500,
+      body: { error: "claim_failed" },
+    });
+    expect(mocks.updateRun).toHaveBeenCalledTimes(2);
+    expect(mocks.updateLoop).not.toHaveBeenCalled();
+    expect(mocks.claimDueLoop).not.toHaveBeenCalled();
   });
 
   it("returns claim_failed when cleanup also fails, without leaking exception text", async () => {

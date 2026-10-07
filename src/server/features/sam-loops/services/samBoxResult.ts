@@ -9,6 +9,7 @@ import { generationErrorDetail } from "./runHeadlessSamLoop";
 import { finishSamBoxRun, type SamBoxFinishData } from "./samBoxFinalize";
 import { samBoxKindForLoop } from "./samBoxKinds";
 import { leaseIdFor, leaseExpiresAt } from "./samBoxMode";
+import { samBoxExpiredFinish } from "./samBoxSweep";
 import {
   validateSamBoxResult,
   type SamBoxProposal,
@@ -103,7 +104,10 @@ async function checkRun(input: {
 > {
   const run = await SamLoopRepository.getRunById(input.run_id);
   if (!run) return { ok: false, response: httpError(404, "unknown_run") };
-  if (!run.costNote?.startsWith(SAM_BOX_COST_PREFIX)) {
+  const releasedBeforeModel =
+    run.status === "failed" &&
+    run.error?.startsWith("Box runner released the run before any model call (");
+  if (!run.costNote?.startsWith(SAM_BOX_COST_PREFIX) && !releasedBeforeModel) {
     return { ok: false, response: httpError(409, "not_a_box_run") };
   }
   if (
@@ -278,14 +282,7 @@ export async function handleSamBoxResult(input: {
   const { run } = checked;
   if (run.status !== "running") return resultBody(run, true);
   if (run.startedAt && Date.now() > Date.parse(leaseExpiresAt(run.startedAt))) {
-    const expired: SamBoxFinishData = {
-      status: "failed",
-      error: "Box lease expired before a result was posted.",
-      report: "Not measured — Box lease expired before a result was posted.",
-      costNote: `${SAM_BOX_COST_PREFIX} (lease expired)`,
-      stepsUsed: null,
-      proposalsQueued: 0,
-    };
+    const expired = samBoxExpiredFinish();
     const won = await finishSamBoxRun({
       run,
       data: expired,

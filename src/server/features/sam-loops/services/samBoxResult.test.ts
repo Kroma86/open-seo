@@ -399,7 +399,7 @@ describe("box result", () => {
       expect(mocks.claimDueLoop).toHaveBeenCalledTimes(1);
     },
   );
-  it("fails unknown result fields instead of treating them as missing prose", async () => {
+  it("fails unknown result fields with the contract written-report error", async () => {
     const result = await handleSamBoxResult({
       body: envelope({
         result: {
@@ -411,13 +411,13 @@ describe("box result", () => {
     });
     expect(result.body).toMatchObject({
       status: "failed",
-      error: "Result had unexpected fields.",
+      error: "The run ended without a written report.",
       proposals_queued: 0,
     });
     expect(mocks.finishRunIfRunning).toHaveBeenCalledWith(
       "run-1",
       expect.objectContaining({
-        report: "Not measured — Result had unexpected fields.",
+        report: "Not measured — The run ended without a written report.",
       }),
     );
     expect(mocks.enqueueProposal).not.toHaveBeenCalled();
@@ -868,16 +868,62 @@ describe("box abandon", () => {
     expect(mocks.updateLoop).not.toHaveBeenCalled();
     expect(mocks.claimDueLoop).not.toHaveBeenCalled();
   });
-  it("fails closed on a repeated before-model release after the contract removes its box marker", async () => {
+  it("replays a repeated before-model release after its box cost marker is removed", async () => {
     await handleSamBoxAbandon({ body: abandon() });
     expect(await handleSamBoxAbandon({ body: abandon() })).toEqual({
-      status: 409,
-      body: { error: "not_a_box_run" },
+      status: 200,
+      body: { ok: true, run_id: "run-1", status: "failed", replay: true },
     });
     expect(mocks.finishRunIfRunning).toHaveBeenCalledTimes(1);
     expect(mocks.updateLoop).not.toHaveBeenCalled();
     expect(mocks.claimDueLoop).not.toHaveBeenCalled();
   });
+  it("replays a result for a released matching lease without more writes", async () => {
+    await handleSamBoxAbandon({ body: abandon() });
+    expect(await handleSamBoxResult({ body: envelope() })).toEqual({
+      status: 200,
+      body: {
+        ok: true,
+        run_id: "run-1",
+        status: "failed",
+        error:
+          "Box runner released the run before any model call (controller_active).",
+        proposals_queued: 0,
+        replay: true,
+      },
+    });
+    expect(mocks.finishRunIfRunning).toHaveBeenCalledTimes(1);
+    expect(mocks.enqueueProposal).not.toHaveBeenCalled();
+    expect(mocks.updateLoop).not.toHaveBeenCalled();
+    expect(mocks.claimDueLoop).not.toHaveBeenCalled();
+  });
+  it.each([
+    { status: "failed", error: "Workflow ended without a model call." },
+    {
+      status: "completed",
+      error:
+        "Box runner released the run before any model call (controller_active).",
+    },
+  ] as const)(
+    "rejects no-model runs without a failed Box release marker (%j)",
+    async (overrides) => {
+      mocks.getRunById.mockResolvedValue(
+        run({ ...overrides, costNote: "no model call" }),
+      );
+      expect(await handleSamBoxResult({ body: envelope() })).toEqual({
+        status: 409,
+        body: { error: "not_a_box_run" },
+      });
+      expect(await handleSamBoxAbandon({ body: abandon() })).toEqual({
+        status: 409,
+        body: { error: "not_a_box_run" },
+      });
+      expect(mocks.finishRunIfRunning).not.toHaveBeenCalled();
+      expect(mocks.enqueueProposal).not.toHaveBeenCalled();
+      expect(mocks.updateLoop).not.toHaveBeenCalled();
+      expect(mocks.claimDueLoop).not.toHaveBeenCalled();
+    },
+  );
   it("advances after a model call and sanitizes detail through the real redactor", async () => {
     await handleSamBoxAbandon({
       body: abandon({

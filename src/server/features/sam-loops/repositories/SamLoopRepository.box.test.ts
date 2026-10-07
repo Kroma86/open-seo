@@ -61,8 +61,18 @@ for (const provider of ["d1", "postgres"] as const) {
       await insert("null_start", "running", null);
       for (const status of ["pending", "completed", "failed"]) await insert(status, status);
       expect(await repository.getExpiredBoxRuns("2026-10-07T13:00:00.000Z", 900)).toEqual([
+        { id: "null_start", loopId: "loop_null_start", projectId: "project", startedAt: null },
         { id: "old", loopId: "loop_old", projectId: "project", startedAt: "2026-10-07T12:44:59.999Z" },
         { id: "boundary", loopId: "loop_boundary", projectId: "project", startedAt: "2026-10-07T12:45:00.000Z" },
+      ]);
+    });
+    it("expires only running box rows with a missing lease start", async () => {
+      await insert("box_null", "running", null);
+      await insert("workflow_null", "running", null, "OpenRouter");
+      await insert("unmarked_null", "running", null, null);
+      for (const status of ["pending", "completed", "failed"]) await insert(status, status, null);
+      expect(await repository.getExpiredBoxRuns("2026-10-07T13:00:00.000Z", 900)).toEqual([
+        { id: "box_null", loopId: "loop_box_null", projectId: "project", startedAt: null },
       ]);
     });
     it("limits each sweep to the oldest 50 leases and uses the supplied lease duration", async () => {

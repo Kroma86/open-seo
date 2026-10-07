@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { sweepExpiredBoxRuns } from "./samBoxSweep";
+import { samBoxExpiredFinish, sweepExpiredBoxRuns } from "./samBoxSweep";
 import { SAM_BOX_LEASE_SECONDS } from "./samBoxTypes";
 import { computeNextSamLoopRunAt } from "@/shared/sam-loops";
 import type { SamBoxFinishData } from "./samBoxFinalize";
@@ -61,6 +61,18 @@ beforeEach(() => {
   mocks.claimDueLoop.mockResolvedValue(true);
 });
 afterEach(() => vi.useRealTimers());
+
+describe("samBoxExpiredFinish", () => {
+  it("returns the exact expiry payload at the supplied time without writes", () => {
+    expect(samBoxExpiredFinish(now)).toEqual(expiredData);
+    expect(mocks.finishRunIfRunning).not.toHaveBeenCalled();
+    expect(mocks.updateLoop).not.toHaveBeenCalled();
+  });
+
+  it("defaults the terminal timestamp to now", () => {
+    expect(samBoxExpiredFinish()).toEqual(expiredData);
+  });
+});
 
 describe("sweepExpiredBoxRuns", () => {
   it.each(["on", "off"])(

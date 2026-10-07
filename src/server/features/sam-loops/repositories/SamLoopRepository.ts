@@ -195,7 +195,7 @@ async function getExpiredBoxRuns(nowIso: string, leaseSeconds: number) {
     .where(and(
       eq(samLoopRuns.status, "running"),
       sql`${samLoopRuns.costNote} like 'box:grok-sub%'`,
-      lte(samLoopRuns.startedAt, cutoff),
+      or(isNull(samLoopRuns.startedAt), lte(samLoopRuns.startedAt, cutoff)),
     ))
     .orderBy(samLoopRuns.startedAt)
     .limit(50);

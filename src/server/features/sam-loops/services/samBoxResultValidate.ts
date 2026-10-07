@@ -59,7 +59,7 @@ export function validateSamBoxResult(
     if (
       parsed.error.issues.some((issue) => issue.code === "unrecognized_keys")
     ) {
-      return { ok: false, error: "Result had unexpected fields." };
+      return { ok: false, error: "The run ended without a written report." };
     }
     if (
       parsed.error.issues.some(

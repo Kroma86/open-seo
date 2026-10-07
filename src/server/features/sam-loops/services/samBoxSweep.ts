@@ -1,6 +1,18 @@
 import { SamLoopRepository } from "../repositories/SamLoopRepository";
-import { finishSamBoxRun } from "./samBoxFinalize";
+import { finishSamBoxRun, type SamBoxFinishData } from "./samBoxFinalize";
 import { SAM_BOX_COST_PREFIX, SAM_BOX_LEASE_SECONDS } from "./samBoxTypes";
+
+export function samBoxExpiredFinish(now = new Date()): SamBoxFinishData {
+  return {
+    status: "failed",
+    error: "Box lease expired before a result was posted.",
+    report: "Not measured — Box lease expired before a result was posted.",
+    finishedAt: now.toISOString(),
+    costNote: `${SAM_BOX_COST_PREFIX} (lease expired)`,
+    stepsUsed: null,
+    proposalsQueued: 0,
+  };
+}
 
 export async function sweepExpiredBoxRuns(
   now = new Date(),
@@ -16,16 +28,7 @@ export async function sweepExpiredBoxRuns(
       try {
         const won = await finishSamBoxRun({
           run,
-          data: {
-            status: "failed",
-            error: "Box lease expired before a result was posted.",
-            report:
-              "Not measured — Box lease expired before a result was posted.",
-            finishedAt: nowIso,
-            costNote: `${SAM_BOX_COST_PREFIX} (lease expired)`,
-            stepsUsed: null,
-            proposalsQueued: 0,
-          },
+          data: samBoxExpiredFinish(now),
           touchLastRun: true,
           advance: true,
         });

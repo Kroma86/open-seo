@@ -6,7 +6,11 @@ import {
   startOfUtcDay,
 } from "@/shared/sam-loops";
 import { generationErrorDetail } from "./runHeadlessSamLoop";
-import { finishSamBoxRun, type SamBoxFinishData } from "./samBoxFinalize";
+import {
+  advanceSamBoxLoop,
+  finishSamBoxRun,
+  type SamBoxFinishData,
+} from "./samBoxFinalize";
 import { samBoxKindForLoop } from "./samBoxKinds";
 import { leaseExpiresAt, leaseIdFor } from "./samBoxMode";
 import { prepareSamBoxClaim } from "./samBoxPrepare";
@@ -103,6 +107,7 @@ export async function handleSamBoxClaim(input: {
   }
 
   let activeRun: ClaimedRun | null = null;
+  let runStarted = false;
   let finalizedWithoutModel = 0;
   try {
     const cap = getSamLoopDailyRunCap(input.env);
@@ -153,12 +158,14 @@ export async function handleSamBoxClaim(input: {
         return emptyClaim("daily_cap", finalizedWithoutModel);
       }
       activeRun = run;
+      runStarted = false;
       const startedAt = new Date(currentTime()).toISOString();
       await SamLoopRepository.updateRun(run.id, {
         status: "running",
         startedAt,
         costNote: `${SAM_BOX_COST_PREFIX} leased`,
       });
+      runStarted = true;
       if (currentTime() >= deadline) {
         throw new Error("Box claim exceeded the request deadline.");
       }
@@ -246,16 +253,40 @@ export async function handleSamBoxClaim(input: {
     });
     if (activeRun) {
       try {
-        const detail = `Box claim failed: ${generationErrorDetail(error)}`;
-        await finishWithoutModel(
-          activeRun,
-          {
-            status: "failed",
-            error: detail,
-            report: `Not measured — ${detail}`,
-          },
-          new Date(currentTime()).toISOString(),
-        );
+        const detail = runStarted
+          ? `Box claim failed: ${generationErrorDetail(error)}`
+          : "Box claim could not start the run.";
+        const finishedAt = new Date(currentTime()).toISOString();
+        const data: SamBoxFinishData = {
+          status: "failed",
+          error: detail,
+          report: runStarted
+            ? `Not measured — ${detail}`
+            : `Not measured — ${detail} No model was called.`,
+          finishedAt,
+          proposalsQueued: 0,
+          stepsUsed: 0,
+          costNote: "no model call",
+        };
+        // The running update may have committed before throwing: try its CAS first.
+        const won = await finishSamBoxRun({
+          run: activeRun,
+          data,
+          touchLastRun: true,
+          advance: true,
+        });
+        if (!won && !runStarted) {
+          const current = await SamLoopRepository.getRunById(activeRun.id);
+          if (current?.status === "pending") {
+            await SamLoopRepository.updateRun(activeRun.id, data);
+            await SamLoopRepository.updateLoop(
+              activeRun.loopId,
+              activeRun.projectId,
+              { lastRunAt: finishedAt },
+            );
+            await advanceSamBoxLoop(activeRun.loopId, activeRun.projectId);
+          }
+        }
       } catch {
         console.error({
           event: "sam_box_claim_cleanup_failed",
