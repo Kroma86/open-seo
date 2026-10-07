@@ -32,6 +32,9 @@ import { Route as Char91DotwellKnownChar93OpenaiAppsChallengeRouteImport } from 
 import { Route as AuthenticatedOnboardingIndexRouteImport } from './routes/_authenticated.onboarding.index'
 import { Route as ApiInternalTriggerSamLoopsRouteImport } from './routes/api/internal/trigger-sam-loops'
 import { Route as ApiInternalTrackerRouteImport } from './routes/api/internal/tracker'
+import { Route as ApiInternalSamBoxResultRouteImport } from './routes/api/internal/sam-box-result'
+import { Route as ApiInternalSamBoxClaimRouteImport } from './routes/api/internal/sam-box-claim'
+import { Route as ApiInternalSamBoxAbandonRouteImport } from './routes/api/internal/sam-box-abandon'
 import { Route as ApiInternalProjectsRouteImport } from './routes/api/internal/projects'
 import { Route as ApiInternalLoopsEnabledRouteImport } from './routes/api/internal/loops-enabled'
 import { Route as ApiInternalGscRouteImport } from './routes/api/internal/gsc'
@@ -188,6 +191,22 @@ const ApiInternalTrackerRoute = ApiInternalTrackerRouteImport.update({
   path: '/api/internal/tracker',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalSamBoxResultRoute = ApiInternalSamBoxResultRouteImport.update({
+  id: '/api/internal/sam-box-result',
+  path: '/api/internal/sam-box-result',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalSamBoxClaimRoute = ApiInternalSamBoxClaimRouteImport.update({
+  id: '/api/internal/sam-box-claim',
+  path: '/api/internal/sam-box-claim',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalSamBoxAbandonRoute =
+  ApiInternalSamBoxAbandonRouteImport.update({
+    id: '/api/internal/sam-box-abandon',
+    path: '/api/internal/sam-box-abandon',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiInternalProjectsRoute = ApiInternalProjectsRouteImport.update({
   id: '/api/internal/projects',
   path: '/api/internal/projects',
@@ -445,6 +464,9 @@ export interface FileRoutesByFullPath {
   '/api/internal/gsc': typeof ApiInternalGscRoute
   '/api/internal/loops-enabled': typeof ApiInternalLoopsEnabledRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
+  '/api/internal/sam-box-abandon': typeof ApiInternalSamBoxAbandonRoute
+  '/api/internal/sam-box-claim': typeof ApiInternalSamBoxClaimRoute
+  '/api/internal/sam-box-result': typeof ApiInternalSamBoxResultRoute
   '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/onboarding/': typeof AuthenticatedOnboardingIndexRoute
@@ -505,6 +527,9 @@ export interface FileRoutesByTo {
   '/api/internal/gsc': typeof ApiInternalGscRoute
   '/api/internal/loops-enabled': typeof ApiInternalLoopsEnabledRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
+  '/api/internal/sam-box-abandon': typeof ApiInternalSamBoxAbandonRoute
+  '/api/internal/sam-box-claim': typeof ApiInternalSamBoxClaimRoute
+  '/api/internal/sam-box-result': typeof ApiInternalSamBoxResultRoute
   '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/onboarding': typeof AuthenticatedOnboardingIndexRoute
@@ -568,6 +593,9 @@ export interface FileRoutesById {
   '/api/internal/gsc': typeof ApiInternalGscRoute
   '/api/internal/loops-enabled': typeof ApiInternalLoopsEnabledRoute
   '/api/internal/projects': typeof ApiInternalProjectsRoute
+  '/api/internal/sam-box-abandon': typeof ApiInternalSamBoxAbandonRoute
+  '/api/internal/sam-box-claim': typeof ApiInternalSamBoxClaimRoute
+  '/api/internal/sam-box-result': typeof ApiInternalSamBoxResultRoute
   '/api/internal/tracker': typeof ApiInternalTrackerRoute
   '/api/internal/trigger-sam-loops': typeof ApiInternalTriggerSamLoopsRoute
   '/_authenticated/onboarding/': typeof AuthenticatedOnboardingIndexRoute
@@ -631,6 +659,9 @@ export interface FileRouteTypes {
     | '/api/internal/gsc'
     | '/api/internal/loops-enabled'
     | '/api/internal/projects'
+    | '/api/internal/sam-box-abandon'
+    | '/api/internal/sam-box-claim'
+    | '/api/internal/sam-box-result'
     | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
     | '/onboarding/'
@@ -691,6 +722,9 @@ export interface FileRouteTypes {
     | '/api/internal/gsc'
     | '/api/internal/loops-enabled'
     | '/api/internal/projects'
+    | '/api/internal/sam-box-abandon'
+    | '/api/internal/sam-box-claim'
+    | '/api/internal/sam-box-result'
     | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
     | '/onboarding'
@@ -753,6 +787,9 @@ export interface FileRouteTypes {
     | '/api/internal/gsc'
     | '/api/internal/loops-enabled'
     | '/api/internal/projects'
+    | '/api/internal/sam-box-abandon'
+    | '/api/internal/sam-box-claim'
+    | '/api/internal/sam-box-result'
     | '/api/internal/tracker'
     | '/api/internal/trigger-sam-loops'
     | '/_authenticated/onboarding/'
@@ -804,6 +841,9 @@ export interface RootRouteChildren {
   ApiInternalGscRoute: typeof ApiInternalGscRoute
   ApiInternalLoopsEnabledRoute: typeof ApiInternalLoopsEnabledRoute
   ApiInternalProjectsRoute: typeof ApiInternalProjectsRoute
+  ApiInternalSamBoxAbandonRoute: typeof ApiInternalSamBoxAbandonRoute
+  ApiInternalSamBoxClaimRoute: typeof ApiInternalSamBoxClaimRoute
+  ApiInternalSamBoxResultRoute: typeof ApiInternalSamBoxResultRoute
   ApiInternalTrackerRoute: typeof ApiInternalTrackerRoute
   ApiInternalTriggerSamLoopsRoute: typeof ApiInternalTriggerSamLoopsRoute
   ApiGa4OauthCallbackRoute: typeof ApiGa4OauthCallbackRoute
@@ -971,6 +1011,27 @@ declare module '@tanstack/react-router' {
       path: '/api/internal/tracker'
       fullPath: '/api/internal/tracker'
       preLoaderRoute: typeof ApiInternalTrackerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/sam-box-result': {
+      id: '/api/internal/sam-box-result'
+      path: '/api/internal/sam-box-result'
+      fullPath: '/api/internal/sam-box-result'
+      preLoaderRoute: typeof ApiInternalSamBoxResultRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/sam-box-claim': {
+      id: '/api/internal/sam-box-claim'
+      path: '/api/internal/sam-box-claim'
+      fullPath: '/api/internal/sam-box-claim'
+      preLoaderRoute: typeof ApiInternalSamBoxClaimRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/sam-box-abandon': {
+      id: '/api/internal/sam-box-abandon'
+      path: '/api/internal/sam-box-abandon'
+      fullPath: '/api/internal/sam-box-abandon'
+      preLoaderRoute: typeof ApiInternalSamBoxAbandonRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/internal/projects': {
@@ -1447,6 +1508,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalGscRoute: ApiInternalGscRoute,
   ApiInternalLoopsEnabledRoute: ApiInternalLoopsEnabledRoute,
   ApiInternalProjectsRoute: ApiInternalProjectsRoute,
+  ApiInternalSamBoxAbandonRoute: ApiInternalSamBoxAbandonRoute,
+  ApiInternalSamBoxClaimRoute: ApiInternalSamBoxClaimRoute,
+  ApiInternalSamBoxResultRoute: ApiInternalSamBoxResultRoute,
   ApiInternalTrackerRoute: ApiInternalTrackerRoute,
   ApiInternalTriggerSamLoopsRoute: ApiInternalTriggerSamLoopsRoute,
   ApiGa4OauthCallbackRoute: ApiGa4OauthCallbackRoute,
