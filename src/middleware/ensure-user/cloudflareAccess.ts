@@ -89,6 +89,31 @@ async function verifyAccessTokenForAudience(
   }
 }
 
+/**
+ * True only for a valid Cloudflare Access service-token JWT issued by the
+ * path-scoped application whose AUD tag is `audience`. Fails closed: any
+ * missing config, missing token, or verification error returns false.
+ */
+export async function isAccessServiceTokenFor(
+  headers: Headers,
+  audience: string,
+): Promise<boolean> {
+  const { teamDomain } = getAccessConfig();
+  const token = headers.get("cf-access-jwt-assertion");
+  if (!teamDomain || !token) return false;
+  try {
+    const payload = await verifyAccessTokenForAudience(
+      token,
+      teamDomain,
+      audience,
+    );
+    // Service-token JWTs carry common_name; user JWTs never do.
+    return typeof payload?.common_name === "string";
+  } catch {
+    return false;
+  }
+}
+
 type CloudflareAccessMcpGate =
   | { kind: "service_token" }
   // Verified identity ONLY — the workspace context (DB work) is resolved by

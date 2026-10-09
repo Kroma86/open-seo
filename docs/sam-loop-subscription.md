@@ -19,7 +19,12 @@ subscription path, and there is no automatic OpenRouter fallback.
 ## Machine route
 
 `/api/internal/sam-loop-subscription` requires the existing bearer token and
-the site's existing Cloudflare Access machine login. Anonymous requests fail.
+a Cloudflare Access service-token login. The route has its own path-scoped
+Access application (Service Auth with the existing MCP service token), which
+takes precedence over the `/api/internal` bypass; the Worker verifies the
+Access JWT against `SAM_LOOP_POLICY_AUD`. Without that audience configured the
+route answers 503. The runner sends `CF-Access-Client-Id` and
+`CF-Access-Client-Secret` with every request. Anonymous requests fail.
 GET lists due, permitted loops or previews one loop using `projectId` and
 `loopId`. GET does not claim, advance schedules, execute tools, or call a model.
 Preview access works before activation so dry-runs can be tested safely.

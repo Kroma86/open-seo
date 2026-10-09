@@ -179,13 +179,15 @@ const resolveSelfHostAccess = (
     let policyAud: Alchemy.Input<string> = yield* optionalVar("POLICY_AUD");
     let mcpPolicyAud: Alchemy.Input<string> | undefined =
       yield* optionalVar("MCP_POLICY_AUD");
+    let samLoopPolicyAud: Alchemy.Input<string> | undefined =
+      yield* optionalVar("SAM_LOOP_POLICY_AUD");
     // A hand-set TEAM_DOMAIN+POLICY_AUD short-circuits ALL Access
     // provisioning — including the MCP service-auth app (never created on
     // this path) and any comparison of a hand-set MCP_POLICY_AUD against a
     // provisioned app (there is none to compare). The manual path gets no
     // MCP service auth; let alchemy provision to get it.
     if (!provision || (teamDomain && policyAud)) {
-      return { teamDomain, policyAud, mcpPolicyAud };
+      return { teamDomain, policyAud, mcpPolicyAud, samLoopPolicyAud };
     }
     const { accountId } = yield* yield* Cloudflare.CloudflareEnvironment;
 
@@ -284,6 +286,12 @@ const resolveSelfHostAccess = (
             ? `open-seo ${stage} mcp (${customDomain})`
             : `open-seo ${stage} mcp`,
         },
+        samLoopServiceAuth: {
+          applicationId: "SelfHostSamLoopAccess",
+          applicationName: customDomain
+            ? `open-seo ${stage} sam loop runner (${customDomain})`
+            : `open-seo ${stage} sam loop runner`,
+        },
         mcpDiscoveryBypass: {
           policyId: "SelfHostMcpDiscoveryBypass",
           applicationId: "SelfHostMcpDiscoveryAccess",
@@ -300,9 +308,10 @@ const resolveSelfHostAccess = (
         // never silently degraded to an empty-string AUD.
         mcpPolicyAud = gate.mcpPolicyAud;
       }
+      if (!samLoopPolicyAud) samLoopPolicyAud = gate.samLoopPolicyAud;
     }
 
-    return { teamDomain, policyAud, mcpPolicyAud };
+    return { teamDomain, policyAud, mcpPolicyAud, samLoopPolicyAud };
   });
 
 // Secrets/vars resolve from the env file passed to `alchemy deploy`
@@ -475,6 +484,10 @@ export default Alchemy.Stack(
         // Absent entirely when no MCP app was provisioned — the Worker's
         // service-token branch is visibly off, never an empty-string AUD.
         ...(access.mcpPolicyAud ? { MCP_POLICY_AUD: access.mcpPolicyAud } : {}),
+        // Absent means the subscription route answers 503 (fail closed).
+        ...(access.samLoopPolicyAud
+          ? { SAM_LOOP_POLICY_AUD: access.samLoopPolicyAud }
+          : {}),
 
         // Prod-only: pooled Postgres via the existing Hyperdrive config.
         ...(prod ? { HYPERDRIVE: makeHyperdrive() } : {}),
