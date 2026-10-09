@@ -1,22 +1,32 @@
+import { env as workerEnv } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { resolveCloudflareAccessMcpGate } from "@/middleware/ensure-user/cloudflareAccess";
+import type { resolveSharedWorkspaceContext } from "@/middleware/ensure-user/delegated";
+import type { EnsuredUserContext } from "@/middleware/ensure-user/types";
+import type { handleSelfHostedOpenSeoMcpRequest } from "@/server/mcp/transport";
 
 const mocks = vi.hoisted(() => ({
-  appFetch: vi.fn(),
-  providerFetch: vi.fn(),
-  transport: vi.fn(),
-  gate: vi.fn(),
-  resolveContext: vi.fn(),
+  appFetch: vi.fn<(request: Request) => Promise<Response>>(),
+  providerFetch:
+    vi.fn<
+      (request: Request, env: Env, ctx: ExecutionContext) => Promise<Response>
+    >(),
+  transport: vi.fn<typeof handleSelfHostedOpenSeoMcpRequest>(),
+  gate: vi.fn<typeof resolveCloudflareAccessMcpGate>(),
+  resolveContext: vi.fn<typeof resolveSharedWorkspaceContext>(),
 }));
 
+// Worker, Workflow and Durable Object base classes: server.ts's import graph
+// only references them, and every subclass below is stubbed too.
 vi.mock("cloudflare:workers", () => ({
   env: {},
-  WorkflowEntrypoint: class {},
-  DurableObject: class {},
-  WorkerEntrypoint: class {},
+  WorkflowEntrypoint: vi.fn(),
+  DurableObject: vi.fn(),
+  WorkerEntrypoint: vi.fn(),
   waitUntil: (promise: Promise<unknown>) => void promise,
 }));
 vi.mock("cloudflare:workflows", () => ({
-  WorkflowEntrypoint: class {},
+  WorkflowEntrypoint: vi.fn(),
 }));
 vi.mock("@tanstack/react-start/server", () => ({
   createStartHandler: () => mocks.appFetch,
@@ -24,7 +34,7 @@ vi.mock("@tanstack/react-start/server", () => ({
 }));
 vi.mock("agents", () => ({
   routeAgentRequest: vi.fn(async () => undefined),
-  Agent: class {},
+  Agent: vi.fn(),
 }));
 vi.mock("@/middleware/ensure-user/cloudflareAccess", () => ({
   resolveCloudflareAccessMcpGate: mocks.gate,
@@ -53,34 +63,40 @@ vi.mock("@/server/lib/self-host-telemetry", () => ({
 // import cloudflare:* specifiers from node_modules, which vitest externalizes
 // and node cannot load. Stub the leaves.
 vi.mock("@/server/workflows/SiteAuditWorkflow", () => ({
-  SiteAuditWorkflow: class {},
+  SiteAuditWorkflow: vi.fn(),
 }));
 vi.mock("@/server/workflows/RankCheckWorkflow", () => ({
-  RankCheckWorkflow: class {},
+  RankCheckWorkflow: vi.fn(),
 }));
 vi.mock("@/server/workflows/SamLoopWorkflow", () => ({
-  SamLoopWorkflow: class {},
+  SamLoopWorkflow: vi.fn(),
 }));
 vi.mock("@/server/features/onboarding/OnboardingChatAgent", () => ({
-  OnboardingChatAgent: class {},
+  OnboardingChatAgent: vi.fn(),
 }));
 vi.mock("@/server/features/sam/SamChatAgent", () => ({
-  SamChatAgent: class {},
+  SamChatAgent: vi.fn(),
 }));
 vi.mock("@/server/features/audit/AuditScratchpad", () => ({
-  AuditScratchpad: class {},
+  AuditScratchpad: vi.fn(),
 }));
 
 import handler, { mcpGateErrorResponse } from "./server";
 import { AppError } from "@/server/lib/errors";
 
-const ctx = { waitUntil: () => {} } as unknown as ExecutionContext;
-const env = { AUTH_MODE: "cloudflare_access" } as unknown as Env;
-const userContext = {
+const ctx: ExecutionContext = {
+  waitUntil: () => {},
+  passThroughOnException: () => {},
+  props: {},
+};
+// The mocked module env is empty; spreading it keeps the Env type.
+const env: Env = { ...workerEnv, AUTH_MODE: "cloudflare_access" };
+const userContext: EnsuredUserContext = {
   userId: "u1",
   userEmail: "person@example.com",
+  emailVerified: true,
   organizationId: "org1",
-} as never;
+};
 
 function mcpRequest(method = "POST", path = "/mcp") {
   return new Request(`https://open-seo.test${path}`, { method });
@@ -103,7 +119,7 @@ describe("server /mcp routing under cloudflare_access", () => {
 
     expect(mocks.gate).toHaveBeenCalledTimes(1);
     expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
-    const [routedRequest] = mocks.providerFetch.mock.calls[0] as [Request];
+    const [routedRequest] = mocks.providerFetch.mock.calls[0];
     expect(new URL(routedRequest.url).pathname).toBe("/mcp");
     // The load-bearing claim: a service token only ever reaches the OAuth
     // provider, which requires a bearer token on its apiRoute (/mcp) — a
@@ -181,13 +197,16 @@ describe("server /mcp gate failures become responses, not exceptions", () => {
   it("names a deployment misconfiguration without putting the operator's message in the body", async () => {
     // /mcp answers anonymous callers, so the guidance stays in the Worker log.
     mocks.gate.mockRejectedValue(
-      new AppError("AUTH_CONFIG_MISSING", "TEAM_DOMAIN must be https://acme.cloudflareaccess.com"),
+      new AppError(
+        "AUTH_CONFIG_MISSING",
+        "TEAM_DOMAIN must be https://acme.cloudflareaccess.com",
+      ),
     );
 
     const response = await handler.fetch(mcpRequest(), env, ctx);
 
     expect(response.status).toBe(500);
-    const body = (await response.json()) as Record<string, string>;
+    const body = await response.json();
     expect(body).toEqual({ error: "server_misconfigured" });
     expect(JSON.stringify(body)).not.toContain("cloudflareaccess.com");
   });
@@ -208,7 +227,11 @@ describe("server /mcp gate failures become responses, not exceptions", () => {
     // not escape either: an uncaught rejection here is the 1101 this whole
     // change removes. The error is UNAUTHENTICATED on purpose, so only the
     // narrower catch keeps it out of the 401 branch.
-    mocks.gate.mockResolvedValue({ kind: "user", userId: "u1", userEmail: "p@example.com" });
+    mocks.gate.mockResolvedValue({
+      kind: "user",
+      userId: "u1",
+      userEmail: "p@example.com",
+    });
     mocks.resolveContext.mockResolvedValue(userContext);
     mocks.transport.mockRejectedValue(new AppError("UNAUTHENTICATED"));
 
@@ -230,7 +253,11 @@ describe("server /mcp gate failures become responses, not exceptions", () => {
   });
 
   it("still reaches the MCP handler when the gate succeeds", async () => {
-    mocks.gate.mockResolvedValue({ kind: "user", userId: "u1", userEmail: "p@example.com" });
+    mocks.gate.mockResolvedValue({
+      kind: "user",
+      userId: "u1",
+      userEmail: "p@example.com",
+    });
     mocks.resolveContext.mockResolvedValue(userContext);
 
     const response = await handler.fetch(mcpRequest(), env, ctx);
@@ -240,12 +267,14 @@ describe("server /mcp gate failures become responses, not exceptions", () => {
   });
 
   it("answers an unrecognised error with a bare 500 and leaks nothing", async () => {
-    mocks.gate.mockRejectedValue(new Error("connect ECONNREFUSED 10.0.0.1:5432"));
+    mocks.gate.mockRejectedValue(
+      new Error("connect ECONNREFUSED 10.0.0.1:5432"),
+    );
 
     const response = await handler.fetch(mcpRequest(), env, ctx);
 
     expect(response.status).toBe(500);
-    const body = (await response.json()) as Record<string, string>;
+    const body = await response.json();
     expect(body).toEqual({ error: "internal_error" });
     expect(JSON.stringify(body)).not.toContain("ECONNREFUSED");
   });
@@ -253,7 +282,11 @@ describe("server /mcp gate failures become responses, not exceptions", () => {
   it("answers a workspace lookup failure with a 500, not an Access challenge", async () => {
     // The gate already proved identity, so a failure here is ours, not the
     // caller's — even when it arrives wearing an UNAUTHENTICATED code.
-    mocks.gate.mockResolvedValue({ kind: "user", userId: "u1", userEmail: "p@example.com" });
+    mocks.gate.mockResolvedValue({
+      kind: "user",
+      userId: "u1",
+      userEmail: "p@example.com",
+    });
     mocks.resolveContext.mockRejectedValue(new Error("db down"));
 
     const response = await handler.fetch(mcpRequest(), env, ctx);
@@ -303,7 +336,7 @@ describe("server OAuth discovery routing under cloudflare_access", () => {
     );
 
     expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
-    const [routedRequest] = mocks.providerFetch.mock.calls[0] as [Request];
+    const [routedRequest] = mocks.providerFetch.mock.calls[0];
     expect(new URL(routedRequest.url).pathname).toBe(
       "/.well-known/oauth-authorization-server",
     );
@@ -329,21 +362,24 @@ describe("server MCP OAuth protocol routing under cloudflare_access", () => {
     "/api/auth/oauth2/token",
     "/api/auth/oauth2/register",
     "/api/oauth/consent",
-  ])("routes %s to the OAuth provider, never the app 404 handler", async (path) => {
-    mocks.providerFetch.mockResolvedValue(
-      new Response("oauth-protocol", { status: 200 }),
-    );
+  ])(
+    "routes %s to the OAuth provider, never the app 404 handler",
+    async (path) => {
+      mocks.providerFetch.mockResolvedValue(
+        new Response("oauth-protocol", { status: 200 }),
+      );
 
-    const response = await handler.fetch(mcpRequest("GET", path), env, ctx);
+      const response = await handler.fetch(mcpRequest("GET", path), env, ctx);
 
-    expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
-    const [routedRequest] = mocks.providerFetch.mock.calls[0] as [Request];
-    expect(new URL(routedRequest.url).pathname).toBe(path);
-    expect(await response.text()).toBe("oauth-protocol");
-    expect(mocks.appFetch).not.toHaveBeenCalled();
-    expect(mocks.gate).not.toHaveBeenCalled();
-    expect(mocks.transport).not.toHaveBeenCalled();
-  });
+      expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
+      const [routedRequest] = mocks.providerFetch.mock.calls[0];
+      expect(new URL(routedRequest.url).pathname).toBe(path);
+      expect(await response.text()).toBe("oauth-protocol");
+      expect(mocks.appFetch).not.toHaveBeenCalled();
+      expect(mocks.gate).not.toHaveBeenCalled();
+      expect(mocks.transport).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("server fallthrough", () => {

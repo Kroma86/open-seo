@@ -9,6 +9,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { z } from "zod";
 import type * as AgencyLoopReportsServiceModule from "./AgencyLoopReportsService";
 import {
   article,
@@ -160,7 +161,7 @@ describe("getAgencyLoopReports", () => {
     });
     expect(stored.rows[0]?.report).toBe(checked.report);
     await expect(
-      hasVerifiedMonthlyDraft(stored.rows[0]?.report as string),
+      hasVerifiedMonthlyDraft(z.string().parse(stored.rows[0]?.report)),
     ).resolves.toBe(true);
   });
 

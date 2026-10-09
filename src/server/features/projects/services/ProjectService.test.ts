@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
   ProjectRepository: {
-    setLoopsEnabled: (...args: unknown[]) => mocks.setLoopsEnabled(...args),
+    setLoopsEnabled: mocks.setLoopsEnabled,
   },
 }));
 

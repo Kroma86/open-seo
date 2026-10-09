@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProjectService } from "@/server/features/projects/services/ProjectService";
 
 const { mockEnv, listProjects, createProject } = vi.hoisted(() => ({
   mockEnv: {} as { AGENCY_SCORE_EXPORT_TOKEN?: string; AUTH_MODE?: string },
-  listProjects: vi.fn(),
-  createProject: vi.fn(),
+  listProjects: vi.fn<(typeof ProjectService)["listProjects"]>(),
+  createProject: vi.fn<(typeof ProjectService)["createProject"]>(),
 }));
 
 vi.mock("cloudflare:workers", () => ({
@@ -16,8 +17,8 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/server/features/projects/services/ProjectService", () => ({
   ProjectService: {
-    listProjects: (...args: unknown[]) => listProjects(...args),
-    createProject: (...args: unknown[]) => createProject(...args),
+    listProjects,
+    createProject,
   },
 }));
 
@@ -27,13 +28,11 @@ const TOKEN = "test-export-token";
 const BASE = "http://localhost/api/internal/projects";
 const ORG_ID = "shared-workspace";
 
-type StoredProject = {
-  id: string;
-  name: string;
-  domain: string | null;
-  locationCode: number;
-  languageCode: string;
-};
+type StoredProject = Awaited<
+  ReturnType<(typeof ProjectService)["listProjects"]>
+>[number];
+
+const CREATED_AT = "2026-01-01 00:00:00";
 
 const store: StoredProject[] = [];
 
@@ -64,13 +63,17 @@ beforeEach(() => {
   store.length = 0;
   listProjects.mockImplementation(async () => [...store]);
   createProject.mockImplementation(
-    async (_organizationId: string, input: { name: string; domain?: string }) => {
+    async (
+      _organizationId: string,
+      input: { name: string; domain?: string },
+    ) => {
       const project: StoredProject = {
         id: `project_${store.length + 1}`,
         name: input.name,
         domain: input.domain ?? null,
         locationCode: 2840,
         languageCode: "en",
+        createdAt: CREATED_AT,
       };
       store.push(project);
       return project;
@@ -131,6 +134,7 @@ describe("internal projects handleGet", () => {
         domain: "Example.com",
         locationCode: 2840,
         languageCode: "en",
+        createdAt: CREATED_AT,
       },
       {
         id: "project_other",
@@ -138,6 +142,7 @@ describe("internal projects handleGet", () => {
         domain: "other.com",
         locationCode: 2840,
         languageCode: "en",
+        createdAt: CREATED_AT,
       },
       {
         id: "project_none",
@@ -145,6 +150,7 @@ describe("internal projects handleGet", () => {
         domain: null,
         locationCode: 2840,
         languageCode: "en",
+        createdAt: CREATED_AT,
       },
     );
 
@@ -188,9 +194,7 @@ describe("internal projects handlePost", () => {
   });
 
   it("returns 400 invalid_body for overlong fields", async () => {
-    const longName = await handlePost(
-      post({ name: "a".repeat(121) }, auth),
-    );
+    const longName = await handlePost(post({ name: "a".repeat(121) }, auth));
     expect(longName.status).toBe(400);
     expect(await longName.json()).toEqual({ error: "invalid_body" });
 

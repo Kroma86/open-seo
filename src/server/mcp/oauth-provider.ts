@@ -27,6 +27,14 @@ import {
 } from "@/server/mcp/context";
 import { normalizeClientRegistrationRequest } from "@/server/mcp/oauth-registration";
 import { getPublicOrigin } from "@/server/mcp/public-origin";
+import {
+  authorizationErrorResponse,
+  jsonResponse,
+  logOAuthError,
+  oauthErrorRedirect,
+  redirectToSignIn,
+  unauthorized,
+} from "@/server/mcp/oauth-responses";
 import { handleAuthenticatedOpenSeoMcpRequest } from "@/server/mcp/transport";
 import { resolveCloudflareAccessMcpGate } from "@/middleware/ensure-user/cloudflareAccess";
 import {
@@ -85,90 +93,9 @@ function getOAuthHelpers(env: OpenSeoOAuthEnv) {
   return env.OAUTH_PROVIDER;
 }
 
-function getRelativeRequestTarget(request: Request) {
-  const url = new URL(request.url);
-  return `${url.pathname}${url.search}`;
-}
-
-function redirectToSignIn(request: Request) {
-  const signInUrl = new URL("/sign-in", request.url);
-  signInUrl.searchParams.set("redirect", getRelativeRequestTarget(request));
-  return Response.redirect(signInUrl.toString(), 302);
-}
-
-function oauthErrorRedirect(input: {
-  redirectUri: string;
-  code: string;
-  description: string;
-  state?: string;
-  issuer?: string;
-}) {
-  const redirectUrl = new URL(input.redirectUri);
-  redirectUrl.searchParams.set("error", input.code);
-  redirectUrl.searchParams.set("error_description", input.description);
-  if (input.state) redirectUrl.searchParams.set("state", input.state);
-  if (input.issuer) redirectUrl.searchParams.set("iss", input.issuer);
-  return redirectUrl.toString();
-}
-
-function authorizationErrorResponse(error: AuthorizationError) {
-  if (!error.redirectUri) {
-    return new Response(error.description, { status: 400 });
-  }
-
-  return Response.redirect(
-    oauthErrorRedirect({
-      redirectUri: error.redirectUri,
-      code: error.code,
-      description: error.description,
-      state: error.state,
-      issuer: error.issuer,
-    }),
-    302,
-  );
-}
-
-function jsonResponse(body: unknown, init?: ResponseInit) {
-  const headers = new Headers(init?.headers);
-  headers.set("Content-Type", "application/json");
-
-  return new Response(JSON.stringify(body), {
-    ...init,
-    headers,
-  });
-}
-
-function logOAuthError(error: {
-  code: string;
-  description: string;
-  status: number;
-}) {
-  // 401s here are the standard OAuth discovery handshake, not failures: an
-  // unauthenticated /mcp hit returns `invalid_token` (which triggers the
-  // client's .well-known discovery), and stale client registrations draw
-  // `invalid_client` until the client re-registers. Log those at debug so
-  // they stop masquerading as errors; keep 5xx at error and everything else
-  // (bad client metadata, etc.) at warn.
-  const line = `[oauth] ${error.status} ${error.code}: ${error.description}`;
-  if (error.status === 401) {
-    console.debug(line);
-  } else if (error.status >= 500) {
-    console.error(line);
-  } else {
-    console.warn(line);
-  }
-
-  // Returning void delegates the standards-compliant body, bearer challenge,
-  // and CORS headers to workers-oauth-provider.
-}
-
 function csrfProtected(request: Request) {
   const origin = request.headers.get("Origin");
   return origin === getPublicOrigin(request);
-}
-
-function unauthorized() {
-  return new Response("Unauthorized", { status: 401 });
 }
 
 async function getAuthorizeSessionBlocker(

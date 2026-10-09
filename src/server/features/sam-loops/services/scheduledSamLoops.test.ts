@@ -37,7 +37,7 @@ const mocks = vi.hoisted(() => ({
     >(),
 }));
 
-vi.mock("cloudflare:workers", () => ({ env: {} }));
+vi.mock("cloudflare:workers", () => ({ env: { SAM_LOOP_WORKFLOW: {} } }));
 vi.mock("@/server/features/sam-loops/repositories/SamLoopRepository", () => ({
   SamLoopRepository: {
     getDueLoopsWithOrganization: mocks.getDueLoopsWithOrganization,

@@ -53,8 +53,15 @@ export type AgencyHomePortfolioRow = {
 const MISSION_STATUSES = ["completed", "failed", "running"] as const;
 const DEFAULT_MISSION_LIMIT = 12;
 
+function isMissionStatus(
+  status: string,
+): status is AgencyHomeMission["status"] {
+  return MISSION_STATUSES.some((missionStatus) => missionStatus === status);
+}
+
 function clampMissionLimit(limit: number | undefined): number {
-  if (limit === undefined || !Number.isFinite(limit)) return DEFAULT_MISSION_LIMIT;
+  if (limit === undefined || !Number.isFinite(limit))
+    return DEFAULT_MISSION_LIMIT;
   return Math.min(50, Math.max(1, Math.floor(limit)));
 }
 
@@ -99,11 +106,10 @@ export async function getAgencyHomeMissions(
     )
     .limit(capped);
 
-  return rows.map((row) => ({
-    ...row,
-    // Filter guarantees the three statuses; drizzle still types the full enum.
-    status: row.status as AgencyHomeMission["status"],
-  }));
+  // Filter guarantees the three statuses; drizzle still types the full enum.
+  return rows.flatMap((row) =>
+    isMissionStatus(row.status) ? [{ ...row, status: row.status }] : [],
+  );
 }
 
 async function loadGscTotals(
@@ -216,8 +222,9 @@ export async function getAgencyHomePortfolio(
   const bestByProject = new Map<string, number>();
   await Promise.all(
     configs.map(async (config) => {
-      const snaps =
-        await RankTrackingRepository.getLatestSnapshotsForKeywords(config.id);
+      const snaps = await RankTrackingRepository.getLatestSnapshotsForKeywords(
+        config.id,
+      );
       for (const snap of snaps) {
         if (snap.position == null || !Number.isFinite(snap.position)) continue;
         const prev = bestByProject.get(config.projectId);
@@ -272,7 +279,7 @@ export async function getAgencyHomePortfolio(
     }),
   );
 
-  return rows.sort((a, b) => {
+  return rows.toSorted((a, b) => {
     // Unconnected last.
     if (a.gscConnected !== b.gscConnected) {
       return a.gscConnected ? -1 : 1;

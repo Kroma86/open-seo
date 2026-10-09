@@ -3,8 +3,6 @@ import { SamLoopService } from "@/server/features/sam-loops/services/SamLoopServ
 import { requireProjectContext } from "@/serverFunctions/middleware";
 import {
   createSamLoopSchema,
-  getSamLoopRunSchema,
-  getSamLoopRunsSchema,
   listSamLoopsSchema,
   triggerSamLoopSchema,
   updateSamLoopSchema,
@@ -45,27 +43,6 @@ export const updateSamLoop = createServerFn({ method: "POST" })
     return SamLoopService.updateSamLoop({
       ...data,
       projectId: context.projectId,
-    });
-  });
-
-export const getSamLoopRuns = createServerFn({ method: "POST" })
-  .middleware(requireProjectContext)
-  .validator(getSamLoopRunsSchema)
-  .handler(async ({ data, context }) => {
-    return SamLoopService.getSamLoopRuns({
-      projectId: context.projectId,
-      loopId: data.loopId,
-      limit: data.limit,
-    });
-  });
-
-export const getSamLoopRun = createServerFn({ method: "POST" })
-  .middleware(requireProjectContext)
-  .validator(getSamLoopRunSchema)
-  .handler(async ({ data, context }) => {
-    return SamLoopService.getSamLoopRun({
-      projectId: context.projectId,
-      runId: data.runId,
     });
   });
 

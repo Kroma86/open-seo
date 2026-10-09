@@ -38,6 +38,8 @@
   "ignore": ["drizzle-prod.config.ts"],
   // Disable Drizzle plugin - it tries to load drizzle.config.ts which imports cloudflare:workers
   "drizzle": false,
+  // System interpreter used by deploy:selfhost, not an npm dependency
+  "ignoreBinaries": ["python3"],
   "ignoreDependencies": [
     // Tailwindcss used via @tailwindcss/vite plugin
     "tailwindcss",

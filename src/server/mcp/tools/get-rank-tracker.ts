@@ -79,7 +79,10 @@ export const getRankTrackerTool = {
   },
   handler: withMcpProjectAuth(async (args: Args, context) => {
     const feed = await fetchExternalAgencyMetrics(context.project.domain);
-    const externalObservations = parseExternalRankObservations(feed.rank, new Date());
+    const externalObservations = parseExternalRankObservations(
+      feed.rank,
+      new Date(),
+    );
     const externalText = `Hermes observations: ${externalObservations.status}; measured ${externalObservations.updatedAt ?? "unknown"}; ${externalObservations.rows.length} keyword/country rows. ${feed.error ?? externalObservations.note}`;
     if (!args.trackerId) {
       const configs = await RankTrackingService.getConfigs(args.projectId);

@@ -9,7 +9,11 @@ import { AgencyHomeProjectAvatar } from "@/client/features/agency-home/AgencyHom
 import { AgencyHomeStatusPill } from "@/client/features/agency-home/AgencyHomeStatusPill";
 
 function QuietCell({ children }: { children: string }) {
-  return <span className="text-sm tabular-nums text-base-content/40">{children}</span>;
+  return (
+    <span className="text-sm tabular-nums text-base-content/40">
+      {children}
+    </span>
+  );
 }
 
 function SetupPill({ ok, label }: { ok: boolean; label: string }) {
@@ -21,11 +25,7 @@ function SetupPill({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-function TrafficCell({
-  row,
-}: {
-  row: AgencyHomePortfolioRow;
-}) {
+function TrafficCell({ row }: { row: AgencyHomePortfolioRow }) {
   if (!row.gscConnected) {
     return (
       <Link
@@ -66,7 +66,10 @@ function DomainCell({ row }: { row: AgencyHomePortfolioRow }) {
   const label = row.domain ?? row.projectName;
   return (
     <span className="flex min-w-0 items-center gap-3">
-      <AgencyHomeProjectAvatar domain={row.domain} projectName={row.projectName} />
+      <AgencyHomeProjectAvatar
+        domain={row.domain}
+        projectName={row.projectName}
+      />
       <span className="min-w-0">
         <span className="block truncate font-medium text-base-content">
           {label}
@@ -180,7 +183,9 @@ export function AgencyHomePortfolioTable({
                       {row.bestPosition == null ? (
                         <QuietCell>—</QuietCell>
                       ) : (
-                        <span className="tabular-nums">#{row.bestPosition}</span>
+                        <span className="tabular-nums">
+                          #{row.bestPosition}
+                        </span>
                       )}
                     </td>
                     <td>

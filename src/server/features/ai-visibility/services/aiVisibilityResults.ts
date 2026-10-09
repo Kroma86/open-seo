@@ -16,8 +16,9 @@ function parsePartialMentionsFromDetail(detail: string | null): boolean {
   try {
     const parsed: unknown = JSON.parse(detail);
     if (!parsed || typeof parsed !== "object") return false;
-    const brandLookup = (parsed as { brandLookup?: { partialMentions?: boolean } })
-      .brandLookup;
+    const brandLookup = (
+      parsed as { brandLookup?: { partialMentions?: boolean } }
+    ).brandLookup;
     return Boolean(brandLookup?.partialMentions);
   } catch {
     return false;
@@ -34,6 +35,10 @@ function notMeasuredLatest(): AiVisibilityLatestResults {
   };
 }
 
+function diff(next: number | null, prev: number | null): number | null {
+  return next == null || prev == null ? null : next - prev;
+}
+
 function computeDelta(
   current: Awaited<
     ReturnType<typeof AiVisibilityRepository.getCompletedRunsForConfig>
@@ -45,9 +50,6 @@ function computeDelta(
   if (current.promptSetVersion !== previous.promptSetVersion) {
     return null;
   }
-
-  const diff = (next: number | null, prev: number | null) =>
-    next == null || prev == null ? null : next - prev;
 
   return {
     totalMentions: diff(current.totalMentions, previous.totalMentions),

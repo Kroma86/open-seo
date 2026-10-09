@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  AgencyLoopReport,
+  AgencyLoopReportsResult,
+} from "@/server/features/agency/AgencyLoopReportsService";
 
 const { mockEnv, getAgencyLoopReports } = vi.hoisted(() => ({
   mockEnv: {} as { AGENCY_SCORE_EXPORT_TOKEN?: string },
-  getAgencyLoopReports: vi.fn(),
+  getAgencyLoopReports:
+    vi.fn<
+      (since: string, limit?: number) => Promise<AgencyLoopReportsResult>
+    >(),
 }));
 
 vi.mock("cloudflare:workers", () => ({
@@ -14,7 +21,7 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 vi.mock("@/server/features/agency/AgencyLoopReportsService", () => ({
-  getAgencyLoopReports: (...args: unknown[]) => getAgencyLoopReports(...args),
+  getAgencyLoopReports,
 }));
 
 import { handleGet } from "./agency-loop-reports";
@@ -98,10 +105,23 @@ describe("agency-loop-reports handleGet", () => {
   });
 
   it("accepts millisecond UTC ISO since and returns service data", async () => {
-    const payload = {
-      runs: [{ id: "run_1" }],
-      count: 1,
+    const run: AgencyLoopReport = {
+      id: "run_1",
+      loopId: "loop_1",
+      loopName: "Weekly audit",
+      cadence: "weekly",
+      projectId: "project_1",
+      projectName: "Acme",
+      projectDomain: null,
+      status: "completed",
+      startedAt: null,
+      finishedAt: "2026-08-31T01:00:00.000Z",
+      report: null,
+      proposalsQueued: 0,
+      costNote: null,
+      error: null,
     };
+    const payload = { runs: [run], count: 1 };
     getAgencyLoopReports.mockResolvedValue(payload);
 
     const since = "2026-08-31T00:00:00.000Z";

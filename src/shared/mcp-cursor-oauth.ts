@@ -21,15 +21,15 @@
  * @see https://developers.cloudflare.com/api/resources/zero_trust/subresources/access/subresources/applications/
  * @see https://cursor.com/docs/mcp
  */
-export const CURSOR_MCP_OAUTH_HTTPS_CALLBACK =
+const CURSOR_MCP_OAUTH_HTTPS_CALLBACK =
   "https://www.cursor.com/agents/mcp/oauth/callback" as const;
 
 /** Grok Bot / Cursor Bot HTTPS callback (added when DCR primary is grokbot://). */
-export const CURSOR_MCP_OAUTH_BOT_HTTPS_CALLBACK =
+const CURSOR_MCP_OAUTH_BOT_HTTPS_CALLBACK =
   "https://www.cursor.com/bot/mcp/oauth/callback" as const;
 
 /** Desktop IDE loopback (also covered by allow_any_on_localhost). */
-export const CURSOR_MCP_OAUTH_LOOPBACK_CALLBACK =
+const CURSOR_MCP_OAUTH_LOOPBACK_CALLBACK =
   "http://localhost:8787/callback" as const;
 
 /**
@@ -37,11 +37,11 @@ export const CURSOR_MCP_OAUTH_LOOPBACK_CALLBACK =
  * redirect_uris set via `q7()` → `cursor://anysphere.cursor-mcp/oauth/callback`.
  * Must be explicitly listed in Access `allowed_uris`.
  */
-export const CURSOR_MCP_OAUTH_CUSTOM_SCHEME_CALLBACK =
+const CURSOR_MCP_OAUTH_CUSTOM_SCHEME_CALLBACK =
   "cursor://anysphere.cursor-mcp/oauth/callback" as const;
 
 /** Optional Grok Bot custom scheme (only when that client is the primary). */
-export const CURSOR_MCP_OAUTH_GROKBOT_CALLBACK =
+const CURSOR_MCP_OAUTH_GROKBOT_CALLBACK =
   "grokbot://mcp/oauth/callback" as const;
 
 /**

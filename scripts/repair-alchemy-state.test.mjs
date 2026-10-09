@@ -13,8 +13,10 @@ import {
 // `downstream` blanked while `old` still carried it.
 const DEAD = "1d76ba41-ed8c-45bd-a943-a35b24873792";
 const LIVE = "b490d2fe-08b6-4e43-89a5-d2946d2ad6b1";
-const DEAD_AUD = "075998b9892dfeaaff15635e7f867a8a27a26cf6c9361b9591c3cf79e7f7b261";
-const LIVE_AUD = "c01a5be02b2854c357aac6504d0d16047246520343aa4c9f43cfc8444759e560";
+const DEAD_AUD =
+  "075998b9892dfeaaff15635e7f867a8a27a26cf6c9361b9591c3cf79e7f7b261";
+const LIVE_AUD =
+  "c01a5be02b2854c357aac6504d0d16047246520343aa4c9f43cfc8444759e560";
 
 const nic775 = () => ({
   fqn: "SelfHostMcpAccess",
@@ -52,20 +54,36 @@ describe("summarizeDoc", () => {
 
 describe("planRepair without a target", () => {
   it("does nothing to a healthy document", () => {
-    const plan = planRepair({ doc: healthy(), live: { applicationId: LIVE, aud: LIVE_AUD } });
+    const plan = planRepair({
+      doc: healthy(),
+      live: { applicationId: LIVE, aud: LIVE_AUD },
+    });
     expect(plan.action).toBe("none");
     expect(plan.changes).toEqual([]);
   });
 
   it("settles a stuck document whose recorded app is still live", () => {
-    const doc = { ...nic775(), attr: { ...nic775().attr, applicationId: LIVE, aud: LIVE_AUD } };
-    const plan = planRepair({ doc, live: { applicationId: LIVE, aud: LIVE_AUD } });
+    const doc = {
+      ...nic775(),
+      attr: { ...nic775().attr, applicationId: LIVE, aud: LIVE_AUD },
+    };
+    const plan = planRepair({
+      doc,
+      live: { applicationId: LIVE, aud: LIVE_AUD },
+    });
     expect(plan.action).toBe("settle");
-    expect(plan.changes).toContainEqual({ field: "status", from: "updating", to: "updated" });
+    expect(plan.changes).toContainEqual({
+      field: "status",
+      from: "updating",
+      to: "updated",
+    });
   });
 
   it("refuses to guess when the recorded app is gone, and names the live one", () => {
-    const plan = planRepair({ doc: nic775(), live: { applicationId: LIVE, aud: LIVE_AUD } });
+    const plan = planRepair({
+      doc: nic775(),
+      live: { applicationId: LIVE, aud: LIVE_AUD },
+    });
     expect(plan.action).toBe("none");
     expect(plan.refusals.join(" ")).toContain(LIVE);
     expect(plan.refusals.join(" ")).toContain("--repoint");
@@ -80,10 +98,26 @@ describe("planRepair with --repoint", () => {
       targetAppId: LIVE,
     });
     expect(plan.action).toBe("repoint");
-    expect(plan.changes).toContainEqual({ field: "attr.applicationId", from: DEAD, to: LIVE });
-    expect(plan.changes).toContainEqual({ field: "attr.aud", from: DEAD_AUD, to: LIVE_AUD });
-    expect(plan.changes).toContainEqual({ field: "status", from: "updating", to: "updated" });
-    expect(plan.changes).toContainEqual({ field: "old", from: "present", to: "dropped" });
+    expect(plan.changes).toContainEqual({
+      field: "attr.applicationId",
+      from: DEAD,
+      to: LIVE,
+    });
+    expect(plan.changes).toContainEqual({
+      field: "attr.aud",
+      from: DEAD_AUD,
+      to: LIVE_AUD,
+    });
+    expect(plan.changes).toContainEqual({
+      field: "status",
+      from: "updating",
+      to: "updated",
+    });
+    expect(plan.changes).toContainEqual({
+      field: "old",
+      from: "present",
+      to: "dropped",
+    });
     expect(plan.changes).toContainEqual({
       field: "downstream",
       from: "[]",
@@ -92,7 +126,11 @@ describe("planRepair with --repoint", () => {
   });
 
   it("refuses when Cloudflare could not be observed at all", () => {
-    const plan = planRepair({ doc: nic775(), live: undefined, targetAppId: LIVE });
+    const plan = planRepair({
+      doc: nic775(),
+      live: undefined,
+      targetAppId: LIVE,
+    });
     expect(plan.action).toBe("none");
     expect(plan.refusals.join(" ")).toContain("not observed live");
   });
@@ -166,7 +204,10 @@ describe("assertSafeToWrite", () => {
   });
 
   it("refuses a document left unsettled", () => {
-    const problems = assertSafeToWrite(nic775(), { ...healthy(), status: "updating" });
+    const problems = assertSafeToWrite(nic775(), {
+      ...healthy(),
+      status: "updating",
+    });
     expect(problems.join(" ")).toContain("status would still be updating");
   });
 
@@ -184,8 +225,15 @@ describe("the checks above are not vacuous", () => {
   });
 
   it("a refusal is distinguishable from a no-op", () => {
-    const refused = planRepair({ doc: nic775(), live: undefined, targetAppId: LIVE });
-    const noop = planRepair({ doc: healthy(), live: { applicationId: LIVE, aud: LIVE_AUD } });
+    const refused = planRepair({
+      doc: nic775(),
+      live: undefined,
+      targetAppId: LIVE,
+    });
+    const noop = planRepair({
+      doc: healthy(),
+      live: { applicationId: LIVE, aud: LIVE_AUD },
+    });
     expect(refused.refusals.length).toBeGreaterThan(0);
     expect(noop.refusals).toEqual([]);
     expect(formatPlan(refused, { fqn: "X" })).toContain("REFUSED");
@@ -197,7 +245,11 @@ describe("the checks above are not vacuous", () => {
     const handWritten = {
       ...nic775(),
       status: "updated",
-      attr: { applicationId: LIVE, aud: LIVE_AUD, domain: "seo.niceseo.ai/mcp" },
+      attr: {
+        applicationId: LIVE,
+        aud: LIVE_AUD,
+        domain: "seo.niceseo.ai/mcp",
+      },
       downstream: [],
       old: undefined,
     };

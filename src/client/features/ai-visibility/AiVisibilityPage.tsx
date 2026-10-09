@@ -308,9 +308,7 @@ function Metric({
   return (
     <div>
       <dt className="text-base-content/60">{label}</dt>
-      <dd className="font-medium">
-        {value == null ? "not measured" : value}
-      </dd>
+      <dd className="font-medium">{value == null ? "not measured" : value}</dd>
       {fetchedAt ? (
         <dd className="text-xs text-base-content/50">
           {fetchedAt} · {source ?? "dataforseo_llm_mentions"}

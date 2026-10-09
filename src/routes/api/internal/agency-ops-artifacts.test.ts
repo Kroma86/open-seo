@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AgencyOpsArtifactsService } from "@/server/features/agency/AgencyOpsArtifactsService";
 
 const { mockEnv, ingest } = vi.hoisted(() => ({
   mockEnv: {} as { AGENCY_SCORE_EXPORT_TOKEN?: string },
-  ingest: vi.fn(),
+  ingest: vi.fn<(typeof AgencyOpsArtifactsService)["ingest"]>(),
 }));
 
 vi.mock("cloudflare:workers", () => ({
@@ -15,7 +16,7 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/server/features/agency/AgencyOpsArtifactsService", () => ({
   AgencyOpsArtifactsService: {
-    ingest: (...args: unknown[]) => ingest(...args),
+    ingest,
   },
 }));
 
