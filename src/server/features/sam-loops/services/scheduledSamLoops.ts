@@ -14,6 +14,11 @@ const ALREADY_RUNNING_IDS_CAP = 20;
 
 /** Cron body: claim due enabled loops and start SamLoopWorkflow for each. */
 export async function runScheduledSamLoops(env: Env) {
+  if (
+    (env as Env & { SAM_LOOP_EXECUTOR?: string }).SAM_LOOP_EXECUTOR ===
+    "subscription"
+  )
+    return;
   const dailyRunCap = getSamLoopDailyRunCap(env);
   const runsToday =
     await SamLoopRepository.countRunsCreatedSince(startOfUtcDay());

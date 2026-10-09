@@ -346,6 +346,7 @@ const dataEnv = {
   AGENCY_SCORE_EXPORT_TOKEN: optionalSecret("AGENCY_SCORE_EXPORT_TOKEN"),
   // Sam loop daily run cap (scheduled + manual); unset keeps the code default.
   SAM_LOOP_DAILY_RUN_CAP: optionalVar("SAM_LOOP_DAILY_RUN_CAP"),
+  SAM_LOOP_EXECUTOR: optionalVar("SAM_LOOP_EXECUTOR"),
   // Agency board metrics (pixel status for SAM get_niceseo_ops_status).
   AGENCY_METRICS_URL: optionalVar("AGENCY_METRICS_URL"),
   AGENCY_DASH_TOKEN: optionalSecret("AGENCY_DASH_TOKEN"),

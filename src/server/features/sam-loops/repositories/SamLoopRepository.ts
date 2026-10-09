@@ -13,6 +13,10 @@ import {
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
 import { tryCreateAdmittedSamLoopRun } from "@/db/samLoopAdmission";
+import {
+  claimSubscriptionRun,
+  compareAndSwapSubscriptionRun,
+} from "@/db/samLoopSubscriptionWrites";
 import { projects, samLoopRuns, samLoops } from "@/db/schema";
 import { hasVerifiedMonthlyDraft } from "../services/monthlyContentResult";
 import {
@@ -349,6 +353,8 @@ export const SamLoopRepository = {
   claimDueLoop,
   tryCreateRun,
   updateRun,
+  compareAndSwapSubscriptionRun,
+  claimSubscriptionRun,
   getRunById,
   getActiveRunForLoop,
   getRunsForLoop,

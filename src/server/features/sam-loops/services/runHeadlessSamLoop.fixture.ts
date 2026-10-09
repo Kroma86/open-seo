@@ -1,69 +1,85 @@
-import { vi } from "vitest";
-import { SAM_LOOP_ALLOWED_DOMAINS } from "@/shared/sam-loops";
+import { z } from "zod";
+import { beforeEach, vi } from "vitest";
+import {
+  DEFAULT_SAM_LOOP_TEMPLATES,
+  SAM_LOOP_ALLOWED_DOMAINS,
+} from "@/shared/sam-loops";
 import type { ToolAuthContext } from "@/server/mcp/context";
-import type { HeadlessSamLoopInput } from "./runHeadlessSamLoop";
 
-// Shared mocks for the runHeadlessSamLoop*.test.ts files. vi.mock only hoists
-// within a test file, so each file wires `mockedModules` into its own
-// vi.mock factories.
-
-type ProjectRow = {
-  domain: string | null;
-  loopsEnabled: boolean;
-  archivedAt: string | null;
-};
-
-// Only the generateText request fields these tests read.
-type GenerateTextRequest = {
-  system: string;
-  prompt: string;
-  tools: Record<string, unknown>;
-  output?: unknown;
-  onStepFinish: (step: {
-    providerMetadata: object;
-    toolResults: unknown[];
-  }) => unknown;
-};
-
-export const mocks = {
-  generateText: vi.fn<(request: GenerateTextRequest) => Promise<unknown>>(),
+const mocks = vi.hoisted(() => ({
+  generateText:
+    vi.fn<
+      (request: {
+        system: string;
+        prompt: string;
+        tools: Record<string, unknown>;
+        output?: unknown;
+        onStepFinish: (step: {
+          providerMetadata: Record<string, unknown>;
+          toolResults: unknown[];
+        }) => Promise<void>;
+      }) => Promise<unknown>
+    >(),
   getChatAgentModel: vi.fn(),
   getProjectContext: vi.fn(),
-  getProjectById: vi.fn<(projectId: string) => Promise<ProjectRow | null>>(),
+  getProjectById: vi.fn<
+    () => Promise<{
+      domain: string;
+      loopsEnabled: boolean;
+      archivedAt: string | null;
+    } | null>
+  >(),
   getLatestAuditForProject: vi.fn(),
   getPagesForAudit: vi.fn(),
   loadSkill: vi.fn(),
   buildSamMcpTools: vi.fn(),
   openRouterCostUsd: vi.fn(),
-};
+}));
 
-export const mockedModules = {
-  ai: {
-    generateText: mocks.generateText,
-    stepCountIs: () => () => false,
-    Output: { object: (value: unknown) => value },
-  },
-  openrouter: { getChatAgentModel: mocks.getChatAgentModel },
-  chatAgent: { openRouterCostUsd: mocks.openRouterCostUsd },
-  samChatTools: { buildSamMcpTools: mocks.buildSamMcpTools },
-  samSkills: { buildSamSkillSource: () => ({ load: mocks.loadSkill }) },
-  samSystemPrompt: { buildSamSystemPrompt: vi.fn(() => "") },
-  projectContextService: {
+vi.mock("cloudflare:workers", () => ({ env: {} }));
+vi.mock("ai", () => ({
+  APICallError: { isInstance: () => false },
+  generateText: mocks.generateText,
+  stepCountIs: () => () => false,
+  Output: { object: (value: unknown) => value },
+}));
+vi.mock("@/server/lib/openrouter", () => ({
+  getChatAgentModel: mocks.getChatAgentModel,
+}));
+vi.mock("@/server/lib/chatAgent", () => ({
+  openRouterCostUsd: mocks.openRouterCostUsd,
+}));
+vi.mock("@/server/features/sam/samChatTools", () => ({
+  buildSamMcpTools: mocks.buildSamMcpTools,
+}));
+vi.mock("@/server/features/sam/samSkills", () => ({
+  buildSamSkillSource: () => ({ load: mocks.loadSkill }),
+}));
+vi.mock("@/server/features/sam/samSystemPrompt", () => ({
+  buildSamSystemPrompt: vi.fn(() => ""),
+}));
+vi.mock(
+  "@/server/features/project-context/services/ProjectContextService",
+  () => ({
     ProjectContextService: {
       getProjectContext: mocks.getProjectContext,
       renderProjectContextMarkdown: vi.fn(() => ""),
     },
+  }),
+);
+vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
+  ProjectRepository: {
+    getProjectById: mocks.getProjectById,
   },
-  projectRepository: {
-    ProjectRepository: { getProjectById: mocks.getProjectById },
+}));
+vi.mock("@/server/features/audit/repositories/AuditRepository", () => ({
+  AuditRepository: {
+    getLatestAuditForProject: mocks.getLatestAuditForProject,
+    getPagesForAudit: mocks.getPagesForAudit,
   },
-  auditRepository: {
-    AuditRepository: {
-      getLatestAuditForProject: mocks.getLatestAuditForProject,
-      getPagesForAudit: mocks.getPagesForAudit,
-    },
-  },
-};
+}));
+
+import { type HeadlessSamLoopInput } from "./runHeadlessSamLoop";
 
 export const authContext: ToolAuthContext = {
   userId: "user_1",
@@ -107,14 +123,8 @@ export const abortResult = (domain: string) => ({
   costNote: "no model call",
 });
 
-/** The request passed to the first generateText call. */
-export function firstGenerateTextRequest(): GenerateTextRequest {
-  const request = mocks.generateText.mock.calls[0]?.[0];
-  if (!request) throw new Error("generateText was not called");
-  return request;
-}
-
-export function setDefaultMocks() {
+beforeEach(() => {
+  vi.clearAllMocks();
   mocks.getProjectById.mockResolvedValue({
     domain: "client-example.com",
     loopsEnabled: false,
@@ -132,12 +142,11 @@ export function setDefaultMocks() {
     completedAt: new Date(Date.now() - 30_000).toISOString(),
   });
   mocks.getPagesForAudit.mockImplementation(async () => {
-    const last = mocks.getProjectById.mock.results.at(-1);
-    if (last?.type !== "return") throw new Error("no project lookup");
-    const project = await last.value;
-    if (!project) throw new Error("no project row");
+    const project = z
+      .object({ domain: z.string() })
+      .parse(await mocks.getProjectById.mock.results.at(-1)?.value);
     return ["/", "/services"].map((path) => ({
-      url: `https://${project.domain}${path}`,
+      url: `https://${project?.domain}${path}`,
       statusCode: 200,
       fetchClass: "ok",
       wordCount: 200,
@@ -147,4 +156,17 @@ export function setDefaultMocks() {
   mocks.generateText.mockResolvedValue({ text: "loop report", steps: [] });
   mocks.buildSamMcpTools.mockReturnValue({});
   mocks.openRouterCostUsd.mockReturnValue(0);
+});
+
+export function getMocks() {
+  return mocks;
+}
+
+export function templatePrompt(name: string): string {
+  const template = DEFAULT_SAM_LOOP_TEMPLATES.find(
+    (entry) => entry.name === name,
+  );
+  if (!template || !("customPrompt" in template))
+    throw new Error("Missing custom loop fixture");
+  return template.customPrompt;
 }

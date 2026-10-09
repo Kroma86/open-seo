@@ -1,54 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_SAM_LOOP_TEMPLATES } from "@/shared/sam-loops";
-import {
-  abortResult,
-  firstGenerateTextRequest,
-  input,
-  mocks,
-  setDefaultMocks,
-} from "./runHeadlessSamLoop.fixture";
-
-const fixture = vi.hoisted(
-  () => async () =>
-    (await import("./runHeadlessSamLoop.fixture")).mockedModules,
-);
-vi.mock("cloudflare:workers", () => ({ env: {} }));
-vi.mock("ai", async () => (await fixture()).ai);
-vi.mock("@/server/lib/openrouter", async () => (await fixture()).openrouter);
-vi.mock("@/server/lib/chatAgent", async () => (await fixture()).chatAgent);
-vi.mock(
-  "@/server/features/sam/samChatTools",
-  async () => (await fixture()).samChatTools,
-);
-vi.mock(
-  "@/server/features/sam/samSkills",
-  async () => (await fixture()).samSkills,
-);
-vi.mock(
-  "@/server/features/sam/samSystemPrompt",
-  async () => (await fixture()).samSystemPrompt,
-);
-vi.mock(
-  "@/server/features/project-context/services/ProjectContextService",
-  async () => (await fixture()).projectContextService,
-);
-vi.mock(
-  "@/server/features/projects/repositories/ProjectRepository",
-  async () => (await fixture()).projectRepository,
-);
-vi.mock(
-  "@/server/features/audit/repositories/AuditRepository",
-  async () => (await fixture()).auditRepository,
-);
-
+import { getMocks, input, abortResult } from "./runHeadlessSamLoop.fixture";
 import { runHeadlessSamLoop } from "./runHeadlessSamLoop";
+const mocks = getMocks();
 
-describe("runHeadlessSamLoop", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    setDefaultMocks();
-  });
-
+describe("runHeadlessSamLoop permissions and reports", () => {
   it("returns before any model or tool call when the domain is outside the allowlist", async () => {
     const result = await runHeadlessSamLoop(input("client-example.com", false));
 
@@ -107,7 +63,7 @@ describe("runHeadlessSamLoop", () => {
     expect(mocks.getProjectContext).toHaveBeenCalled();
     expect(mocks.getChatAgentModel).toHaveBeenCalled();
     expect(mocks.generateText).toHaveBeenCalled();
-    const system = firstGenerateTextRequest().system;
+    const system = mocks.generateText.mock.calls[0]?.[0]?.system;
     expect(system).toContain("Do the loop work for this project's own domain.");
     expect(system).not.toContain("If the project domain is not one of them");
   });
@@ -156,7 +112,7 @@ describe("runHeadlessSamLoop", () => {
         skillName: null,
         loopName,
       });
-      const request = firstGenerateTextRequest();
+      const request = mocks.generateText.mock.calls[0][0];
       expect(request.prompt).toContain(
         "Perform this pass on every scheduled run",
       );
@@ -187,7 +143,7 @@ describe("runHeadlessSamLoop", () => {
       skillName: null,
       loopName: "On-page priorities",
     });
-    const request = firstGenerateTextRequest();
+    const request = mocks.generateText.mock.calls[0][0];
     expect(request.prompt).toContain(modified);
     expect(request.prompt).not.toContain(
       "Perform this pass on every scheduled run",

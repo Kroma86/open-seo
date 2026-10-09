@@ -347,3 +347,10 @@ describe("runScheduledSamLoops", () => {
     });
   });
 });
+
+it("does not start Worker model runs in subscription mode", async () => {
+  vi.clearAllMocks();
+  await runTick({ ...testEnv, SAM_LOOP_EXECUTOR: "subscription" } as Env);
+  expect(mocks.getDueLoopsWithOrganization).not.toHaveBeenCalled();
+  expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
+});
