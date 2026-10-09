@@ -73,7 +73,7 @@ describe("parseExternalRankObservations", () => {
       country: "US",
       position: 4,
     });
-    expect(rows([...observations].reverse())).toEqual(result);
+    expect(rows([...observations].toReversed())).toEqual(result);
   });
 
   it.each([
@@ -82,7 +82,7 @@ describe("parseExternalRankObservations", () => {
   ])("rejects newest $name conflicts in both orders", ({ patch }) => {
     const observations = [obs(), obs(patch)];
     expectEmpty(feed(observations), "invalid");
-    expectEmpty(feed([...observations].reverse()), "invalid");
+    expectEmpty(feed([...observations].toReversed()), "invalid");
   });
 
   it("allows a newer observation to supersede older conflicts", () => {
@@ -95,7 +95,7 @@ describe("parseExternalRankObservations", () => {
       }),
     ];
     expect(rows(observations).rows[0].position).toBe(2);
-    expect(rows([...observations].reverse())).toEqual(rows(observations));
+    expect(rows([...observations].toReversed())).toEqual(rows(observations));
   });
 
   it.each([

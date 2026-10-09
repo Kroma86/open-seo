@@ -85,11 +85,13 @@ describe("buildMentionTrendData", () => {
   });
 
   it("maps undefined and nonfinite volumes to null", () => {
+    const undefinedVolume = entry(2025, 1, null);
+    Object.assign(undefinedVolume, { volume: undefined });
     const entries = [
-      { year: 2025, month: 1, volume: undefined },
-      { year: 2025, month: 2, volume: Number.NaN },
-      { year: 2025, month: 3, volume: Number.POSITIVE_INFINITY },
-    ] as unknown as BrandLookupResult["monthlyVolume"];
+      undefinedVolume,
+      entry(2025, 2, Number.NaN),
+      entry(2025, 3, Number.POSITIVE_INFINITY),
+    ];
 
     expect(buildMentionTrendData(entries)).toEqual({
       chartData: [

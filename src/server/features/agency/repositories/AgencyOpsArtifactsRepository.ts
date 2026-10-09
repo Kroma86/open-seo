@@ -110,10 +110,7 @@ async function latestByKindDomainDate(
     .select()
     .from(agencyOpsArtifacts)
     .where(and(...conditions))
-    .orderBy(
-      desc(agencyOpsArtifacts.receivedAt),
-      desc(agencyOpsArtifacts.id),
-    )
+    .orderBy(desc(agencyOpsArtifacts.receivedAt), desc(agencyOpsArtifacts.id))
     .limit(1);
   return rows[0] ?? null;
 }

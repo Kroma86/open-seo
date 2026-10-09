@@ -40,5 +40,7 @@ const KIND_PILLS: Record<Kind, { label: string; tone: string }> = {
 };
 
 export function kindPillMeta(kind: string): { label: string; tone: string } {
-  return KIND_PILLS[kind as Kind] ?? { label: kind, tone: "badge-ghost" };
+  const pills: Record<string, { label: string; tone: string } | undefined> =
+    KIND_PILLS;
+  return pills[kind] ?? { label: kind, tone: "badge-ghost" };
 }

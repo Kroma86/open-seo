@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SamLoopService } from "@/server/features/sam-loops/services/SamLoopService";
 
 const { mockEnv, triggerSamLoopsForDomain } = vi.hoisted(() => ({
   mockEnv: {} as { AGENCY_SCORE_EXPORT_TOKEN?: string },
-  triggerSamLoopsForDomain: vi.fn(),
+  triggerSamLoopsForDomain:
+    vi.fn<(typeof SamLoopService)["triggerSamLoopsForDomain"]>(),
 }));
 
 vi.mock("cloudflare:workers", () => ({
@@ -15,8 +17,7 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/server/features/sam-loops/services/SamLoopService", () => ({
   SamLoopService: {
-    triggerSamLoopsForDomain: (...args: unknown[]) =>
-      triggerSamLoopsForDomain(...args),
+    triggerSamLoopsForDomain,
   },
 }));
 
@@ -48,6 +49,7 @@ beforeEach(() => {
     projectName: "Default",
     domain: "niceseo.ai",
     seeded: 0,
+    capped: false,
     results: [
       {
         loopId: "loop_1",

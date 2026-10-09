@@ -18,14 +18,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
   ProjectRepository: mocks,
 }));
-vi.mock(
-  "@/server/features/sam-loops/repositories/SamLoopRepository",
-  () => ({
-    SamLoopRepository: {
-      ensureDefaultLoops: mocks.ensureDefaultLoops,
-    },
-  }),
-);
+vi.mock("@/server/features/sam-loops/repositories/SamLoopRepository", () => ({
+  SamLoopRepository: {
+    ensureDefaultLoops: mocks.ensureDefaultLoops,
+  },
+}));
 
 const defaultProject = {
   id: "project_default",

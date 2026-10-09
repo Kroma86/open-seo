@@ -2,7 +2,7 @@ import type { AgencyHomePortfolioRow } from "@/server/features/agency/AgencyHome
 import type { AgencyHomePillTone } from "@/client/features/agency-home/AgencyHomeStatusPill";
 
 /** Stable hue for letter-tile avatars when favicon is unavailable. */
-export function hashDomainLabel(label: string): number {
+function hashDomainLabel(label: string): number {
   let hash = 0;
   for (let i = 0; i < label.length; i++) {
     hash = (hash * 31 + label.charCodeAt(i)) | 0;
@@ -14,12 +14,12 @@ export function domainLetterTile(
   domain: string | null | undefined,
   projectName: string,
 ): { letter: string; hue: number } {
-  const source = (domain?.trim() || projectName.trim() || "?");
+  const source = domain?.trim() || projectName.trim() || "?";
   const letter = source.charAt(0).toUpperCase();
   return { letter, hue: hashDomainLabel(source.toLowerCase()) % 360 };
 }
 
-export type PortfolioRowStatus = { label: string; tone: AgencyHomePillTone };
+type PortfolioRowStatus = { label: string; tone: AgencyHomePillTone };
 
 /** Status pill derived only from portfolio row fields + optional running-mission flag. */
 export function portfolioRowStatus(
@@ -39,7 +39,9 @@ export function portfolioRowStatus(
 }
 
 /** Relative time for mission rail timestamps (real ISO strings only). */
-export function formatRelativeFinishedAt(iso: string | null | undefined): string {
+export function formatRelativeFinishedAt(
+  iso: string | null | undefined,
+): string {
   if (!iso) return "in progress";
   const timestamp = new Date(iso).getTime();
   if (Number.isNaN(timestamp)) return "—";
@@ -65,7 +67,9 @@ export function formatCompactNumber(value: number): string {
   }).format(value);
 }
 
-export function projectFaviconUrl(domain: string | null | undefined): string | null {
+export function projectFaviconUrl(
+  domain: string | null | undefined,
+): string | null {
   if (!domain?.trim()) return null;
   const host = domain
     .trim()
@@ -78,12 +82,12 @@ export function projectFaviconUrl(domain: string | null | undefined): string | n
 }
 
 /** sessionStorage key for Ask-Sam prefill (read by SamConversation). */
-export function samAskStorageKey(projectId: string): string {
+function samAskStorageKey(projectId: string): string {
   return `sam-loops-ask:${projectId}`;
 }
 
 /** sessionStorage key so Sam Loops can open with a run selected. */
-export function samLoopRunStorageKey(projectId: string): string {
+function samLoopRunStorageKey(projectId: string): string {
   return `sam-loops-select-run:${projectId}`;
 }
 
@@ -95,7 +99,10 @@ export function storeSamAskDraft(projectId: string, draft: string): void {
   }
 }
 
-export function storeSamLoopRunSelection(projectId: string, runId: string): void {
+export function storeSamLoopRunSelection(
+  projectId: string,
+  runId: string,
+): void {
   try {
     sessionStorage.setItem(samLoopRunStorageKey(projectId), runId);
   } catch {

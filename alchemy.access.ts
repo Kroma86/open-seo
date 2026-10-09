@@ -8,7 +8,7 @@
 // `open-seo-<stage>` naming stays comment-synced (and is backstopped by the
 // workflow's Access verify step).
 
-import * as Alchemy from "alchemy";
+import type * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
@@ -66,6 +66,9 @@ export const requireAllowedEmails = (remedy: string) =>
  * `oauth_configuration`, and a plain Application PUT without it turns
  * Managed OAuth OFF — which is why every deploy used to break MCP login.
  * Call this after the hostname-wide Access app is reconciled.
+ *
+ * @public Canonical desired state mirrored by
+ * scripts/restore-openseo-managed-oauth.py; not imported by app code.
  */
 export const SELFHOST_MANAGED_OAUTH_CONFIGURATION = {
   enabled: true,
@@ -158,10 +161,7 @@ export const emailAccessGate = (options: {
   };
 }) =>
   Effect.gen(function* () {
-    const hostnames = [
-      options.domain,
-      ...(options.extraDomains ?? []),
-    ].filter(
+    const hostnames = [options.domain, ...(options.extraDomains ?? [])].filter(
       (hostname, index, all) => hostname && all.indexOf(hostname) === index,
     );
 
@@ -270,7 +270,6 @@ export const emailAccessGate = (options: {
         policies: [allow.policyId],
       },
     );
-
 
     if (options.internalApiBypass) {
       const bypass = yield* Cloudflare.Access.Policy(
