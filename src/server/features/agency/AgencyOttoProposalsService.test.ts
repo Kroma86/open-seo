@@ -97,7 +97,6 @@ describe("listHomegrownOttoProposals", () => {
   it("defaults wrong-typed fields the same way it fills missing ones", async () => {
     seed([
       base({
-        status: 42,
         proposedBy: "someone",
         fixes: { title: "Kept", h1: 7 },
         flags: ["kept", 3],
@@ -106,12 +105,19 @@ describe("listHomegrownOttoProposals", () => {
     ]);
     const [row] = await listHomegrownOttoProposals();
     expect(row).toMatchObject({
-      status: "pending",
       proposedBy: "api",
       fixes: { title: "Kept" },
       flags: ["kept"],
       rationale: null,
     });
+  });
+
+  it("skips a row whose status is outside the enum", async () => {
+    seed([
+      base({ id: "p5", status: "archived" }),
+      base({ id: "p6", status: 42 }),
+    ]);
+    expect(await listHomegrownOttoProposals()).toEqual([]);
   });
 
   it("skips a row with no usable identity instead of returning a broken one", async () => {

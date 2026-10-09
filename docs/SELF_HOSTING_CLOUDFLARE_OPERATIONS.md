@@ -115,8 +115,7 @@ observes an Access application by id, missed, fell back to a domain scan, found
 the live app but marked it _Unowned_ — Access applications carry no alchemy
 marker, so takeover is gated behind `--adopt` on purpose — and planned a
 `create`. Cloudflare answered `application_already_exists` and the deploy exited
-
-1. It named neither id, so it read as a mystery rather than as drift.
+with code 1. It named neither id, so it read as a mystery rather than as drift.
 
 ### When the preflight fires
 

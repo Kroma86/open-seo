@@ -153,6 +153,10 @@ function stringList(value: unknown): string[] {
 function toProposal(raw: unknown): HomegrownOttoProposal | null {
   if (!isRecord(raw)) return null;
   if (typeof raw.id !== "string" || typeof raw.domain !== "string") return null;
+  // A status outside the enum is skipped, not defaulted to "pending":
+  // markHomegrownOttoProposalsPulled reads the raw status, so listing such a
+  // row as pending would offer a proposal that can never be pulled.
+  if (raw.status != null && !oneOf(PROPOSAL_STATUSES, raw.status)) return null;
   const organizationId = raw.organizationId;
   return {
     id: raw.id,
