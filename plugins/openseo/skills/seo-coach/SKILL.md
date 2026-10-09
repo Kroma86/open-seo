@@ -48,6 +48,7 @@ Good starting points:
 ## What each workflow does
 
 - `seo-project-setup`: verifies MCP, interviews the user about scope, goals, positioning, competitors, and key pages, and saves it all to the project's shared context. Also connects Google Search Console (or imports GSC exports).
+- `brand-facts`: one canonical brand record with provenance tags; DRAFT llms.txt and JSON-LD from confirmed facts only.
 - `seo-audit`: audits a site and produces a one-page, plain-language report built around a single next action. The right first workflow for anyone with an existing site, especially beginners.
 - `keyword-research`: finds search opportunities from seed topics and evaluates volume, difficulty, CPC, intent, and SERPs.
 - `keyword-clustering`: groups keywords by intent and maps clusters to existing or proposed pages.
@@ -55,6 +56,22 @@ Good starting points:
 - `competitor-analysis`: studies one competitor's keywords, content themes, backlink profile, and gaps.
 - `local-seo`: audits a Google Business Profile against local competitors and maps Maps visibility around a location.
 - `link-prospecting`: finds likely link opportunities, discovers contact paths, and drafts outreach.
+- `page-growth`: names our own pages that can win more Google clicks (Search Atlas: Find Page Growth Opportunities).
+- `page-pruning`: prune / noindex / merge candidates on this project's site (thin, orphan, decayed, near-duplicate). Recommends only.
+- `ai-visibility`: question gaps for AI answers; mention rate only when measured (Search Atlas: Find Content Opportunities).
+- `authority-plan`: 30/90-day link plan, no buying links (Search Atlas: backlink / growth plans).
+- `site-health`: read-only crawl issues (Search Atlas: weekly site health). Does not auto-fix.
+- `rank-slippage`: OpenSEO rank tracker diffs; null is not #0 (Search Atlas: rank-slippage / drop warning).
+- `keyword-gap`: project vs 2–3 competitors → prioritized target keywords for topical maps (Search Atlas: Analyze Organic Competitors gap drill-down). Paid calls labeled.
+- `striking-distance`: positions 11–20, top 5 by potential, title/meta rewrite proposals only (Search Atlas: striking-distance refresh).
+- `location-pages`: city × service brief + outline for a human via HighLevel; never publish or invent facts.
+- `sales-proposal`: prospect-domain research → plain-English proposal skeleton; no project creation (Search Atlas: Generate a sales proposal).
+- `content-topical-map`: pillar-and-cluster map from tracked keywords + GSC; prioritized targets; on-demand (no monthly loop yet).
+- `content-brief`: one supplied keyword → SERP-grounded brief; refuse if no target (run the map first).
+- `content-draft`: house-voice article from a brief; DRAFT only, never publish (`not-in-openseo`).
+- `homegrown-otto`: queue title/meta/H1 fixes as pending (Search Atlas: On-Page Fix Critical Issues). Never apply from chat.
+- `niceseo-pillars`: how NiceSEO bars are allowed to speak.
+- `not-in-openseo`: Ads, Cloud Stacks, paid PR, auto-publish — say we cannot run them.
 
 ## Tool coaching
 

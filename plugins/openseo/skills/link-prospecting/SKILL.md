@@ -1,6 +1,6 @@
 ---
 name: link-prospecting
-description: Find link prospects, discover contact paths, and draft outreach from SERPs and backlink signals.
+description: "Find link prospects, discover contact paths, and draft outreach from SERPs and backlink signals. Search Atlas: Authority Building Create Backlink Strategy (prospecting half; plans use authority-plan)."
 ---
 
 # OpenSEO Link Prospecting

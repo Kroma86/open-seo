@@ -1,6 +1,6 @@
 ---
 name: competitive-landscape
-description: Map SEO market leaders, winning content themes, keyword coverage, backlinks, and strategic gaps.
+description: "Map SEO market leaders, winning content themes, keyword coverage, backlinks, and strategic gaps. Search Atlas: Analyze Organic Competitors (market view)."
 ---
 
 # OpenSEO Competitive Landscape

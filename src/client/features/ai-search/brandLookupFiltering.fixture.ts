@@ -7,8 +7,8 @@ import {
   type TopPagesFilterValues,
 } from "./brandLookupFilterTypes";
 
-export type TopPage = BrandLookupResult["topPages"][number];
-export type TopQuery = BrandLookupResult["topQueries"][number];
+type TopPage = BrandLookupResult["topPages"][number];
+type TopQuery = BrandLookupResult["topQueries"][number];
 
 export function makePage(overrides: Partial<TopPage> = {}): TopPage {
   const row: TopPage = {
