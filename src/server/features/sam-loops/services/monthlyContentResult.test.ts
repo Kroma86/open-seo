@@ -41,12 +41,12 @@ describe("monthly draft evidence", () => {
   it.each([
     {
       label: "invalid source URL",
-      source: { url: "https://elsewhere.example/drains", excerpt: article.sources[0]!.excerpt },
+      source: { url: "https://elsewhere.example/drains", excerpt: article.sources[0].excerpt },
       error: "A supporting source URL is invalid or does not belong to this site.",
     },
     {
       label: "unread source URL",
-      source: { url: "https://example.com/unread", excerpt: article.sources[0]!.excerpt },
+      source: { url: "https://example.com/unread", excerpt: article.sources[0].excerpt },
       error: "A supporting source URL was not read during this run.",
     },
     {

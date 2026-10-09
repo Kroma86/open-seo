@@ -43,7 +43,7 @@ async function createLoop(
   >,
 ) {
   const inserted = await db.insert(samLoops).values(data).returning();
-  return inserted[0]!;
+  return inserted[0];
 }
 
 async function updateLoop(
@@ -248,7 +248,7 @@ async function getContentVelocityForProject(
         or(
           and(
             eq(samLoops.sourceType, "custom"),
-            eq(samLoops.customPrompt, DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content")!.customPrompt!),
+            eq(samLoops.customPrompt, DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content")!.customPrompt),
           ),
           eq(samLoops.name, "Monthly content"),
           inArray(samLoops.skillName, [...CONTENT_LOOP_SKILL_NAMES]),

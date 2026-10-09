@@ -116,7 +116,7 @@ describe("getProjectsByDomain / getProjectByDomain", () => {
     });
 
     const rows = await ProjectRepository.getProjectsByDomain("example.com");
-    expect(rows.map((row) => row.id).sort()).toEqual([
+    expect(rows.map((row) => row.id).toSorted()).toEqual([
       "project_a",
       "project_b",
     ]);
@@ -148,7 +148,7 @@ describe("getProjectsByDomain / getProjectByDomain", () => {
     });
 
     const rows = await ProjectRepository.getProjectsByDomain("client.com");
-    expect(rows.map((row) => row.id).sort()).toEqual([
+    expect(rows.map((row) => row.id).toSorted()).toEqual([
       "project_http",
       "project_http_www",
       "project_https",

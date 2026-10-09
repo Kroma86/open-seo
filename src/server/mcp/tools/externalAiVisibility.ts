@@ -108,7 +108,7 @@ export function parseExternalAiVisibility(
   if (Number.isNaN(measured.getTime()) || measured.getTime() > now.getTime()) {
     return unavailable("invalid", INVALID_NOTE);
   }
-  if (payload.answers.length === 0 && payload.google_scan_present === false) {
+  if (payload.answers.length === 0 && ! payload.google_scan_present) {
     return unavailable("invalid", INVALID_NOTE);
   }
   const n = payload.answers.length;

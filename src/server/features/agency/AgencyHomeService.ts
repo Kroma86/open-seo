@@ -272,7 +272,7 @@ export async function getAgencyHomePortfolio(
     }),
   );
 
-  return rows.sort((a, b) => {
+  return rows.toSorted((a, b) => {
     // Unconnected last.
     if (a.gscConnected !== b.gscConnected) {
       return a.gscConnected ? -1 : 1;

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { InferSelectModel } from "drizzle-orm";
-import { samLoops, samLoopRuns } from "@/db/app.schema";
+import type { samLoopRuns } from "@/db/app.schema";
+import { samLoops } from "@/db/app.schema";
 
 export type SamLoop = InferSelectModel<typeof samLoops>;
 export type SamLoopRun = InferSelectModel<typeof samLoopRuns>;

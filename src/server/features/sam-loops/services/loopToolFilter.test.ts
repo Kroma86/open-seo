@@ -34,7 +34,7 @@ describe("filterLoopTools", () => {
     } as unknown as ToolSet;
 
     const filtered = filterLoopTools(tools);
-    expect(Object.keys(filtered).sort()).toEqual([
+    expect(Object.keys(filtered).toSorted()).toEqual([
       "get_ai_visibility_trend",
       "get_audit_issues",
       "get_rank_tracker",
@@ -55,7 +55,7 @@ describe("filterLoopTools", () => {
     const filtered = filterLoopTools(tools);
     expect(filtered.brand_new_paid_research_tool).toBeUndefined();
     expect(filtered.future_write_surface).toBeUndefined();
-    expect(Object.keys(filtered).sort()).toEqual([
+    expect(Object.keys(filtered).toSorted()).toEqual([
       "get_audit_issues",
       "propose_homegrown_otto_fixes",
     ]);
@@ -92,7 +92,7 @@ describe("filterLoopTools", () => {
     } as unknown as ToolSet;
 
     const filtered = filterLoopTools(tools);
-    expect(Object.keys(filtered).sort()).toEqual([
+    expect(Object.keys(filtered).toSorted()).toEqual([
       "get_audit_issues",
       "get_business_profile",
       "get_business_reviews",
@@ -168,12 +168,12 @@ describe("filterLoopTools", () => {
 
     it("skill loops lose the write tool and the GBP tools", () => {
       const out = scopeLoopTools(tools, template("Site health"));
-      expect(Object.keys(out).sort()).toEqual(["get_audit_issues"]);
+      expect(Object.keys(out).toSorted()).toEqual(["get_audit_issues"]);
     });
 
     it("Review watch keeps GBP readers but cannot propose fixes", () => {
       const out = scopeLoopTools(tools, template("Review watch"));
-      expect(Object.keys(out).sort()).toEqual([
+      expect(Object.keys(out).toSorted()).toEqual([
         "get_audit_issues",
         "get_business_profile",
         "get_business_reviews",
@@ -209,7 +209,7 @@ describe("filterLoopTools", () => {
         loopName: "CTR opportunities",
       };
       const out = scopeLoopTools(tools, forged);
-      expect(Object.keys(out).sort()).toEqual(["get_audit_issues"]);
+      expect(Object.keys(out).toSorted()).toEqual(["get_audit_issues"]);
       expect(out.propose_homegrown_otto_fixes).toBeUndefined();
       expect(out.get_business_profile).toBeUndefined();
     });
@@ -266,8 +266,8 @@ describe("filterLoopTools", () => {
               (caps.write || n !== "propose_homegrown_otto_fixes") &&
               (caps.gbp || !GBP_TOOLS.includes(n)),
           )
-          .sort();
-        expect(Object.keys(scoped).sort(), `${t.name} scoped tool set`).toEqual(
+          .toSorted();
+        expect(Object.keys(scoped).toSorted(), `${t.name} scoped tool set`).toEqual(
           expected,
         );
       }

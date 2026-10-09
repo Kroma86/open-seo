@@ -165,8 +165,8 @@ export function parseExternalRankObservations(
     sortable.push({
       entry: winner,
       row: {
-        keyword: newest.map((entry) => entry.keyword).sort(compareText)[0],
-        country: newest.map((entry) => entry.country).sort(compareText)[0],
+        keyword: newest.map((entry) => entry.keyword).toSorted(compareText)[0],
+        country: newest.map((entry) => entry.country).toSorted(compareText)[0],
         position: winner.position,
         url: winner.url,
         checkedAt: new Date(newestMs).toISOString(),

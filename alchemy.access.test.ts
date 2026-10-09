@@ -75,7 +75,6 @@ describe("emailAccessGate topology", () => {
     const result = await Effect.runPromise(
       emailAccessGate(OPTIONS) as Effect.Effect<
         { application: unknown; mcpPolicyAud: string },
-        never,
         never
       >,
     );

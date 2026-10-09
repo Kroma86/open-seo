@@ -57,7 +57,7 @@ export async function fetchExternalAgencyMetrics(domain: string | null, options?
     if (!payload || typeof payload !== "object" || !("clients" in payload) || !Array.isArray(payload.clients)) return empty("External observations unavailable: invalid agency response.");
     const rows = payload.clients.filter((row: unknown): row is Record<string, unknown> => !!row && typeof row === "object" && "domain" in row && host(row.domain) === wanted);
     if (rows.length !== 1) return empty("External observations unavailable: no unique project row in agency feed.");
-    return { rank: rows[0]!.external_rank_observations ?? null, ai: rows[0]!.external_ai_visibility ?? null, error: null };
+    return { rank: rows[0].external_rank_observations ?? null, ai: rows[0].external_ai_visibility ?? null, error: null };
   } catch {
     return empty("External observations unavailable: agency feed timed out or could not be read.");
   }

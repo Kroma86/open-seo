@@ -66,7 +66,7 @@ export const getNiceseoOpsStatusTool = {
     const byStatus = { pending: 0, pulled: 0, rejected: 0 };
     for (const p of proposals) {
       if (p.status in byStatus) {
-        byStatus[p.status as keyof typeof byStatus] += 1;
+        byStatus[p.status] += 1;
       }
     }
     const latest = proposals.slice(0, 5).map((p) => ({
@@ -129,7 +129,7 @@ export const getNiceseoOpsStatusTool = {
       );
       const servedFixKeys = pixelFetch.pixel.served_fix_keys;
       const servedFixPaths = pixelFetch.pixel.served_fix_paths;
-      const pathEntries = Object.entries(servedFixPaths).sort(([a], [b]) =>
+      const pathEntries = Object.entries(servedFixPaths).toSorted(([a], [b]) =>
         a.localeCompare(b),
       );
       if (pathEntries.length) {

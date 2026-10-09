@@ -96,7 +96,7 @@ export async function runHeadlessSamLoop(
     try {
       const audit = await AuditRepository.getLatestAuditForProject(input.project.id);
       const pages = audit ? await AuditRepository.getPagesForAudit(audit.id) : [];
-      readiness = checkAuditReadiness(audit, pages, row!.domain, new Date());
+      readiness = checkAuditReadiness(audit, pages, row.domain, new Date());
     } catch {
       readiness = { ready: false, reason: "The saved crawl could not be read." };
     }
@@ -156,7 +156,7 @@ export async function runHeadlessSamLoop(
       {
         projectId: input.project.id,
         projectName: input.project.name,
-        domain: row!.domain,
+        domain: row.domain,
         locationCode: input.project.locationCode,
         languageCode: input.project.languageCode,
       },
@@ -178,7 +178,7 @@ export async function runHeadlessSamLoop(
   const tools = buildScopedLoopTools(
     buildSamMcpTools(input.authContext, {
       id: input.project.id,
-      domain: row!.domain,
+      domain: row.domain,
     }),
     {
       sourceType: input.sourceType,
@@ -228,7 +228,7 @@ export async function runHeadlessSamLoop(
     error = `The model did not finish normally (${result.finishReason}); the report is incomplete.`;
   } else if (monthly) {
     try {
-      const article = await validateMonthlyContent(result.output, result.steps, row!.domain ?? "");
+      const article = await validateMonthlyContent(result.output, result.steps, row.domain ?? "");
       report = article.report;
       error = article.error;
     } catch {

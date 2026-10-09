@@ -419,7 +419,7 @@ describe("atomic daily run admission", () => {
         sql: `INSERT INTO sam_loop_runs
           (id, loop_id, project_id, status, created_at)
           VALUES (?, 'history', 'project_1', 'completed', ?)`,
-        args: [id!, createdAt!],
+        args: [id, createdAt],
       });
     }
     const loopIds = [
@@ -478,7 +478,7 @@ describe("validated article velocity", () => {
     await insertLoop({ id: "renamed", name: "Editorial routine" });
     const prompt = DEFAULT_SAM_LOOP_TEMPLATES.find(
       (t) => t.name === "Monthly content",
-    )!.customPrompt!;
+    )!.customPrompt;
     await client.execute({
       sql: "UPDATE sam_loops SET custom_prompt = ? WHERE id = ?",
       args: [prompt, "renamed"],

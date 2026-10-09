@@ -187,7 +187,7 @@ describe("server /mcp gate failures become responses, not exceptions", () => {
     const response = await handler.fetch(mcpRequest(), env, ctx);
 
     expect(response.status).toBe(500);
-    const body = (await response.json()) as Record<string, string>;
+    const body = (await response.json());
     expect(body).toEqual({ error: "server_misconfigured" });
     expect(JSON.stringify(body)).not.toContain("cloudflareaccess.com");
   });
@@ -245,7 +245,7 @@ describe("server /mcp gate failures become responses, not exceptions", () => {
     const response = await handler.fetch(mcpRequest(), env, ctx);
 
     expect(response.status).toBe(500);
-    const body = (await response.json()) as Record<string, string>;
+    const body = (await response.json());
     expect(body).toEqual({ error: "internal_error" });
     expect(JSON.stringify(body)).not.toContain("ECONNREFUSED");
   });

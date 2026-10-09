@@ -215,7 +215,7 @@ async function loadGscTopQueries(
         impressions: Number.isFinite(row.impressions) ? row.impressions : 0,
         position: Number.isFinite(row.position) ? row.position : null,
       }))
-      .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
+      .toSorted((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
       .slice(0, 25);
     return rows.length > 0 ? rows : null;
   } catch {

@@ -12,8 +12,8 @@ describe("project-scoped stored observation feed", () => {
     const result = await fetchExternalAgencyMetrics("example.com", { ...config, fetchImpl });
     expect(result.ai).toEqual({ source: "expected" });
     expect(result.error).toBeNull();
-    expect(fetchImpl.mock.calls[0]![1].redirect).toBe("error");
-    expect(fetchImpl.mock.calls[0]![1].signal).toBeInstanceOf(AbortSignal);
+    expect(fetchImpl.mock.calls[0][1].redirect).toBe("error");
+    expect(fetchImpl.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
   });
   it.each([null, "", "https://example.com", "user@example.com", "example.com/path"])("does not fetch for invalid project domain: %s", async (domain) => {
     const fetchImpl = vi.fn();
