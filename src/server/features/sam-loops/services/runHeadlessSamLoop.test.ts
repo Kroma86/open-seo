@@ -100,7 +100,7 @@ describe("runHeadlessSamLoop permissions and reports", () => {
       });
       const approved = DEFAULT_SAM_LOOP_TEMPLATES.find(
         (template) => template.name === "On-page priorities",
-      )!.customPrompt!;
+      )!.customPrompt;
       const propose = { execute: vi.fn() };
       mocks.buildSamMcpTools.mockReturnValue({
         propose_homegrown_otto_fixes: propose,
@@ -132,7 +132,7 @@ describe("runHeadlessSamLoop permissions and reports", () => {
     const modified =
       DEFAULT_SAM_LOOP_TEMPLATES.find(
         (template) => template.name === "On-page priorities",
-      )!.customPrompt! + "\nModified";
+      )!.customPrompt + "\nModified";
     mocks.buildSamMcpTools.mockReturnValue({
       propose_homegrown_otto_fixes: { execute: vi.fn() },
     });

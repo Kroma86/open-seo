@@ -67,9 +67,7 @@ describe("transformPromptCacheParams gating", () => {
     expect(transformPromptCacheParams("minimax/minimax-m3", params)).toBe(
       params,
     );
-    expect(
-      transformPromptCacheParams("openai/gpt-5", params),
-    ).toBe(params);
+    expect(transformPromptCacheParams("openai/gpt-5", params)).toBe(params);
   });
 
   it("applies breakpoints for anthropic/ model ids", () => {

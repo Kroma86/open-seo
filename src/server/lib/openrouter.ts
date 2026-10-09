@@ -16,7 +16,7 @@ import {
 // Override with OPENROUTER_MODEL to swap models without a code change.
 const DEFAULT_CHAT_AGENT_MODEL = "minimax/minimax-m3";
 
-export type ChatAgentModelOptions = {
+type ChatAgentModelOptions = {
   // When true (default), restrict routing to Zero-Data-Retention endpoints.
   // Self-host may set OPENROUTER_ZDR=false to reach first-party Anthropic/etc.
   zdr?: boolean;
@@ -31,9 +31,7 @@ export { parseOpenRouterPromptCacheFlag };
  * Parse OPENROUTER_ZDR. Default true (hosted privacy posture). Explicit
  * 0/false/no/off disables request-level ZDR.
  */
-export function parseOpenRouterZdrFlag(
-  value: string | undefined,
-): boolean {
+export function parseOpenRouterZdrFlag(value: string | undefined): boolean {
   if (value == null || value.trim() === "") return true;
   return !["0", "false", "no", "off"].includes(value.trim().toLowerCase());
 }

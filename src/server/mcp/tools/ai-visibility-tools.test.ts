@@ -26,9 +26,12 @@ vi.mock("@/server/features/ai-visibility/services/aiVisibilityResults", () => ({
   getLatestResults: mocks.getLatestResults,
   getTrend: mocks.getTrend,
 }));
-vi.mock("@/server/features/ai-visibility/services/runAiVisibilityCheck", () => ({
-  runAiVisibilityCheck: mocks.runAiVisibilityCheck,
-}));
+vi.mock(
+  "@/server/features/ai-visibility/services/runAiVisibilityCheck",
+  () => ({
+    runAiVisibilityCheck: mocks.runAiVisibilityCheck,
+  }),
+);
 vi.mock("@/server/lib/posthog", () => ({
   captureServerEvent: mocks.captureServerEvent,
 }));

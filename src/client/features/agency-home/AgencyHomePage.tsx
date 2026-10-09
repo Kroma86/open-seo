@@ -147,8 +147,8 @@ export function AgencyHomePage() {
             Put Sam to work
           </h1>
           <p className="max-w-2xl text-sm text-base-content/55">
-            Ask across your portfolio, scan recent missions, and open any
-            client workspace in one click. Every number here is measured — or
+            Ask across your portfolio, scan recent missions, and open any client
+            workspace in one click. Every number here is measured — or
             explicitly not.
           </p>
         </header>

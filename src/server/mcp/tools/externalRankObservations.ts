@@ -4,7 +4,7 @@ const SOURCE_LABEL = "Hermes daily rank checks" as const;
 const MAX_OBSERVATIONS = 500;
 const STALE_AFTER_MS = 48 * 60 * 60 * 1000;
 
-export type ExternalRankObservationRow = {
+type ExternalRankObservationRow = {
   keyword: string;
   country: string;
   position: number | null;
@@ -14,7 +14,7 @@ export type ExternalRankObservationRow = {
   depth: null;
 };
 
-export type ExternalRankObservations = {
+type ExternalRankObservations = {
   source: typeof SOURCE_LABEL;
   status: "available" | "missing" | "invalid";
   updatedAt: string | null;
@@ -165,8 +165,8 @@ export function parseExternalRankObservations(
     sortable.push({
       entry: winner,
       row: {
-        keyword: newest.map((entry) => entry.keyword).sort(compareText)[0],
-        country: newest.map((entry) => entry.country).sort(compareText)[0],
+        keyword: newest.map((entry) => entry.keyword).toSorted(compareText)[0],
+        country: newest.map((entry) => entry.country).toSorted(compareText)[0],
         position: winner.position,
         url: winner.url,
         checkedAt: new Date(newestMs).toISOString(),

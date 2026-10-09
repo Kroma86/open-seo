@@ -7,10 +7,10 @@ import {
 
 const warnedInvalidSamLoopDailyRunCaps = new Set<string>();
 
-export function getSamLoopDailyRunCap(env: {
+export function getSamLoopDailyRunCap(config: {
   SAM_LOOP_DAILY_RUN_CAP?: string;
 }): number {
-  const raw = env.SAM_LOOP_DAILY_RUN_CAP?.trim();
+  const raw = config.SAM_LOOP_DAILY_RUN_CAP?.trim();
   if (!raw) return SAM_LOOP_DAILY_RUN_CAP_DEFAULT;
 
   const parsed = Number.parseInt(raw, 10);

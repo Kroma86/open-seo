@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   fetchAgencyPixelStatus,
   normalizeOpsDomain,
   pickPixelFromAgencyMetrics,
 } from "./agency-metrics-pixel";
 import { getNiceseoOpsStatusTool } from "./get-niceseo-ops-status";
+import { makeToolContext, textContent } from "./tool-test-support";
 
 vi.mock("@/server/features/agency/AgencyOttoProposalsService", () => ({
   listHomegrownOttoProposals: vi.fn(async () => []),
@@ -116,7 +118,7 @@ describe("fetchAgencyPixelStatus", () => {
   });
 
   it("parses metrics JSON via fetchImpl", async () => {
-    const fetchImpl = vi.fn(
+    const fetchImpl = vi.fn<typeof fetch>(
       async () =>
         new Response(
           JSON.stringify({
@@ -138,7 +140,7 @@ describe("fetchAgencyPixelStatus", () => {
     const result = await fetchAgencyPixelStatus("niceseo.ai", {
       metricsUrl: "https://webhook.niceseo.ai/api/v1/agency-metrics",
       token: "test-token",
-      fetchImpl: fetchImpl as unknown as typeof fetch,
+      fetchImpl,
     });
     expect(result.configured).toBe(true);
     expect(result.error).toBeNull();
@@ -146,10 +148,7 @@ describe("fetchAgencyPixelStatus", () => {
     expect(result.pixel.status).toBe("none");
     expect(result.pixel.served_fix_keys).toEqual(["title"]);
     expect(fetchImpl).toHaveBeenCalledOnce();
-    const calls = fetchImpl.mock.calls as unknown as ReadonlyArray<
-      ReadonlyArray<unknown>
-    >;
-    const calledUrl = String(calls[0]?.[0] ?? "");
+    const calledUrl = z.string().parse(fetchImpl.mock.calls[0]?.[0]);
     expect(calledUrl).toContain("t=test-token");
   });
 });
@@ -174,7 +173,7 @@ describe("getNiceseoOpsStatusTool handler", () => {
     try {
       return await getNiceseoOpsStatusTool.handler(
         { domain: "twa.studio" },
-        {} as never,
+        makeToolContext(),
       );
     } finally {
       if (prevMetricsUrl === undefined) {
@@ -202,7 +201,7 @@ describe("getNiceseoOpsStatusTool handler", () => {
         "/blog": ["h1"],
       },
     });
-    const text = (result.content[0] as { type: "text"; text: string }).text;
+    const text = textContent(result);
     expect(text).toContain(
       "NiceSEO pixel: fields currently served: description, h1, title",
     );
@@ -211,7 +210,9 @@ describe("getNiceseoOpsStatusTool handler", () => {
     );
     expect(result.structuredContent.pixel.applicationVerified).toBe(false);
     expect(text).not.toContain("already applied");
-    expect(text).toContain("Browser application of the current served values is not verified");
+    expect(text).toContain(
+      "Browser application of the current served values is not verified",
+    );
     expect(result.structuredContent.pixel.served_fix_keys).toEqual([
       "description",
       "h1",
@@ -228,7 +229,7 @@ describe("getNiceseoOpsStatusTool handler", () => {
       status: "live",
       served_fix_keys: ["title", "description"],
     });
-    const text = (result.content[0] as { type: "text"; text: string }).text;
+    const text = textContent(result);
     expect(text).toContain(
       "NiceSEO pixel: fields currently served (per-path detail unavailable): title, description — verify current values and pending proposals before proposing a replacement",
     );
@@ -237,7 +238,7 @@ describe("getNiceseoOpsStatusTool handler", () => {
 
   it("prints none reported when the pixel serves no fixes", async () => {
     const result = await runHandlerWithPixel({ status: "live", events_7d: 3 });
-    const text = (result.content[0] as { type: "text"; text: string }).text;
+    const text = textContent(result);
     expect(text).toContain(
       "NiceSEO pixel: fields currently served: none reported",
     );

@@ -13,21 +13,24 @@ import {
   DEFAULT_SAM_LOOP_TEMPLATES,
   DOGFOOD_SAM_LOOP_TRIGGER_CAP,
   computeNextSamLoopRunAt,
-  expectedSamLoopDraftsPerMonth,
-  isSamContentLoop,
   isSamLoopProjectAllowed,
   startOfUtcDay,
 } from "@/shared/sam-loops";
-import type { ContentVelocity } from "@/types/schemas/sam-loops";
 import type {
   SamLoopTriggerResult,
   createSamLoopSchema,
   updateSamLoopSchema,
 } from "@/types/schemas/sam-loops";
 import type { z } from "zod";
+import { getContentVelocity } from "./samLoopContentVelocity";
+
+export { getContentVelocity };
 
 function publicRun<T extends { report: string | null }>(run: T): T {
-  return { ...run, report: run.report === null ? null : stripDraftEvidence(run.report) };
+  return {
+    ...run,
+    report: run.report === null ? null : stripDraftEvidence(run.report),
+  };
 }
 
 /** Pure list — defaults are seeded on project create, not on every read. */
@@ -40,76 +43,7 @@ export async function listSamLoopsForProject(projectId: string) {
   return { loops, runs: runs.map(publicRun) };
 }
 
-function contentVelocityWindow(now = new Date()) {
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth();
-  const sinceIso = new Date(Date.UTC(year, month - 2, 1)).toISOString();
-  const months: string[] = [];
-  for (let offset = 2; offset >= 0; offset -= 1) {
-    const d = new Date(Date.UTC(year, month - offset, 1));
-    const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-    months.push(ym);
-  }
-  return { sinceIso, months };
-}
-
-function emptyMonthCounts(months: string[]) {
-  return Object.fromEntries(months.map((month) => [month, 0]));
-}
-
-export async function getContentVelocity(
-  projectId: string,
-): Promise<ContentVelocity> {
-  const { sinceIso, months } = contentVelocityWindow();
-  const [loops, runs] = await Promise.all([
-    SamLoopRepository.getLoopsForProject(projectId),
-    SamLoopRepository.getContentVelocityForProject(projectId, sinceIso),
-  ]);
-
-  const contentLoops = loops.filter(isSamContentLoop);
-  const monthSet = new Set(months);
-  const knownCadences = new Set(["monthly", "weekly", "daily"]);
-
-  const byLoopId = new Map(
-    contentLoops.map((loop) => {
-      if (!knownCadences.has(loop.cadence)) {
-        throw new Error("unknown cadence: " + loop.cadence);
-      }
-      return [
-      loop.id,
-      {
-        loopId: loop.id,
-        loopName: loop.name,
-        cadence: loop.cadence,
-        isEnabled: loop.isEnabled,
-        expectedPerMonth: expectedSamLoopDraftsPerMonth(loop.cadence),
-        drafted: emptyMonthCounts(months),
-        completedWithoutDraft: emptyMonthCounts(months),
-      },
-    ];
-    }),
-  );
-
-  for (const run of runs) {
-    if (!run.finishedAt) continue;
-    const monthKey = run.finishedAt.slice(0, 7);
-    if (!monthSet.has(monthKey)) continue;
-    const entry = byLoopId.get(run.loopId);
-    if (!entry) continue;
-    if (run.hasDraft) {
-      entry.drafted[monthKey] += 1;
-    } else {
-      entry.completedWithoutDraft[monthKey] += 1;
-    }
-  }
-
-  return {
-    months,
-    loops: [...byLoopId.values()],
-  };
-}
-
-export async function listAvailableSamLoopSkills() {
+async function listAvailableSamLoopSkills() {
   const skills = await buildSamSkillSource().list();
   return skills;
 }
@@ -130,7 +64,10 @@ export async function createSamLoop(
   if (input.sourceType === "skill" && input.skillName) {
     const skill = await buildSamSkillSource().load(input.skillName);
     if (!skill) {
-      throw new AppError("VALIDATION_ERROR", `Unknown skill: ${input.skillName}`);
+      throw new AppError(
+        "VALIDATION_ERROR",
+        `Unknown skill: ${input.skillName}`,
+      );
     }
   }
 
@@ -297,8 +234,7 @@ export async function triggerSamLoop(input: {
   const nextRunMs = loop.nextRunAt
     ? new Date(loop.nextRunAt).getTime()
     : Number.NaN;
-  const nextRunIsFuture =
-    Number.isFinite(nextRunMs) && nextRunMs > Date.now();
+  const nextRunIsFuture = Number.isFinite(nextRunMs) && nextRunMs > Date.now();
 
   if (!nextRunIsFuture) {
     // CAS only when we have a parsable observed nextRunAt. A corrupt value
@@ -338,20 +274,23 @@ export async function seedDefaultSamLoopsForProject(projectId: string) {
 }
 
 /** Resolve org id for a project (manual trigger / billing context). */
-export async function getOrganizationIdForProject(projectId: string) {
+async function getOrganizationIdForProject(projectId: string) {
   const project = await ProjectRepository.getProjectById(projectId);
   return project?.organizationId ?? null;
 }
 
-export type DomainLoopTriggerRow = {
+type DomainLoopTriggerRow = {
   loopId: string;
   loopName: string;
   skillName: string | null;
   result: SamLoopTriggerResult;
 };
 
-export type DomainLoopTriggerResult =
-  | { ok: false; reason: "project_not_found" | "domain_not_allowed" | "daily_cap" }
+type DomainLoopTriggerResult =
+  | {
+      ok: false;
+      reason: "project_not_found" | "domain_not_allowed" | "daily_cap";
+    }
   | {
       ok: false;
       reason: "ambiguous_project_domain";
@@ -420,9 +359,8 @@ export async function triggerSamLoopsForDomain(input: {
   }
 
   const dailyRunCap = getSamLoopDailyRunCap(env);
-  const runsToday = await SamLoopRepository.countRunsCreatedSince(
-    startOfUtcDay(),
-  );
+  const runsToday =
+    await SamLoopRepository.countRunsCreatedSince(startOfUtcDay());
   if (runsToday >= dailyRunCap) {
     return { ok: false, reason: "daily_cap" };
   }

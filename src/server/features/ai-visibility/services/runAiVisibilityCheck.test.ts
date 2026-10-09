@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import type { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import { runAiVisibilityCheck } from "./runAiVisibilityCheck";
 
 const mocks = vi.hoisted(() => ({
@@ -7,7 +9,8 @@ const mocks = vi.hoisted(() => ({
   getProjectForOrganization: vi.fn(),
   getActivePromptsForConfig: vi.fn(),
   updateRun: vi.fn(),
-  updateRunIfInFlight: vi.fn(),
+  updateRunIfInFlight:
+    vi.fn<typeof AiVisibilityRepository.updateRunIfInFlight>(),
   updateConfig: vi.fn(),
   beginAiVisibilityRun: vi.fn(),
   failRunIfActive: vi.fn(),
@@ -92,9 +95,7 @@ describe("runAiVisibilityCheck", () => {
       resolvedTarget: "acme.com",
       fetchedAt: new Date().toISOString(),
       hasData: true,
-      perPlatform: [
-        { platform: "google", mentions: 5, impressions: null },
-      ],
+      perPlatform: [{ platform: "google", mentions: 5, impressions: null }],
       topPages: [],
       shareOfVoice: null,
     });
@@ -183,7 +184,9 @@ describe("runAiVisibilityCheck", () => {
       promptsChecked: 1,
       promptsWithBrand: 1,
     });
-    const detail = JSON.parse(String(completedUpdate?.[1]?.detail));
+    const detail = z
+      .record(z.string(), z.unknown())
+      .parse(JSON.parse(String(completedUpdate?.[1]?.detail)));
     expect(detail.promptsAttempted).toBe(2);
   });
 

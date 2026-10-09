@@ -9,18 +9,12 @@ import {
 } from "@/server/mcp/tools/agency-metrics-pixel";
 import { z } from "zod";
 
-export {
-  fetchAgencyPixelStatus,
-  normalizeOpsDomain,
-  pickPixelFromAgencyMetrics,
-} from "@/server/mcp/tools/agency-metrics-pixel";
-
 export const getNiceseoOpsStatusTool = {
   name: "get_niceseo_ops_status",
   config: {
     title: "Get NiceSEO ops status (OTTO + pixel)",
     description:
-      "Read-only HomeGrown OTTO proposal queue counts plus NiceSEO pixel status for a domain. Uses the OpenSEO proposal KV and the agency board metrics API — no credits, no deploy. Call this before answering OTTO/pixel/\"how connected\" questions. Served field names show what is available to the pixel, not proof that the current values were applied in a browser. Compare the actual current value and pending proposals before deciding whether a field needs improvement; coverage alone does not make a whole page complete.",
+      'Read-only HomeGrown OTTO proposal queue counts plus NiceSEO pixel status for a domain. Uses the OpenSEO proposal KV and the agency board metrics API — no credits, no deploy. Call this before answering OTTO/pixel/"how connected" questions. Served field names show what is available to the pixel, not proof that the current values were applied in a browser. Compare the actual current value and pending proposals before deciding whether a field needs improvement; coverage alone does not make a whole page complete.',
     inputSchema: {
       domain: z
         .string()
@@ -66,7 +60,7 @@ export const getNiceseoOpsStatusTool = {
     const byStatus = { pending: 0, pulled: 0, rejected: 0 };
     for (const p of proposals) {
       if (p.status in byStatus) {
-        byStatus[p.status as keyof typeof byStatus] += 1;
+        byStatus[p.status] += 1;
       }
     }
     const latest = proposals.slice(0, 5).map((p) => ({
@@ -129,7 +123,7 @@ export const getNiceseoOpsStatusTool = {
       );
       const servedFixKeys = pixelFetch.pixel.served_fix_keys;
       const servedFixPaths = pixelFetch.pixel.served_fix_paths;
-      const pathEntries = Object.entries(servedFixPaths).sort(([a], [b]) =>
+      const pathEntries = Object.entries(servedFixPaths).toSorted(([a], [b]) =>
         a.localeCompare(b),
       );
       if (pathEntries.length) {

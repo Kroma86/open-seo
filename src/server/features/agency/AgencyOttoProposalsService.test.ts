@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 // The KV rows these tests feed are real shapes taken from production on
 // 2026-09-18, not invented ones. See the `organizationId` case below.
@@ -19,10 +20,16 @@ const { listHomegrownOttoProposals, markHomegrownOttoProposalsPulled } =
 const INDEX_KEY = "homegrown-otto:proposal-index";
 const key = (id: string) => `homegrown-otto:proposal:${id}`;
 
-function seed(rows: Record<string, unknown>[]) {
+function seed(rows: Array<Record<string, unknown> & { id: string }>) {
   store.clear();
-  store.set(INDEX_KEY, JSON.stringify(rows.map((r) => r.id as string)));
-  for (const row of rows) store.set(key(row.id as string), JSON.stringify(row));
+  store.set(INDEX_KEY, JSON.stringify(rows.map((r) => r.id)));
+  for (const row of rows) store.set(key(row.id), JSON.stringify(row));
+}
+
+function readStored(id: string): Record<string, unknown> {
+  return z
+    .record(z.string(), z.unknown())
+    .parse(JSON.parse(store.get(key(id)) ?? ""));
 }
 
 const base = (over: Record<string, unknown> = {}) => ({
@@ -87,8 +94,34 @@ describe("listHomegrownOttoProposals", () => {
     });
   });
 
+  it("defaults wrong-typed fields the same way it fills missing ones", async () => {
+    seed([
+      base({
+        proposedBy: "someone",
+        fixes: { title: "Kept", h1: 7 },
+        flags: ["kept", 3],
+        rationale: { text: "no" },
+      }),
+    ]);
+    const [row] = await listHomegrownOttoProposals();
+    expect(row).toMatchObject({
+      proposedBy: "api",
+      fixes: { title: "Kept" },
+      flags: ["kept"],
+      rationale: null,
+    });
+  });
+
+  it("skips a row whose status is outside the enum", async () => {
+    seed([
+      base({ id: "p5", status: "archived" }),
+      base({ id: "p6", status: 42 }),
+    ]);
+    expect(await listHomegrownOttoProposals()).toEqual([]);
+  });
+
   it("skips a row with no usable identity instead of returning a broken one", async () => {
-    seed([{ nonsense: true, id: "p3" } as never, base({ id: "p4" })]);
+    seed([{ nonsense: true, id: "p3" }, base({ id: "p4" })]);
     const rows = await listHomegrownOttoProposals();
     expect(rows.map((r) => r.id)).toEqual(["p4"]);
   });
@@ -99,10 +132,14 @@ describe("listHomegrownOttoProposals", () => {
       base({ id: "b", status: "pulled", domain: "one.ca" }),
       base({ id: "c", status: "pending", domain: "two.ca" }),
     ]);
-    expect((await listHomegrownOttoProposals({ status: "pulled" })).map((r) => r.id))
-      .toEqual(["b"]);
-    expect((await listHomegrownOttoProposals({ domain: "https://www.two.ca/x" })).map((r) => r.id))
-      .toEqual(["c"]);
+    expect(
+      (await listHomegrownOttoProposals({ status: "pulled" })).map((r) => r.id),
+    ).toEqual(["b"]);
+    expect(
+      (
+        await listHomegrownOttoProposals({ domain: "https://www.two.ca/x" })
+      ).map((r) => r.id),
+    ).toEqual(["c"]);
   });
 });
 
@@ -113,7 +150,7 @@ describe("markHomegrownOttoProposalsPulled", () => {
   it("round-trips an undeclared key back into storage", async () => {
     seed([base({ organizationId: "org_abc", someFutureField: "keep me" })]);
     await markHomegrownOttoProposalsPulled(["p1"]);
-    const stored = JSON.parse(store.get(key("p1")) as string);
+    const stored = readStored("p1");
     expect(stored.someFutureField).toBe("keep me");
     expect(stored.organizationId).toBe("org_abc");
     expect(stored.status).toBe("pulled");
@@ -124,7 +161,7 @@ describe("markHomegrownOttoProposalsPulled", () => {
 describe("the checks above are not vacuous", () => {
   it("the fixture really carries the undeclared key before the read narrows it", async () => {
     seed([base({ someFutureField: "boom" })]);
-    const raw = JSON.parse(store.get(key("p1")) as string);
+    const raw = readStored("p1");
     expect(raw.someFutureField).toBe("boom");
     const [row] = await listHomegrownOttoProposals();
     expect(row).not.toHaveProperty("someFutureField");

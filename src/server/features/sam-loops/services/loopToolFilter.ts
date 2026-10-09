@@ -76,6 +76,14 @@ const LOOP_GBP_TOOLS: ReadonlySet<string> = new Set([
   "get_business_reviews",
 ]);
 
+function hasCallableExecute(
+  toolEntry: ToolSet[string],
+): toolEntry is ToolSet[string] & {
+  execute: (a: unknown, o: unknown) => unknown;
+} {
+  return typeof toolEntry.execute === "function";
+}
+
 /**
  * Enforce LOOP_TOOL_CALL_CAPS: after the cap a tool throws, telling the model
  * to report "not measured" instead of retrying. Prompt text is not a cost
@@ -91,7 +99,7 @@ export function capLoopToolCalls(tools: ToolSet): ToolSet {
       out[name] = toolEntry;
       continue;
     }
-    if (typeof toolEntry.execute !== "function") {
+    if (!hasCallableExecute(toolEntry)) {
       // Fail closed: a paid tool we cannot wrap would run UNCAPPED. A capped
       // tool without a callable execute is a build-time bug, not a pass-through.
       throw new Error(
@@ -109,9 +117,7 @@ export function capLoopToolCalls(tools: ToolSet): ToolSet {
             `${name} call cap reached for this run (${cap}). Report "not measured" instead of retrying.`,
           );
         }
-        return (
-          toolEntry as { execute: (a: unknown, o: unknown) => unknown }
-        ).execute(args, options);
+        return toolEntry.execute(args, options);
       },
     } as ToolSet[string];
   }
