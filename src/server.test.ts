@@ -1,22 +1,32 @@
+import { env as workerEnv } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { resolveCloudflareAccessMcpGate } from "@/middleware/ensure-user/cloudflareAccess";
+import type { resolveSharedWorkspaceContext } from "@/middleware/ensure-user/delegated";
+import type { EnsuredUserContext } from "@/middleware/ensure-user/types";
+import type { handleSelfHostedOpenSeoMcpRequest } from "@/server/mcp/transport";
 
 const mocks = vi.hoisted(() => ({
-  appFetch: vi.fn(),
-  providerFetch: vi.fn(),
-  transport: vi.fn(),
-  gate: vi.fn(),
-  resolveContext: vi.fn(),
+  appFetch: vi.fn<(request: Request) => Promise<Response>>(),
+  providerFetch:
+    vi.fn<
+      (request: Request, env: Env, ctx: ExecutionContext) => Promise<Response>
+    >(),
+  transport: vi.fn<typeof handleSelfHostedOpenSeoMcpRequest>(),
+  gate: vi.fn<typeof resolveCloudflareAccessMcpGate>(),
+  resolveContext: vi.fn<typeof resolveSharedWorkspaceContext>(),
 }));
 
+// Worker, Workflow and Durable Object base classes: server.ts's import graph
+// only references them, and every subclass below is stubbed too.
 vi.mock("cloudflare:workers", () => ({
   env: {},
-  WorkflowEntrypoint: class {},
-  DurableObject: class {},
-  WorkerEntrypoint: class {},
+  WorkflowEntrypoint: vi.fn(),
+  DurableObject: vi.fn(),
+  WorkerEntrypoint: vi.fn(),
   waitUntil: (promise: Promise<unknown>) => void promise,
 }));
 vi.mock("cloudflare:workflows", () => ({
-  WorkflowEntrypoint: class {},
+  WorkflowEntrypoint: vi.fn(),
 }));
 vi.mock("@tanstack/react-start/server", () => ({
   createStartHandler: () => mocks.appFetch,
@@ -24,7 +34,7 @@ vi.mock("@tanstack/react-start/server", () => ({
 }));
 vi.mock("agents", () => ({
   routeAgentRequest: vi.fn(async () => undefined),
-  Agent: class {},
+  Agent: vi.fn(),
 }));
 vi.mock("@/middleware/ensure-user/cloudflareAccess", () => ({
   resolveCloudflareAccessMcpGate: mocks.gate,
@@ -53,34 +63,40 @@ vi.mock("@/server/lib/self-host-telemetry", () => ({
 // import cloudflare:* specifiers from node_modules, which vitest externalizes
 // and node cannot load. Stub the leaves.
 vi.mock("@/server/workflows/SiteAuditWorkflow", () => ({
-  SiteAuditWorkflow: class {},
+  SiteAuditWorkflow: vi.fn(),
 }));
 vi.mock("@/server/workflows/RankCheckWorkflow", () => ({
-  RankCheckWorkflow: class {},
+  RankCheckWorkflow: vi.fn(),
 }));
 vi.mock("@/server/workflows/SamLoopWorkflow", () => ({
-  SamLoopWorkflow: class {},
+  SamLoopWorkflow: vi.fn(),
 }));
 vi.mock("@/server/features/onboarding/OnboardingChatAgent", () => ({
-  OnboardingChatAgent: class {},
+  OnboardingChatAgent: vi.fn(),
 }));
 vi.mock("@/server/features/sam/SamChatAgent", () => ({
-  SamChatAgent: class {},
+  SamChatAgent: vi.fn(),
 }));
 vi.mock("@/server/features/audit/AuditScratchpad", () => ({
-  AuditScratchpad: class {},
+  AuditScratchpad: vi.fn(),
 }));
 
 import handler, { mcpGateErrorResponse } from "./server";
 import { AppError } from "@/server/lib/errors";
 
-const ctx = { waitUntil: () => {} } as unknown as ExecutionContext;
-const env = { AUTH_MODE: "cloudflare_access" } as unknown as Env;
-const userContext = {
+const ctx: ExecutionContext = {
+  waitUntil: () => {},
+  passThroughOnException: () => {},
+  props: {},
+};
+// The mocked module env is empty; spreading it keeps the Env type.
+const env: Env = { ...workerEnv, AUTH_MODE: "cloudflare_access" };
+const userContext: EnsuredUserContext = {
   userId: "u1",
   userEmail: "person@example.com",
+  emailVerified: true,
   organizationId: "org1",
-} as never;
+};
 
 function mcpRequest(method = "POST", path = "/mcp") {
   return new Request(`https://open-seo.test${path}`, { method });
@@ -103,7 +119,7 @@ describe("server /mcp routing under cloudflare_access", () => {
 
     expect(mocks.gate).toHaveBeenCalledTimes(1);
     expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
-    const [routedRequest] = mocks.providerFetch.mock.calls[0] as [Request];
+    const [routedRequest] = mocks.providerFetch.mock.calls[0];
     expect(new URL(routedRequest.url).pathname).toBe("/mcp");
     // The load-bearing claim: a service token only ever reaches the OAuth
     // provider, which requires a bearer token on its apiRoute (/mcp) — a
@@ -320,7 +336,7 @@ describe("server OAuth discovery routing under cloudflare_access", () => {
     );
 
     expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
-    const [routedRequest] = mocks.providerFetch.mock.calls[0] as [Request];
+    const [routedRequest] = mocks.providerFetch.mock.calls[0];
     expect(new URL(routedRequest.url).pathname).toBe(
       "/.well-known/oauth-authorization-server",
     );
@@ -356,7 +372,7 @@ describe("server MCP OAuth protocol routing under cloudflare_access", () => {
       const response = await handler.fetch(mcpRequest("GET", path), env, ctx);
 
       expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
-      const [routedRequest] = mocks.providerFetch.mock.calls[0] as [Request];
+      const [routedRequest] = mocks.providerFetch.mock.calls[0];
       expect(new URL(routedRequest.url).pathname).toBe(path);
       expect(await response.text()).toBe("oauth-protocol");
       expect(mocks.appFetch).not.toHaveBeenCalled();

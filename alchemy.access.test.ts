@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Providers } from "alchemy/Cloudflare";
+import type { ProviderCollectionService } from "alchemy/Provider";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
 // Records every Access Policy/Application the gate provisions, so the test
@@ -69,14 +72,22 @@ const OPTIONS = {
   },
 };
 
+// The vi.mock above stands in for every alchemy resource, so nothing reads the
+// Cloudflare provider collection: an empty one satisfies the requirement.
+const NoCloudflareProviders = Context.Service<
+  Providers,
+  ProviderCollectionService
+>()("Cloudflare");
+
 describe("emailAccessGate topology", () => {
   it("attaches the service-token policy ONLY to the /mcp app — never the hostname-wide user gate (C1 invariant)", async () => {
     calls.applications.length = 0;
     const result = await Effect.runPromise(
-      emailAccessGate(OPTIONS) as Effect.Effect<
-        { application: unknown; mcpPolicyAud: string },
-        never
-      >,
+      Effect.provideService(emailAccessGate(OPTIONS), NoCloudflareProviders, {
+        kind: "ProviderCollection",
+        get: () => undefined,
+        providers: {},
+      }),
     );
 
     const byId = new Map(calls.applications.map((a) => [a.id, a.policies]));

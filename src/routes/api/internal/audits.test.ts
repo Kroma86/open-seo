@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AuditRepository } from "@/server/features/audit/repositories/AuditRepository";
+import type { AuditService } from "@/server/features/audit/services/AuditService";
+import type { ProjectService } from "@/server/features/projects/services/ProjectService";
 import { AppError } from "@/server/lib/errors";
+import type { ActorRow, MockEnv } from "./internal-route-test-support";
 
 const {
   mockEnv,
@@ -11,21 +15,20 @@ const {
   getLatestAuditForProject,
   startAudit,
   resolveAuditLimitTier,
-} = vi.hoisted(() => {
-  const listMembers = vi.fn();
-  const listUsers = vi.fn();
-  return {
-    mockEnv: {} as { AGENCY_SCORE_EXPORT_TOKEN?: string; AUTH_MODE?: string },
-    listMembers,
-    listUsers,
-    getProjectForOrganization: vi.fn(),
-    getStatus: vi.fn(),
-    getHistory: vi.fn(),
-    getLatestAuditForProject: vi.fn(),
-    startAudit: vi.fn(),
-    resolveAuditLimitTier: vi.fn(),
-  };
-});
+} = vi.hoisted(() => ({
+  mockEnv: {} as MockEnv,
+  listMembers: vi.fn<() => Promise<ActorRow[]>>(),
+  listUsers: vi.fn<() => Promise<ActorRow[]>>(),
+  getProjectForOrganization:
+    vi.fn<(typeof ProjectService)["getProjectForOrganization"]>(),
+  getStatus: vi.fn<(typeof AuditService)["getStatus"]>(),
+  getHistory: vi.fn<(typeof AuditService)["getHistory"]>(),
+  getLatestAuditForProject:
+    vi.fn<(typeof AuditRepository)["getLatestAuditForProject"]>(),
+  startAudit: vi.fn<(typeof AuditService)["startAudit"]>(),
+  resolveAuditLimitTier:
+    vi.fn<(typeof AuditService)["resolveAuditLimitTier"]>(),
+}));
 
 vi.mock("cloudflare:workers", () => ({
   env: mockEnv,
@@ -36,112 +39,41 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 vi.mock("@/db", async () => {
-  const { user } = await import("@/db/schema");
-  const chain: {
-    from: (table?: unknown) => unknown;
-    innerJoin: () => unknown;
-    where: () => unknown;
-    orderBy: () => unknown;
-    limit: () => unknown;
-    then: (
-      onFulfilled: (value: unknown) => unknown,
-      onRejected?: (reason: unknown) => unknown,
-    ) => Promise<unknown>;
-    _from: unknown;
-  } = {
-    _from: null,
-    from: (table?: unknown) => {
-      chain._from = table;
-      return chain;
-    },
-    innerJoin: () => chain,
-    where: () => chain,
-    orderBy: () => chain,
-    limit: () => chain,
-    then: (
-      onFulfilled: (value: unknown) => unknown,
-      onRejected?: (reason: unknown) => unknown,
-    ) =>
-      Promise.resolve(chain._from === user ? listUsers() : listMembers()).then(
-        onFulfilled,
-        onRejected,
-      ),
-  };
-  return { db: { select: () => chain } };
+  const { createActorDb } = await import("./internal-route-test-support");
+  return { db: createActorDb({ listMembers, listUsers }) };
 });
 
 vi.mock("@/server/features/projects/services/ProjectService", () => ({
-  ProjectService: {
-    getProjectForOrganization: (...args: unknown[]) =>
-      getProjectForOrganization(...args),
-  },
+  ProjectService: { getProjectForOrganization },
 }));
 
 vi.mock("@/server/features/audit/services/AuditService", () => ({
-  AuditService: {
-    getStatus: (...args: unknown[]) => getStatus(...args),
-    getHistory: (...args: unknown[]) => getHistory(...args),
-    startAudit: (...args: unknown[]) => startAudit(...args),
-    resolveAuditLimitTier: (...args: unknown[]) =>
-      resolveAuditLimitTier(...args),
-  },
+  AuditService: { getStatus, getHistory, startAudit, resolveAuditLimitTier },
 }));
 
 vi.mock("@/server/features/audit/repositories/AuditRepository", () => ({
-  AuditRepository: {
-    getLatestAuditForProject: (...args: unknown[]) =>
-      getLatestAuditForProject(...args),
-  },
+  AuditRepository: { getLatestAuditForProject },
 }));
 
+import {
+  auth,
+  EARLY_MEMBER,
+  LATE_MEMBER,
+  ORG_ID,
+  PROJECT,
+  PROJECT_ID,
+  requestBuilders,
+  TOKEN,
+} from "./internal-route-test-support";
+import {
+  AUDIT,
+  historyEntry,
+  STARTED_AUDIT_ID,
+  STATUS,
+} from "./audits-test-fixtures";
 import { handleGet, handlePost } from "./audits";
 
-const TOKEN = "test-export-token";
-const BASE = "http://localhost/api/internal/audits";
-const ORG_ID = "shared-workspace";
-const PROJECT_ID = "project_1";
-
-const PROJECT = {
-  id: PROJECT_ID,
-  name: "Acme",
-  domain: "example.com",
-  locationCode: 2840,
-  languageCode: "en",
-  createdAt: "2026-01-01 00:00:00",
-};
-
-const EARLY_MEMBER = {
-  userId: "user_early",
-  userEmail: "early@example.com",
-  createdAt: new Date("2026-01-01T00:00:00.000Z"),
-};
-
-const LATE_MEMBER = {
-  userId: "user_late",
-  userEmail: "late@example.com",
-  createdAt: new Date("2026-06-01T00:00:00.000Z"),
-};
-
-function get(path = "", headers?: HeadersInit): Request {
-  return new Request(`${BASE}${path}`, { headers });
-}
-
-function post(
-  body?: unknown,
-  headers?: HeadersInit,
-  rawBody?: string,
-): Request {
-  return new Request(BASE, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...Object.fromEntries(new Headers(headers)),
-    },
-    body: rawBody ?? (body !== undefined ? JSON.stringify(body) : undefined),
-  });
-}
-
-const auth = { authorization: `Bearer ${TOKEN}` };
+const { get, post } = requestBuilders("http://localhost/api/internal/audits");
 
 function expectAuditServicesIdle() {
   expect(getStatus).not.toHaveBeenCalled();
@@ -162,10 +94,10 @@ beforeEach(() => {
   );
   listMembers.mockResolvedValue([LATE_MEMBER, EARLY_MEMBER]);
   listUsers.mockResolvedValue([LATE_MEMBER, EARLY_MEMBER]);
-  getStatus.mockResolvedValue({ id: "audit_1", status: "completed" });
+  getStatus.mockResolvedValue({ ...STATUS, status: "completed" });
   getHistory.mockResolvedValue([]);
-  getLatestAuditForProject.mockResolvedValue(null);
-  startAudit.mockResolvedValue({ auditId: "audit_1" });
+  getLatestAuditForProject.mockResolvedValue(undefined);
+  startAudit.mockResolvedValue({ auditId: STARTED_AUDIT_ID });
   resolveAuditLimitTier.mockResolvedValue("self_hosted");
 });
 
@@ -237,16 +169,14 @@ describe("internal audits auth", () => {
       post({ projectId: PROJECT_ID, startUrl: "https://example.com" }, auth),
     );
     expect(res.status).toBe(202);
-    expect(startAudit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actorUserId: "user_early",
-        billingCustomer: expect.objectContaining({
-          organizationId: "delegated-local-admin",
-          userId: "user_early",
-          userEmail: "early@example.com",
-        }),
-      }),
-    );
+    expect(startAudit.mock.lastCall?.[0]).toMatchObject({
+      actorUserId: "user_early",
+      billingCustomer: {
+        organizationId: "delegated-local-admin",
+        userId: "user_early",
+        userEmail: "early@example.com",
+      },
+    });
     expect(listMembers).toHaveBeenCalled();
     expect(listUsers).not.toHaveBeenCalled();
   });
@@ -281,11 +211,7 @@ describe("internal audits handleGet", () => {
   });
 
   it("returns getStatus payload when auditId is provided", async () => {
-    const status = {
-      id: "audit_1",
-      startUrl: "https://example.com",
-      status: "running",
-    };
+    const status = STATUS;
     getStatus.mockResolvedValue(status);
 
     const res = await handleGet(
@@ -300,8 +226,8 @@ describe("internal audits handleGet", () => {
   });
 
   it("returns latest and history when auditId is omitted", async () => {
-    const latest = { id: "audit_2", status: "completed" };
-    const history = [{ id: "audit_2" }, { id: "audit_1" }];
+    const latest = { ...AUDIT, id: "audit_2", status: "completed" as const };
+    const history = [historyEntry("audit_2"), historyEntry("audit_1")];
     getLatestAuditForProject.mockResolvedValue(latest);
     getHistory.mockResolvedValue(history);
 
@@ -318,7 +244,7 @@ describe("internal audits handleGet", () => {
   });
 
   it("returns latest null and empty history when the project has no audits", async () => {
-    getLatestAuditForProject.mockResolvedValue(null);
+    getLatestAuditForProject.mockResolvedValue(undefined);
     getHistory.mockResolvedValue([]);
 
     const res = await handleGet(get(`?projectId=${PROJECT_ID}`, auth));
@@ -344,7 +270,7 @@ describe("internal audits handlePost", () => {
     );
     expect(res.status).toBe(202);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(await res.json()).toEqual({ auditId: "audit_1" });
+    expect(await res.json()).toEqual({ auditId: STARTED_AUDIT_ID });
     expect(resolveAuditLimitTier).toHaveBeenCalledWith(ORG_ID);
     expect(startAudit).toHaveBeenCalledWith({
       actorUserId: "user_early",
@@ -392,17 +318,15 @@ describe("internal audits handlePost", () => {
       post({ projectId: PROJECT_ID, startUrl: "https://example.com" }, auth),
     );
     expect(res.status).toBe(202);
-    expect(await res.json()).toEqual({ auditId: "audit_1" });
-    expect(startAudit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actorUserId: "user_solo",
-        billingCustomer: expect.objectContaining({
-          organizationId: ORG_ID,
-          userId: "user_solo",
-          userEmail: "solo@example.com",
-        }),
-      }),
-    );
+    expect(await res.json()).toEqual({ auditId: STARTED_AUDIT_ID });
+    expect(startAudit.mock.lastCall?.[0]).toMatchObject({
+      actorUserId: "user_solo",
+      billingCustomer: {
+        organizationId: ORG_ID,
+        userId: "user_solo",
+        userEmail: "solo@example.com",
+      },
+    });
     expect(listUsers).toHaveBeenCalled();
     expect(listMembers).not.toHaveBeenCalled();
   });
@@ -442,20 +366,24 @@ describe("internal audits handlePost", () => {
       post({ projectId: PROJECT_ID, startUrl: "https://example.com" }, auth),
     );
     expect(res.status).toBe(202);
-    expect(startAudit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actorUserId: "u2",
-        billingCustomer: expect.objectContaining({
-          userId: "u2",
-          userEmail: "ops@example.com",
-        }),
-      }),
-    );
+    expect(startAudit.mock.lastCall?.[0]).toMatchObject({
+      actorUserId: "u2",
+      billingCustomer: {
+        userId: "u2",
+        userEmail: "ops@example.com",
+      },
+    });
   });
 
   it("returns 409 when AUTH_MODE=cloudflare_access and the only user has a null email", async () => {
     mockEnv.AUTH_MODE = "cloudflare_access";
-    listUsers.mockResolvedValue([{ userId: "u1", userEmail: null }]);
+    listUsers.mockResolvedValue([
+      {
+        userId: "u1",
+        userEmail: null,
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    ]);
 
     const res = await handlePost(
       post({ projectId: PROJECT_ID, startUrl: "https://example.com" }, auth),

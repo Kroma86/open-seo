@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { resolveSharedWorkspaceContext } from "@/middleware/ensure-user/delegated";
+import type { EnsuredUserContext } from "@/middleware/ensure-user/types";
 
 const mockEnv = vi.hoisted(
-  () =>
-    ({
-      TEAM_DOMAIN: "https://team.cloudflareaccess.com",
-      POLICY_AUD: "user-app-aud",
-      MCP_POLICY_AUD: "mcp-app-aud",
-    }) as Env,
+  (): Pick<Env, "TEAM_DOMAIN" | "POLICY_AUD" | "MCP_POLICY_AUD"> => ({
+    TEAM_DOMAIN: "https://team.cloudflareaccess.com",
+    POLICY_AUD: "user-app-aud",
+    MCP_POLICY_AUD: "mcp-app-aud",
+  }),
 );
 
 const joseMocks = vi.hoisted(() => ({
@@ -19,13 +20,14 @@ vi.mock("cloudflare:workers", () => ({
 
 // Mock jose with just the surface the middleware and its error classifier
 // use. The error classes mirror jose's hierarchy (claim-bearing
-// JWTClaimValidationFailed under a shared JOSEError base) so the
-// aud-mismatch detection under test runs against the same shape as production.
+// JWTClaimValidationFailed under a shared JOSEError base, with jose's
+// (message, payload, claim) constructor) so the aud-mismatch detection under
+// test runs against the same shape as production.
 vi.mock("jose", () => {
   class JOSEError extends Error {}
   class JWTClaimValidationFailed extends JOSEError {
     claim: string;
-    constructor(message: string, claim: string) {
+    constructor(message: string, _payload: unknown, claim = "unspecified") {
       super(message);
       this.name = "JWTClaimValidationFailed";
       this.claim = claim;
@@ -50,7 +52,7 @@ vi.mock("jose", () => {
 });
 
 const delegatedMocks = vi.hoisted(() => ({
-  resolveSharedWorkspaceContext: vi.fn(),
+  resolveSharedWorkspaceContext: vi.fn<typeof resolveSharedWorkspaceContext>(),
 }));
 vi.mock("@/middleware/ensure-user/delegated", () => ({
   resolveSharedWorkspaceContext: delegatedMocks.resolveSharedWorkspaceContext,
@@ -63,21 +65,19 @@ import {
 } from "./cloudflareAccess";
 
 const WITH_TOKEN = new Headers({ "cf-access-jwt-assertion": "the-token" });
-const WORKSPACE = {
+const WORKSPACE: EnsuredUserContext = {
   userId: "u1",
   userEmail: "person@example.com",
+  emailVerified: true,
   organizationId: "org1",
 };
 
-// The runtime class comes from the vi.mock factory above; cast past the real
-// jose types, whose constructor takes (message, payload, claim, reason).
-const ClaimError = joseErrors.JWTClaimValidationFailed as unknown as new (
-  message: string,
-  claim: string,
-) => Error;
+function claimError(message: string, claim: string): Error {
+  return new joseErrors.JWTClaimValidationFailed(message, {}, claim);
+}
 
 function audMismatch(): Error {
-  return new ClaimError('invalid "aud" (audience) claim', "aud");
+  return claimError('invalid "aud" (audience) claim', "aud");
 }
 
 beforeEach(() => {
@@ -85,9 +85,7 @@ beforeEach(() => {
   mockEnv.TEAM_DOMAIN = "https://team.cloudflareaccess.com";
   mockEnv.POLICY_AUD = "user-app-aud";
   mockEnv.MCP_POLICY_AUD = "mcp-app-aud";
-  delegatedMocks.resolveSharedWorkspaceContext.mockResolvedValue(
-    WORKSPACE as never,
-  );
+  delegatedMocks.resolveSharedWorkspaceContext.mockResolvedValue(WORKSPACE);
 });
 
 describe("resolveCloudflareAccessMcpGate", () => {
@@ -181,7 +179,7 @@ describe("resolveCloudflareAccessMcpGate", () => {
     // and retried against the second audience — the whole fallback depends
     // on jose setting error.claim === "aud" only for audience failures.
     joseMocks.jwtVerify.mockRejectedValue(
-      new ClaimError('invalid "iss" (issuer) claim', "iss"),
+      claimError('invalid "iss" (issuer) claim', "iss"),
     );
 
     await expect(resolveCloudflareAccessMcpGate(WITH_TOKEN)).rejects.toThrow(

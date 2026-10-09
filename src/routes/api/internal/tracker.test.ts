@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProjectService } from "@/server/features/projects/services/ProjectService";
+import type { RankTrackingService } from "@/server/features/rank-tracking/services/RankTrackingService";
+import type { getLatestResults as getLatestResultsFn } from "@/server/features/rank-tracking/services/rankTrackingResults";
 import { AppError } from "@/server/lib/errors";
+import type {
+  RankTrackingConfig,
+  RankTrackingDeviceResult,
+} from "@/types/schemas/rank-tracking";
 
 const {
   mockEnv,
@@ -13,14 +20,16 @@ const {
   getLatestResults,
 } = vi.hoisted(() => ({
   mockEnv: {} as { AGENCY_SCORE_EXPORT_TOKEN?: string; AUTH_MODE?: string },
-  getProjectForOrganization: vi.fn(),
-  getConfigs: vi.fn(),
-  createConfig: vi.fn(),
-  getTracker: vi.fn(),
-  addKeywords: vi.fn(),
-  triggerCheck: vi.fn(),
-  refreshKeywordMetrics: vi.fn(),
-  getLatestResults: vi.fn(),
+  getProjectForOrganization:
+    vi.fn<(typeof ProjectService)["getProjectForOrganization"]>(),
+  getConfigs: vi.fn<(typeof RankTrackingService)["getConfigs"]>(),
+  createConfig: vi.fn<(typeof RankTrackingService)["createConfig"]>(),
+  getTracker: vi.fn<(typeof RankTrackingService)["getTracker"]>(),
+  addKeywords: vi.fn<(typeof RankTrackingService)["addKeywords"]>(),
+  triggerCheck: vi.fn<(typeof RankTrackingService)["triggerCheck"]>(),
+  refreshKeywordMetrics:
+    vi.fn<(typeof RankTrackingService)["refreshKeywordMetrics"]>(),
+  getLatestResults: vi.fn<typeof getLatestResultsFn>(),
 }));
 
 vi.mock("cloudflare:workers", () => ({
@@ -33,25 +42,23 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/server/features/projects/services/ProjectService", () => ({
   ProjectService: {
-    getProjectForOrganization: (...args: unknown[]) =>
-      getProjectForOrganization(...args),
+    getProjectForOrganization,
   },
 }));
 
 vi.mock("@/server/features/rank-tracking/services/RankTrackingService", () => ({
   RankTrackingService: {
-    getConfigs: (...args: unknown[]) => getConfigs(...args),
-    createConfig: (...args: unknown[]) => createConfig(...args),
-    getTracker: (...args: unknown[]) => getTracker(...args),
-    addKeywords: (...args: unknown[]) => addKeywords(...args),
-    triggerCheck: (...args: unknown[]) => triggerCheck(...args),
-    refreshKeywordMetrics: (...args: unknown[]) =>
-      refreshKeywordMetrics(...args),
+    getConfigs,
+    createConfig,
+    getTracker,
+    addKeywords,
+    triggerCheck,
+    refreshKeywordMetrics,
   },
 }));
 
 vi.mock("@/server/features/rank-tracking/services/rankTrackingResults", () => ({
-  getLatestResults: (...args: unknown[]) => getLatestResults(...args),
+  getLatestResults,
 }));
 
 import { handleGet, handlePost } from "./tracker";
@@ -69,17 +76,21 @@ const PROJECT = {
   createdAt: "2026-01-01 00:00:00",
 };
 
-const CONFIG = {
+const CONFIG: RankTrackingConfig = {
   id: "config_1",
   projectId: PROJECT_ID,
   domain: "example.com",
   locationCode: 2840,
   languageCode: "en",
   locationName: null,
-  devices: "both" as const,
+  devices: "both",
   serpDepth: 40,
-  scheduleInterval: "manual" as const,
+  scheduleInterval: "manual",
   isActive: true,
+  lastCheckedAt: null,
+  nextCheckAt: null,
+  lastSkipReason: null,
+  createdAt: "2026-01-01 00:00:00",
 };
 
 function get(path = "", headers?: HeadersInit): Request {
@@ -131,7 +142,11 @@ beforeEach(() => {
   getConfigs.mockResolvedValue([CONFIG]);
   createConfig.mockResolvedValue({ ...CONFIG, id: "config_new" });
   getTracker.mockRejectedValue(new Error("getTracker must not be required"));
-  addKeywords.mockResolvedValue({ added: 1, addedIds: ["kw_1"] });
+  addKeywords.mockResolvedValue({
+    added: 1,
+    addedIds: ["kw_1"],
+    scheduledEstimate: undefined,
+  });
   triggerCheck.mockImplementation(async () => {
     throw new Error("triggerCheck must not be called");
   });
@@ -207,7 +222,26 @@ describe("internal tracker ownership", () => {
 
 describe("internal tracker handleGet", () => {
   it("auto-resolves the tracker when the project has exactly one config", async () => {
-    const results = { rows: [{ keyword: "seo" }], run: null };
+    const unranked: RankTrackingDeviceResult = {
+      position: null,
+      previousPosition: null,
+      rankingUrl: null,
+      serpFeatures: [],
+    };
+    const results = {
+      rows: [
+        {
+          trackingKeywordId: "kw_1",
+          keyword: "seo",
+          searchVolume: null,
+          keywordDifficulty: null,
+          cpc: null,
+          desktop: unranked,
+          mobile: unranked,
+        },
+      ],
+      run: null,
+    };
     getLatestResults.mockResolvedValue(results);
 
     const res = await handleGet(get(`?projectId=${PROJECT_ID}`, auth));
@@ -300,9 +334,7 @@ describe("internal tracker handlePost", () => {
   });
 
   it("refuses to seed an existing non-manual config", async () => {
-    getConfigs.mockResolvedValue([
-      { ...CONFIG, scheduleInterval: "weekly" as const },
-    ]);
+    getConfigs.mockResolvedValue([{ ...CONFIG, scheduleInterval: "weekly" }]);
 
     const res = await handlePost(post(seedBody, auth));
     expect(res.status).toBe(409);
