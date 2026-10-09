@@ -8,6 +8,7 @@ import { env } from "cloudflare:workers";
 const KEY_PREFIX = "homegrown-otto:proposal:";
 const INDEX_KEY = "homegrown-otto:proposal-index";
 const MAX_INDEX = 500;
+const READ_BATCH = 25;
 
 export type HomegrownOttoProposal = {
   id: string;
@@ -152,29 +153,34 @@ export async function listHomegrownOttoProposals(input?: {
   const limit = Math.min(Math.max(input?.limit ?? 50, 1), 200);
   const index = await readIndex();
   const out: HomegrownOttoProposal[] = [];
-  for (const id of index) {
-    if (out.length >= limit) break;
-    const raw = await kv().get(proposalKey(id));
-    if (!raw) continue;
-    try {
-      const proposal = toProposal(JSON.parse(raw));
-      if (!proposal) continue;
-      if (input?.status && proposal.status !== input.status) continue;
-      if (
-        input?.domain &&
-        proposal.domain !==
-          input.domain
-            .trim()
-            .toLowerCase()
-            .replace(/^https?:\/\//, "")
-            .replace(/^www\./, "")
-            .split("/")[0]
-      ) {
-        continue;
+  // One KV read per row, sequentially, took ~30 s for a 500-row index (status
+  // filters run after the read). Read in parallel batches; rows keep index order.
+  for (let at = 0; at < index.length && out.length < limit; at += READ_BATCH) {
+    const batch = index.slice(at, at + READ_BATCH);
+    const raws = await Promise.all(batch.map((id) => kv().get(proposalKey(id))));
+    for (const raw of raws) {
+      if (out.length >= limit) break;
+      if (!raw) continue;
+      try {
+        const proposal = toProposal(JSON.parse(raw));
+        if (!proposal) continue;
+        if (input?.status && proposal.status !== input.status) continue;
+        if (
+          input?.domain &&
+          proposal.domain !==
+            input.domain
+              .trim()
+              .toLowerCase()
+              .replace(/^https?:\/\//, "")
+              .replace(/^www\./, "")
+              .split("/")[0]
+        ) {
+          continue;
+        }
+        out.push(proposal);
+      } catch {
+        // skip corrupt rows
       }
-      out.push(proposal);
-    } catch {
-      // skip corrupt rows
     }
   }
   return out;
