@@ -12,10 +12,10 @@ import {
 } from "drizzle-orm";
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
-import { tryCreateAdmittedSamLoopRun } from "@/db/samLoopAdmission";
 import {
   claimSubscriptionRun,
   compareAndSwapSubscriptionRun,
+  tryCreateAdmittedSamLoopRun,
 } from "@/db/samLoopSubscriptionWrites";
 import { projects, samLoopRuns, samLoops } from "@/db/schema";
 import { hasVerifiedMonthlyDraft } from "../services/monthlyContentResult";
@@ -142,7 +142,9 @@ async function tryCreateRun(
   },
   admission?: { sinceDate: string; cap: number },
 ): Promise<boolean> {
-  if (admission) return tryCreateAdmittedSamLoopRun(data, admission);
+  if (admission) {
+    return tryCreateAdmittedSamLoopRun(data, admission);
+  }
   const inserted = await db
     .insert(samLoopRuns)
     .values({ ...data, status: "pending" })

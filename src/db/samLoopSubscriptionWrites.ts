@@ -12,6 +12,25 @@ import { pgDb } from "./pg/client";
 import { runD1RawBatch } from "./runBatch";
 import { projects, samLoopRuns, samLoops } from "./schema";
 
+export async function tryCreateAdmittedSamLoopRun(
+  data: { id: string; loopId: string; projectId: string },
+  admission: { sinceDate: string; cap: number },
+): Promise<boolean> {
+  const query = sql`insert into ${samLoopRuns} (id, loop_id, project_id, status)
+    select ${data.id}, ${data.loopId}, ${data.projectId}, 'pending'
+    where (select count(*) from ${samLoopRuns} where ${samLoopRuns.createdAt} >= ${admission.sinceDate}) < ${admission.cap}
+    on conflict do nothing returning id`;
+  if (getDatabaseProvider() === "postgres") {
+    return pgDb.transaction(async (transaction) => {
+      await transaction.execute(sql`select pg_advisory_xact_lock(734629105)`);
+      const rows = await transaction.execute(query);
+      return rows.length > 0;
+    });
+  }
+  const rows = await db.all<{ id: string }>(query);
+  return rows.length > 0;
+}
+
 export async function compareAndSwapSubscriptionRun(
   runId: string,
   expectedCostNote: string | null,
