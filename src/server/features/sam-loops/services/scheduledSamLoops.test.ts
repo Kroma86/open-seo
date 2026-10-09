@@ -1,4 +1,6 @@
+import { env as workerEnv } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as SamLoopRunGuards from "@/server/features/sam-loops/services/samLoopRunGuards";
 
 type DueLoopRow = {
   id: string;
@@ -36,7 +38,7 @@ const mocks = vi.hoisted(() => ({
     >(),
 }));
 
-vi.mock("cloudflare:workers", () => ({ env: {} }));
+vi.mock("cloudflare:workers", () => ({ env: { SAM_LOOP_WORKFLOW: {} } }));
 vi.mock("@/server/features/sam-loops/repositories/SamLoopRepository", () => ({
   SamLoopRepository: {
     getDueLoopsWithOrganization: mocks.getDueLoopsWithOrganization,
@@ -47,10 +49,7 @@ vi.mock("@/server/features/sam-loops/repositories/SamLoopRepository", () => ({
 vi.mock(
   "@/server/features/sam-loops/services/samLoopRunGuards",
   async (importOriginal) => {
-    const actual =
-      await importOriginal<
-        typeof import("@/server/features/sam-loops/services/samLoopRunGuards")
-      >();
+    const actual = await importOriginal<typeof SamLoopRunGuards>();
     return {
       ...actual,
       beginSamLoopRun: mocks.beginSamLoopRun,
@@ -58,14 +57,11 @@ vi.mock(
   },
 );
 
-const testEnv = { SAM_LOOP_WORKFLOW: {} } as unknown as Env;
+const testEnv: Env = workerEnv;
 
 function capEnv(value?: string): Env {
-  const env = { SAM_LOOP_WORKFLOW: {} } as unknown as Env;
-  if (value !== undefined) {
-    (env as { SAM_LOOP_DAILY_RUN_CAP?: string }).SAM_LOOP_DAILY_RUN_CAP = value;
-  }
-  return env;
+  const cap = value === undefined ? {} : { SAM_LOOP_DAILY_RUN_CAP: value };
+  return { ...workerEnv, ...cap };
 }
 
 function dueLoop(overrides: Partial<DueLoopRow> = {}): DueLoopRow {

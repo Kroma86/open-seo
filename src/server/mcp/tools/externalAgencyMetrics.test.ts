@@ -10,7 +10,7 @@ const config = {
 
 describe("project-scoped stored observation feed", () => {
   it("selects only one exact authorized domain with www normalization", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
         JSON.stringify({
           clients: [
@@ -33,8 +33,8 @@ describe("project-scoped stored observation feed", () => {
     });
     expect(result.ai).toEqual({ source: "expected" });
     expect(result.error).toBeNull();
-    expect(fetchImpl.mock.calls[0][1].redirect).toBe("error");
-    expect(fetchImpl.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+    expect(fetchImpl.mock.calls[0]?.[1]?.redirect).toBe("error");
+    expect(fetchImpl.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
   });
   it.each([
     null,

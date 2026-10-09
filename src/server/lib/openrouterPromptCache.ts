@@ -6,6 +6,12 @@ type PromptMessage = CallOptions["prompt"][number];
 type ToolDefinition = NonNullable<CallOptions["tools"]>[number];
 type FunctionTool = Extract<ToolDefinition, { type: "function" }>;
 type ProviderOptions = NonNullable<PromptMessage["providerOptions"]>;
+type StreamPart =
+  Awaited<
+    ReturnType<LanguageModelV3["doStream"]>
+  >["stream"] extends ReadableStream<infer Part>
+    ? Part
+    : never;
 
 /** Confirmed against `@openrouter/ai-sdk-provider` `getCacheControl()` — prefers `openrouter.cacheControl`. */
 export const OPENROUTER_CACHE_CONTROL = { type: "ephemeral" } as const;
@@ -138,13 +144,12 @@ function logCacheUsage(
     providerMetadata &&
     typeof providerMetadata === "object" &&
     "openrouter" in providerMetadata
-      ? (
-          providerMetadata as {
-            openrouter?: { usage?: Record<string, unknown> };
-          }
-        ).openrouter
+      ? providerMetadata.openrouter
       : undefined;
-  const usageMeta = openrouter?.usage;
+  const usageMeta =
+    openrouter && typeof openrouter === "object" && "usage" in openrouter
+      ? openrouter.usage
+      : undefined;
   const cachedTokens =
     usageMeta &&
     typeof usageMeta === "object" &&
@@ -152,8 +157,7 @@ function logCacheUsage(
     usageMeta.promptTokensDetails &&
     typeof usageMeta.promptTokensDetails === "object" &&
     "cachedTokens" in usageMeta.promptTokensDetails
-      ? (usageMeta.promptTokensDetails as { cachedTokens?: number })
-          .cachedTokens
+      ? usageMeta.promptTokensDetails.cachedTokens
       : undefined;
 
   console.log("[sam] cache", {
@@ -179,7 +183,7 @@ export function createOpenRouterPromptCacheMiddleware(): LanguageModelMiddleware
     },
     wrapStream: async ({ doStream }) => {
       const { stream, ...rest } = await doStream();
-      const transform = new TransformStream({
+      const transform = new TransformStream<StreamPart, StreamPart>({
         transform(chunk, controller) {
           if (chunk.type === "finish") {
             logCacheUsage(chunk.usage, chunk.providerMetadata);

@@ -35,6 +35,10 @@ function kv(): KVNamespace {
   return env.KV;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function proposalKey(id: string): string {
   return `${KEY_PREFIX}${id}`;
 }
@@ -60,7 +64,8 @@ export async function enqueueHomegrownOttoProposal(input: {
   domain: string;
   projectId?: string | null;
   path?: string;
-  fixes: Record<string, string>;
+  /** Non-string and blank values are dropped. */
+  fixes: Record<string, unknown>;
   before?: Record<string, unknown>;
   humanReview?: string[];
   flags?: string[];
@@ -78,7 +83,8 @@ export async function enqueueHomegrownOttoProposal(input: {
   }
   const fixes = Object.fromEntries(
     Object.entries(input.fixes).filter(
-      ([, value]) => typeof value === "string" && value.trim().length > 0,
+      (entry): entry is [string, string] =>
+        typeof entry[1] === "string" && entry[1].trim().length > 0,
     ),
   );
   if (Object.keys(fixes).length === 0) {
@@ -121,32 +127,62 @@ export async function enqueueHomegrownOttoProposal(input: {
  * Read normalizes; the pull path below still round-trips the whole record, so
  * nothing is dropped from storage.
  */
+const PROPOSAL_STATUSES = ["pending", "pulled", "rejected"] as const;
+const PROPOSERS = ["sam", "mcp", "api"] as const;
+
+function oneOf<T extends string>(
+  values: readonly T[],
+  value: unknown,
+): value is T {
+  return values.some((v) => v === value);
+}
+
+function stringOr<T>(value: unknown, fallback: T): string | T {
+  return typeof value === "string" ? value : fallback;
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string")
+    : [];
+}
+
+// KV rows have several producers, so every field is checked rather than cast.
+// A missing or wrong-typed field gets the same default a missing one always
+// did; the read side must never emit a value the output schema rejects.
 function toProposal(raw: unknown): HomegrownOttoProposal | null {
-  const r = raw as Partial<HomegrownOttoProposal> | null;
-  if (!r || typeof r.id !== "string" || typeof r.domain !== "string")
-    return null;
+  if (!isRecord(raw)) return null;
+  if (typeof raw.id !== "string" || typeof raw.domain !== "string") return null;
+  const organizationId = raw.organizationId;
   return {
-    id: r.id,
-    domain: r.domain,
-    projectId: r.projectId ?? null,
-    status: r.status ?? "pending",
-    proposedAt: r.proposedAt ?? "",
-    proposedBy: r.proposedBy ?? "api",
-    path: r.path ?? "/",
-    fixes: r.fixes ?? {},
-    before: r.before ?? {},
-    humanReview: r.humanReview ?? [],
-    flags: r.flags ?? [],
-    rationale: r.rationale ?? null,
-    pulledAt: r.pulledAt ?? null,
-    ...(r.organizationId === undefined
+    id: raw.id,
+    domain: raw.domain,
+    projectId: stringOr(raw.projectId, null),
+    status: oneOf(PROPOSAL_STATUSES, raw.status) ? raw.status : "pending",
+    proposedAt: stringOr(raw.proposedAt, ""),
+    proposedBy: oneOf(PROPOSERS, raw.proposedBy) ? raw.proposedBy : "api",
+    path: stringOr(raw.path, "/"),
+    fixes: isRecord(raw.fixes)
+      ? Object.fromEntries(
+          Object.entries(raw.fixes).filter(
+            (entry): entry is [string, string] => typeof entry[1] === "string",
+          ),
+        )
+      : {},
+    before: isRecord(raw.before) ? raw.before : {},
+    humanReview: stringList(raw.humanReview),
+    flags: stringList(raw.flags),
+    rationale: stringOr(raw.rationale, null),
+    pulledAt: stringOr(raw.pulledAt, null),
+    ...(organizationId === undefined
       ? {}
-      : { organizationId: r.organizationId }),
+      : { organizationId: stringOr(organizationId, null) }),
   };
 }
 
 export async function listHomegrownOttoProposals(input?: {
-  status?: HomegrownOttoProposal["status"];
+  /** Unvalidated filter: an unknown status matches no stored proposal. */
+  status?: string;
   domain?: string;
   limit?: number;
 }): Promise<HomegrownOttoProposal[]> {
@@ -190,8 +226,8 @@ export async function markHomegrownOttoProposalsPulled(
     const raw = await kv().get(proposalKey(id));
     if (!raw) continue;
     try {
-      const proposal = JSON.parse(raw) as HomegrownOttoProposal;
-      if (proposal.status !== "pending") continue;
+      const proposal: unknown = JSON.parse(raw);
+      if (!isRecord(proposal) || proposal.status !== "pending") continue;
       proposal.status = "pulled";
       proposal.pulledAt = now;
       await kv().put(proposalKey(id), JSON.stringify(proposal));

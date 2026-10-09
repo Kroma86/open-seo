@@ -85,7 +85,8 @@ function normalizeHostname(value: unknown): string | null {
 export function parseExternalAiVisibility(
   input: unknown,
   expectedDomain: string,
-  now: Date,
+  /** Checked at runtime: anything but a valid Date yields "invalid". */
+  now: unknown,
 ) {
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
     return unavailable("invalid", INVALID_NOTE);

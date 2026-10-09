@@ -19,6 +19,10 @@ function extractBearer(request: Request): string | null {
   return match?.[1]?.trim() || null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function assertAgencyToken(request: Request): Response | null {
   // Reusing AGENCY_SCORE_EXPORT_TOKEN is deliberate (one internal-export credential; spec forbade a new token).
   const expected = (
@@ -55,7 +59,7 @@ export async function handlePost(request: Request): Promise<Response> {
       { status: 400, headers: NO_STORE },
     );
   }
-  if (!body || typeof body !== "object") {
+  if (!isRecord(body)) {
     return Response.json(
       { error: "invalid_body" },
       { status: 400, headers: NO_STORE },
@@ -63,9 +67,7 @@ export async function handlePost(request: Request): Promise<Response> {
   }
 
   try {
-    const result = await AgencyOpsArtifactsService.ingest(
-      body as Record<string, unknown>,
-    );
+    const result = await AgencyOpsArtifactsService.ingest(body);
     if (result.deduped) {
       return Response.json(
         { id: result.id, deduped: true },

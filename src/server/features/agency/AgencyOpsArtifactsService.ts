@@ -46,9 +46,21 @@ function asString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isKind(value: unknown): value is Kind {
+  return KINDS.some((kind) => kind === value);
+}
+
+function isContentType(value: unknown): value is ContentType {
+  return CONTENT_TYPES.some((contentType) => contentType === value);
+}
+
 function validateIngestBody(body: Record<string, unknown>): IngestBody {
   const kind = body.kind;
-  if (!KINDS.includes(kind as Kind)) {
+  if (!isKind(kind)) {
     throw new Error("kind_invalid");
   }
 
@@ -73,7 +85,7 @@ function validateIngestBody(body: Record<string, unknown>): IngestBody {
   // The box sends "md" for markdown artifacts; store the canonical spelling.
   const contentTypeRaw =
     body.contentType === "md" ? "markdown" : body.contentType;
-  if (!CONTENT_TYPES.includes(contentTypeRaw as ContentType)) {
+  if (!isContentType(contentTypeRaw)) {
     throw new Error("contentType_invalid");
   }
 
@@ -95,10 +107,10 @@ function validateIngestBody(body: Record<string, unknown>): IngestBody {
   }
 
   return {
-    kind: kind as Kind,
+    kind,
     domain,
     date,
-    contentType: contentTypeRaw as ContentType,
+    contentType: contentTypeRaw,
     content,
     sourceKey,
   };
@@ -116,21 +128,15 @@ async function latestAlertCycle(): Promise<LatestAlertCycleResult | null> {
 
   try {
     const parsed: unknown = JSON.parse(artifact.content);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    if (!isRecord(parsed) || Array.isArray(parsed)) {
       return { receivedAt: artifact.receivedAt, parseError: true };
     }
 
-    const record = parsed as Record<string, unknown>;
+    const record = parsed;
     const countsRaw = record.counts_by_severity ?? record.countsBySeverity;
     const countsBySeverity: Record<string, number> = {};
-    if (
-      countsRaw &&
-      typeof countsRaw === "object" &&
-      !Array.isArray(countsRaw)
-    ) {
-      for (const [key, value] of Object.entries(
-        countsRaw as Record<string, unknown>,
-      )) {
+    if (isRecord(countsRaw) && !Array.isArray(countsRaw)) {
+      for (const [key, value] of Object.entries(countsRaw)) {
         if (typeof value === "number" && Number.isFinite(value)) {
           const normalized = key.toLowerCase();
           // Sum, don't overwrite: "High": 1 + "high": 2 → high: 3.
@@ -148,8 +154,8 @@ async function latestAlertCycle(): Promise<LatestAlertCycleResult | null> {
     let highCount = 0;
     const alerts = Array.isArray(record.alerts) ? record.alerts : [];
     for (const entry of alerts) {
-      if (!entry || typeof entry !== "object") continue;
-      const alert = entry as Record<string, unknown>;
+      if (!isRecord(entry)) continue;
+      const alert = entry;
       const severity = asString(alert.severity)?.toLowerCase();
       if (!severity || !HIGH_TIER.has(severity)) continue;
       const type = asString(alert.type);

@@ -82,7 +82,7 @@ vi.mock(
   }),
 );
 vi.mock("@/server/features/rank-tracking/services/rankTrackingResults", () => ({
-  getLatestResults: (...args: unknown[]) => mocks.getLatestResults(...args),
+  getLatestResults: mocks.getLatestResults,
 }));
 vi.mock(
   "@/server/features/dashboard/repositories/BacklinkSnapshotRepository",
@@ -115,37 +115,39 @@ const GSC_CONNECTION = {
   updatedAt: "2026-08-30T12:00:00.000Z",
 };
 
-describe("getAgencyScoreInputs connections", () => {
-  beforeEach(() => {
-    mocks.projectRows = [];
-    mocks.gsc = null;
-    mocks.ga4 = null;
-    mocks.rankConfigs = [];
-    mocks.latestResultsByConfig = new Map();
-    mocks.gscRows = [];
-    mocks.gscError = null;
-    mocks.getPerformance.mockReset();
-    mocks.getLatestResults.mockReset();
-    mocks.getLatestResults.mockImplementation(
-      async (configId: string) =>
-        mocks.latestResultsByConfig.get(configId) ?? {
-          rows: [],
-          run: null,
-        },
-    );
-    mocks.getPerformance.mockImplementation(async () => {
-      if (mocks.gscError) throw mocks.gscError;
-      return {
-        siteUrl: "sc-domain:niceseo.ai",
-        connectedBy: null,
-        request: {
-          startDate: "2026-08-01",
-          endDate: "2026-08-28",
-        },
-        rows: mocks.gscRows,
-      };
-    });
+function resetMocks() {
+  mocks.projectRows = [];
+  mocks.gsc = null;
+  mocks.ga4 = null;
+  mocks.rankConfigs = [];
+  mocks.latestResultsByConfig = new Map();
+  mocks.gscRows = [];
+  mocks.gscError = null;
+  mocks.getPerformance.mockReset();
+  mocks.getLatestResults.mockReset();
+  mocks.getLatestResults.mockImplementation(
+    async (configId: string) =>
+      mocks.latestResultsByConfig.get(configId) ?? {
+        rows: [],
+        run: null,
+      },
+  );
+  mocks.getPerformance.mockImplementation(async () => {
+    if (mocks.gscError) throw mocks.gscError;
+    return {
+      siteUrl: "sc-domain:niceseo.ai",
+      connectedBy: null,
+      request: {
+        startDate: "2026-08-01",
+        endDate: "2026-08-28",
+      },
+      rows: mocks.gscRows,
+    };
   });
+}
+
+describe("getAgencyScoreInputs connections", () => {
+  beforeEach(resetMocks);
 
   it("returns disconnected GSC/GA4 and native GBP gap when no project exists", async () => {
     const data = await getAgencyScoreInputs({ domain: "missing.example" });
@@ -271,68 +273,60 @@ function makeRankRow(
   };
 }
 
+function withRankingUrls(
+  row: RankTrackingRow,
+  urls: { desktop?: string; mobile?: string },
+): RankTrackingRow {
+  return {
+    ...row,
+    desktop: { ...row.desktop, rankingUrl: urls.desktop ?? null },
+    mobile: { ...row.mobile, rankingUrl: urls.mobile ?? null },
+  };
+}
+
+function completedRun(id: string, lastCheckedAt: string) {
+  return {
+    id,
+    lastCheckedAt,
+    status: "completed" as const,
+    errorMessage: null,
+  };
+}
+
+/** cfg1..cfg4 each hold one keyword, checked on consecutive days. */
+function setFourCompletedConfigs() {
+  mocks.latestResultsByConfig.set("cfg1", {
+    rows: [makeRankRow("alpha", 5, null)],
+    run: completedRun("run1", "2026-09-01T00:00:00.000Z"),
+  });
+  mocks.latestResultsByConfig.set("cfg2", {
+    rows: [makeRankRow("beta", 8, null)],
+    run: completedRun("run2", "2026-09-02T00:00:00.000Z"),
+  });
+  mocks.latestResultsByConfig.set("cfg3", {
+    rows: [makeRankRow("gamma", 12, null)],
+    run: completedRun("run3", "2026-09-03T00:00:00.000Z"),
+  });
+  mocks.latestResultsByConfig.set("cfg4", {
+    rows: [makeRankRow("delta", 2, null)],
+    run: completedRun("run4", "2026-09-04T00:00:00.000Z"),
+  });
+}
+
 describe("getAgencyScoreInputs rankSummary", () => {
   beforeEach(() => {
+    resetMocks();
     mocks.projectRows = [PROJECT];
-    mocks.gsc = null;
-    mocks.ga4 = null;
-    mocks.gscRows = [];
-    mocks.gscError = null;
-    mocks.getPerformance.mockReset();
-    mocks.getLatestResults.mockReset();
-    mocks.getLatestResults.mockImplementation(
-      async (configId: string) =>
-        mocks.latestResultsByConfig.get(configId) ?? {
-          rows: [],
-          run: null,
-        },
-    );
     mocks.rankConfigs = [
       { id: "cfg1" },
       { id: "cfg2" },
       { id: "cfg3" },
       { id: "cfg4" },
     ];
-    mocks.latestResultsByConfig = new Map();
   });
 
   it("counts all active configs, not just the first three in ranks", async () => {
-    mocks.latestResultsByConfig.set("cfg1", {
-      rows: [makeRankRow("alpha", 5, null)],
-      run: {
-        id: "run1",
-        lastCheckedAt: "2026-09-01T00:00:00.000Z",
-        status: "completed",
-        errorMessage: null,
-      },
-    });
-    mocks.latestResultsByConfig.set("cfg2", {
-      rows: [makeRankRow("beta", 8, null)],
-      run: {
-        id: "run2",
-        lastCheckedAt: "2026-09-02T00:00:00.000Z",
-        status: "completed",
-        errorMessage: null,
-      },
-    });
-    mocks.latestResultsByConfig.set("cfg3", {
-      rows: [makeRankRow("gamma", 12, null)],
-      run: {
-        id: "run3",
-        lastCheckedAt: "2026-09-03T00:00:00.000Z",
-        status: "completed",
-        errorMessage: null,
-      },
-    });
-    mocks.latestResultsByConfig.set("cfg4", {
-      rows: [makeRankRow("delta", 2, null)],
-      run: {
-        id: "run4",
-        lastCheckedAt: "2026-09-04T00:00:00.000Z",
-        status: "completed",
-        errorMessage: null,
-      },
-    });
+    setFourCompletedConfigs();
 
     const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
 
@@ -351,12 +345,7 @@ describe("getAgencyScoreInputs rankSummary", () => {
     mocks.rankConfigs = [{ id: "cfg1" }];
     mocks.latestResultsByConfig.set("cfg1", {
       rows: [makeRankRow("widget", 8, 2)],
-      run: {
-        id: "run1",
-        lastCheckedAt: "2026-09-01T00:00:00.000Z",
-        status: "completed",
-        errorMessage: null,
-      },
+      run: completedRun("run1", "2026-09-01T00:00:00.000Z"),
     });
 
     const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
@@ -371,42 +360,7 @@ describe("getAgencyScoreInputs rankSummary", () => {
   });
 
   it("pins ranks.capturedAt to the first three configs while rankSummary spans all", async () => {
-    mocks.latestResultsByConfig.set("cfg1", {
-      rows: [makeRankRow("alpha", 5, null)],
-      run: {
-        id: "run1",
-        lastCheckedAt: "2026-09-01T00:00:00.000Z",
-        status: "completed",
-        errorMessage: null,
-      },
-    });
-    mocks.latestResultsByConfig.set("cfg2", {
-      rows: [makeRankRow("beta", 8, null)],
-      run: {
-        id: "run2",
-        lastCheckedAt: "2026-09-02T00:00:00.000Z",
-        status: "completed",
-        errorMessage: null,
-      },
-    });
-    mocks.latestResultsByConfig.set("cfg3", {
-      rows: [makeRankRow("gamma", 12, null)],
-      run: {
-        id: "run3",
-        lastCheckedAt: "2026-09-03T00:00:00.000Z",
-        status: "completed",
-        errorMessage: null,
-      },
-    });
-    mocks.latestResultsByConfig.set("cfg4", {
-      rows: [makeRankRow("delta", 2, null)],
-      run: {
-        id: "run4",
-        lastCheckedAt: "2026-09-04T00:00:00.000Z",
-        status: "completed",
-        errorMessage: null,
-      },
-    });
+    setFourCompletedConfigs();
 
     const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });
 
@@ -455,51 +409,14 @@ describe("getAgencyScoreInputs rankSummary", () => {
     mocks.rankConfigs = [{ id: "cfg1" }];
     mocks.latestResultsByConfig.set("cfg1", {
       rows: [
-        {
-          trackingKeywordId: "kw-alpha",
-          keyword: "alpha",
-          searchVolume: null,
-          keywordDifficulty: null,
-          cpc: null,
-          desktop: {
-            position: null,
-            previousPosition: null,
-            rankingUrl: "https://example.com/alpha",
-            serpFeatures: [],
-          },
-          mobile: {
-            position: null,
-            previousPosition: null,
-            rankingUrl: null,
-            serpFeatures: [],
-          },
-        },
-        {
-          trackingKeywordId: "kw-beta",
-          keyword: "beta",
-          searchVolume: null,
-          keywordDifficulty: null,
-          cpc: null,
-          desktop: {
-            position: null,
-            previousPosition: null,
-            rankingUrl: null,
-            serpFeatures: [],
-          },
-          mobile: {
-            position: null,
-            previousPosition: null,
-            rankingUrl: "https://example.com/m/beta",
-            serpFeatures: [],
-          },
-        },
+        withRankingUrls(makeRankRow("alpha", null, null), {
+          desktop: "https://example.com/alpha",
+        }),
+        withRankingUrls(makeRankRow("beta", null, null), {
+          mobile: "https://example.com/m/beta",
+        }),
       ],
-      run: {
-        id: "run1",
-        lastCheckedAt: "2026-09-01T00:00:00.000Z",
-        status: "completed",
-        errorMessage: null,
-      },
+      run: completedRun("run1", "2026-09-01T00:00:00.000Z"),
     });
 
     const data = await getAgencyScoreInputs({ domain: "niceseo.ai" });

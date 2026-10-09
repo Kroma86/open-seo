@@ -69,6 +69,78 @@ type HeadlessSamLoopResult = {
   costNote: string | null;
 };
 
+function loopNeedsAudit(input: HeadlessSamLoopInput): boolean {
+  return (
+    (input.sourceType === "skill" &&
+      [
+        "site-health",
+        "seo-audit",
+        "niceseo-pillars",
+        "page-growth",
+        "ai-visibility",
+      ].includes(input.skillName ?? "")) ||
+    (input.sourceType === "custom" &&
+      /\bget_audit_(?:status|pages|issues)\b|\bseo-audit\b/i.test(
+        input.customPrompt ?? "",
+      ))
+  );
+}
+
+async function readAuditReadiness(
+  projectId: string,
+  domain: Parameters<typeof checkAuditReadiness>[2],
+): Promise<ReturnType<typeof checkAuditReadiness>> {
+  try {
+    const audit = await AuditRepository.getLatestAuditForProject(projectId);
+    const pages = audit ? await AuditRepository.getPagesForAudit(audit.id) : [];
+    return checkAuditReadiness(audit, pages, domain, new Date());
+  } catch {
+    return {
+      ready: false,
+      reason: "The saved crawl could not be read.",
+    };
+  }
+}
+
+async function buildTaskBody(
+  input: HeadlessSamLoopInput,
+  monthly: boolean,
+): Promise<string> {
+  if (input.sourceType === "skill" && input.skillName) {
+    const skill = await buildSamSkillSource().load(input.skillName);
+    if (!skill) {
+      throw new Error(`Unknown skill: ${input.skillName}`);
+    }
+    return `Loop: ${input.loopName}\n\nActivate and follow this skill:\n\n# ${skill.name}\n\n${skill.body}`;
+  }
+  if (monthly) {
+    return `Loop: ${input.loopName}\n\n${MONTHLY_CONTENT_INSTRUCTION}`;
+  }
+  if (input.customPrompt) {
+    const onPageTemplate = DEFAULT_SAM_LOOP_TEMPLATES.find(
+      (template) => template.name === "On-page priorities",
+    );
+    let executionPrompt = input.customPrompt;
+    if (
+      input.sourceType === "custom" &&
+      input.customPrompt === onPageTemplate?.customPrompt
+    ) {
+      // Preserve the reserved stored identity used to grant proposal access.
+      // A completed skip report must never suppress the next scheduled pass.
+      const bodyStart = input.customPrompt.indexOf("Queue-only on-page pass");
+      if (bodyStart < 0)
+        throw new Error("On-page execution template is missing");
+      executionPrompt = [
+        "Perform this pass on every scheduled run. The configured cadence controls timing.",
+        "First list existing proposals. Skip a page/field when the same replacement is already pending or approved.",
+        input.customPrompt.slice(bodyStart),
+      ].join("\n\n");
+    }
+    return `Loop: ${input.loopName}\n\n${executionPrompt}`;
+  }
+  throw new Error("Loop has neither skill nor custom prompt");
+}
+
 /**
  * Run Sam once for a loop: project system prompt + skill/custom body,
  * propose-only write path, step cap 24.
@@ -102,37 +174,10 @@ export async function runHeadlessSamLoop(
     input.sourceType === "custom" &&
     !!input.customPrompt &&
     input.customPrompt === monthlyTemplate?.customPrompt;
-  const needsAudit =
-    !monthly &&
-    ((input.sourceType === "skill" &&
-      [
-        "site-health",
-        "seo-audit",
-        "niceseo-pillars",
-        "page-growth",
-        "ai-visibility",
-      ].includes(input.skillName ?? "")) ||
-      (input.sourceType === "custom" &&
-        /\bget_audit_(?:status|pages|issues)\b|\bseo-audit\b/i.test(
-          input.customPrompt ?? "",
-        )));
+  const needsAudit = !monthly && loopNeedsAudit(input);
   let crawlEvidence: string | null = null;
   if (needsAudit) {
-    let readiness: ReturnType<typeof checkAuditReadiness>;
-    try {
-      const audit = await AuditRepository.getLatestAuditForProject(
-        input.project.id,
-      );
-      const pages = audit
-        ? await AuditRepository.getPagesForAudit(audit.id)
-        : [];
-      readiness = checkAuditReadiness(audit, pages, row.domain, new Date());
-    } catch {
-      readiness = {
-        ready: false,
-        reason: "The saved crawl could not be read.",
-      };
-    }
+    const readiness = await readAuditReadiness(input.project.id, row.domain);
     if (!readiness.ready) {
       return {
         status: "failed",
@@ -153,39 +198,7 @@ export async function runHeadlessSamLoop(
   const contextMarkdown =
     ProjectContextService.renderProjectContextMarkdown(context);
 
-  let taskBody: string;
-  if (input.sourceType === "skill" && input.skillName) {
-    const skill = await buildSamSkillSource().load(input.skillName);
-    if (!skill) {
-      throw new Error(`Unknown skill: ${input.skillName}`);
-    }
-    taskBody = `Loop: ${input.loopName}\n\nActivate and follow this skill:\n\n# ${skill.name}\n\n${skill.body}`;
-  } else if (monthly) {
-    taskBody = `Loop: ${input.loopName}\n\n${MONTHLY_CONTENT_INSTRUCTION}`;
-  } else if (input.customPrompt) {
-    const onPageTemplate = DEFAULT_SAM_LOOP_TEMPLATES.find(
-      (template) => template.name === "On-page priorities",
-    );
-    let executionPrompt = input.customPrompt;
-    if (
-      input.sourceType === "custom" &&
-      input.customPrompt === onPageTemplate?.customPrompt
-    ) {
-      // Preserve the reserved stored identity used to grant proposal access.
-      // A completed skip report must never suppress the next scheduled pass.
-      const bodyStart = input.customPrompt.indexOf("Queue-only on-page pass");
-      if (bodyStart < 0)
-        throw new Error("On-page execution template is missing");
-      executionPrompt = [
-        "Perform this pass on every scheduled run. The configured cadence controls timing.",
-        "First list existing proposals. Skip a page/field when the same replacement is already pending or approved.",
-        input.customPrompt.slice(bodyStart),
-      ].join("\n\n");
-    }
-    taskBody = `Loop: ${input.loopName}\n\n${executionPrompt}`;
-  } else {
-    throw new Error("Loop has neither skill nor custom prompt");
-  }
+  const taskBody = await buildTaskBody(input, monthly);
 
   const system = [
     buildSamSystemPrompt(

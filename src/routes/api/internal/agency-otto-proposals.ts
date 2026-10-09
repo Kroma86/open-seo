@@ -23,6 +23,23 @@ function extractBearer(request: Request): string | null {
   return match?.[1]?.trim() || null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+// JSON bodies only carry strings, numbers, booleans, null, arrays and objects.
+// Primitives stringify as before; arrays and objects become "" (domain_required).
+function stringifyDomain(value: unknown): string {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+  return "";
+}
+
 function assertAgencyToken(request: Request): Response | null {
   const expected = (
     env as { AGENCY_SCORE_EXPORT_TOKEN?: string }
@@ -44,11 +61,7 @@ async function handleGet(request: Request): Promise<Response> {
   const denied = assertAgencyToken(request);
   if (denied) return denied;
   const url = new URL(request.url);
-  const status = url.searchParams.get("status") as
-    | "pending"
-    | "pulled"
-    | "rejected"
-    | null;
+  const status = url.searchParams.get("status");
   const domain = url.searchParams.get("domain")?.trim();
   const limitRaw = url.searchParams.get("limit");
   const limit = limitRaw ? Number(limitRaw) : 50;
@@ -73,11 +86,11 @@ async function handlePost(request: Request): Promise<Response> {
   } catch {
     return Response.json({ error: "invalid_json" }, { status: 400 });
   }
-  if (!body || typeof body !== "object") {
+  if (!isRecord(body)) {
     return Response.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  const record = body as Record<string, unknown>;
+  const record = body;
   if (record.action === "mark_pulled") {
     const ids = Array.isArray(record.ids)
       ? record.ids.filter((id): id is string => typeof id === "string")
@@ -88,17 +101,11 @@ async function handlePost(request: Request): Promise<Response> {
 
   try {
     const proposal = await enqueueHomegrownOttoProposal({
-      domain: String(record.domain ?? ""),
+      domain: stringifyDomain(record.domain),
       projectId: typeof record.projectId === "string" ? record.projectId : null,
       path: typeof record.path === "string" ? record.path : "/",
-      fixes:
-        record.fixes && typeof record.fixes === "object"
-          ? (record.fixes as Record<string, string>)
-          : {},
-      before:
-        record.before && typeof record.before === "object"
-          ? (record.before as Record<string, unknown>)
-          : {},
+      fixes: isRecord(record.fixes) ? record.fixes : {},
+      before: isRecord(record.before) ? record.before : {},
       humanReview: Array.isArray(record.humanReview)
         ? record.humanReview.filter((x): x is string => typeof x === "string")
         : [],

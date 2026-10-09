@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ToolSet } from "ai";
+import { tool, type ToolSet } from "ai";
+import { z } from "zod";
 import {
   LOOP_ALLOWED_TOOLS,
   LOOP_TOOL_CALL_CAPS,
@@ -11,11 +12,19 @@ import {
 } from "./loopToolFilter";
 import { DEFAULT_SAM_LOOP_TEMPLATES } from "@/shared/sam-loops";
 
+const callOptions = { toolCallId: "call_1", messages: [], context: undefined };
+
+async function executeTool(entry: ToolSet[string] | undefined) {
+  if (!entry?.execute) throw new Error("expected an executable tool");
+  const result: unknown = await entry.execute({}, callOptions);
+  return result;
+}
+
 describe("filterLoopTools", () => {
-  const stub = { execute: async () => null };
+  const stub = tool({ inputSchema: z.object({}), execute: async () => null });
 
   it("keeps allowlisted readers and propose_homegrown_otto_fixes", () => {
-    const tools = {
+    const tools: ToolSet = {
       propose_homegrown_otto_fixes: stub,
       list_homegrown_otto_proposals: stub,
       get_audit_issues: stub,
@@ -31,7 +40,7 @@ describe("filterLoopTools", () => {
       run_site_audit: stub,
       research_keywords: stub,
       get_backlinks_overview: stub,
-    } as unknown as ToolSet;
+    };
 
     const filtered = filterLoopTools(tools);
     expect(Object.keys(filtered).toSorted()).toEqual([
@@ -45,12 +54,12 @@ describe("filterLoopTools", () => {
   });
 
   it("blocks an unknown/new tool key by default (fail closed)", () => {
-    const tools = {
+    const tools: ToolSet = {
       propose_homegrown_otto_fixes: stub,
       get_audit_issues: stub,
       brand_new_paid_research_tool: stub,
       future_write_surface: stub,
-    } as unknown as ToolSet;
+    };
 
     const filtered = filterLoopTools(tools);
     expect(filtered.brand_new_paid_research_tool).toBeUndefined();
@@ -63,7 +72,7 @@ describe("filterLoopTools", () => {
   });
 
   it("excludes paid DataForSEO research fan-outs", () => {
-    const tools = {
+    const tools: ToolSet = {
       get_audit_issues: stub,
       research_keywords: stub,
       get_domain_overview: stub,
@@ -76,20 +85,20 @@ describe("filterLoopTools", () => {
       get_keyword_metrics: stub,
       get_ai_brand_visibility: stub,
       explore_ai_prompt: stub,
-    } as unknown as ToolSet;
+    };
 
     const filtered = filterLoopTools(tools);
     expect(Object.keys(filtered)).toEqual(["get_audit_issues"]);
   });
 
   it("keeps the bounded GBP readers while other paid tools stay blocked", () => {
-    const tools = {
+    const tools: ToolSet = {
       get_business_profile: stub,
       get_business_reviews: stub,
       get_audit_issues: stub,
       research_keywords: stub,
       get_domain_overview: stub,
-    } as unknown as ToolSet;
+    };
 
     const filtered = filterLoopTools(tools);
     expect(Object.keys(filtered).toSorted()).toEqual([
@@ -101,36 +110,34 @@ describe("filterLoopTools", () => {
 
   it("capLoopToolCalls enforces the per-run cap and throws past it", async () => {
     let calls = 0;
-    const tools = {
-      get_business_reviews: {
+    const tools: ToolSet = {
+      get_business_reviews: tool({
+        inputSchema: z.object({}),
         execute: async () => {
           calls += 1;
           return { ok: true };
         },
-      },
-      get_audit_issues: {
+      }),
+      get_audit_issues: tool({
+        inputSchema: z.object({}),
         execute: async () => ({ ok: true }),
-      },
-    } as unknown as ToolSet;
+      }),
+    };
 
     const capped = capLoopToolCalls(tools);
-    const run = capped.get_business_reviews as unknown as {
-      execute: (a: unknown, o: unknown) => Promise<unknown>;
-    };
     const cap = LOOP_TOOL_CALL_CAPS.get_business_reviews;
     expect(typeof cap, "cap must be a number (key removed?)").toBe("number");
     for (let i = 0; i < cap; i += 1) {
-      await run.execute({}, {});
+      await executeTool(capped.get_business_reviews);
     }
     expect(calls).toBe(cap);
-    await expect(run.execute({}, {})).rejects.toThrow(/call cap reached/);
+    await expect(executeTool(capped.get_business_reviews)).rejects.toThrow(
+      /call cap reached/,
+    );
     expect(calls).toBe(cap);
 
-    const uncapped = capped.get_audit_issues as unknown as {
-      execute: (a: unknown, o: unknown) => Promise<unknown>;
-    };
     for (let i = 0; i < 7; i += 1) {
-      await uncapped.execute({}, {});
+      await executeTool(capped.get_audit_issues);
     }
   });
 
@@ -140,21 +147,22 @@ describe("filterLoopTools", () => {
   });
 
   it("capLoopToolCalls refuses a capped tool with no wrappable execute (fail closed)", () => {
-    const tools = {
-      get_business_profile: {
+    const tools: ToolSet = {
+      get_business_profile: tool({
         description: "provider-defined; executor elsewhere",
-      },
-    } as unknown as ToolSet;
+        inputSchema: z.object({}),
+      }),
+    };
     expect(() => capLoopToolCalls(tools)).toThrow(/no wrappable execute/);
   });
 
   describe("scopeLoopTools (template identity, never the display name)", () => {
-    const tools = {
+    const tools: ToolSet = {
       propose_homegrown_otto_fixes: stub,
       get_business_profile: stub,
       get_business_reviews: stub,
       get_audit_issues: stub,
-    } as unknown as ToolSet;
+    };
 
     const template = (name: string) => {
       const t = DEFAULT_SAM_LOOP_TEMPLATES.find((x) => x.name === name);
@@ -215,9 +223,9 @@ describe("filterLoopTools", () => {
     });
 
     it("every custom template has a capabilities entry that drives scoping exactly", () => {
-      const universe = Object.fromEntries(
+      const universe: ToolSet = Object.fromEntries(
         [...LOOP_ALLOWED_TOOLS].map((n) => [n, stub]),
-      ) as unknown as ToolSet;
+      );
       const customTemplates: {
         name: string;
         sourceType: string;

@@ -25,10 +25,14 @@ function severityPill(severity: string) {
   return <span className={`badge badge-sm ${tone}`}>{severity}</span>;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function AlertCycleDetail({ content }: { content: string }) {
   try {
     const parsed: unknown = JSON.parse(content);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    if (!isRecord(parsed) || Array.isArray(parsed)) {
       return (
         <p className="text-sm text-error">
           Could not parse alert-cycle JSON — raw content is invalid.
@@ -36,13 +40,13 @@ function AlertCycleDetail({ content }: { content: string }) {
       );
     }
 
-    const record = parsed as Record<string, unknown>;
+    const record = parsed;
     const alerts = Array.isArray(record.alerts) ? record.alerts : [];
     const bySeverity = new Map<string, Array<Record<string, unknown>>>();
 
     for (const entry of alerts) {
-      if (!entry || typeof entry !== "object") continue;
-      const alert = entry as Record<string, unknown>;
+      if (!isRecord(entry)) continue;
+      const alert = entry;
       const severity =
         typeof alert.severity === "string" ? alert.severity : "unknown";
       const group = bySeverity.get(severity) ?? [];

@@ -28,6 +28,8 @@ const config = {
   createdAt: "2026-01-01T00:00:00.000Z",
 };
 
+const configOneMatcher: unknown = expect.objectContaining({ id: "config_1" });
+
 describe("aiVisibilityResults", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -43,7 +45,7 @@ describe("aiVisibilityResults", () => {
       measured: false,
       source: "dataforseo_llm_mentions",
       fetchedAt: null,
-      config: expect.objectContaining({ id: "config_1" }),
+      config: configOneMatcher,
       latestRun: null,
     });
   });

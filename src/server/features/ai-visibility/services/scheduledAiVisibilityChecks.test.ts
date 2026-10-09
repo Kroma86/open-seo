@@ -1,3 +1,4 @@
+import { env as workerEnv } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type DueConfigRow = {
@@ -72,7 +73,7 @@ function dueConfig(overrides: Partial<DueConfigRow> = {}): DueConfigRow {
 async function runTick() {
   const { runScheduledAiVisibilityChecks } =
     await import("./scheduledAiVisibilityChecks");
-  await runScheduledAiVisibilityChecks({} as Env);
+  await runScheduledAiVisibilityChecks(workerEnv);
 }
 
 describe("runScheduledAiVisibilityChecks", () => {

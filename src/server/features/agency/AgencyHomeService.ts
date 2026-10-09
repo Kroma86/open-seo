@@ -53,6 +53,12 @@ export type AgencyHomePortfolioRow = {
 const MISSION_STATUSES = ["completed", "failed", "running"] as const;
 const DEFAULT_MISSION_LIMIT = 12;
 
+function isMissionStatus(
+  status: string,
+): status is AgencyHomeMission["status"] {
+  return MISSION_STATUSES.some((missionStatus) => missionStatus === status);
+}
+
 function clampMissionLimit(limit: number | undefined): number {
   if (limit === undefined || !Number.isFinite(limit))
     return DEFAULT_MISSION_LIMIT;
@@ -100,11 +106,10 @@ export async function getAgencyHomeMissions(
     )
     .limit(capped);
 
-  return rows.map((row) => ({
-    ...row,
-    // Filter guarantees the three statuses; drizzle still types the full enum.
-    status: row.status as AgencyHomeMission["status"],
-  }));
+  // Filter guarantees the three statuses; drizzle still types the full enum.
+  return rows.flatMap((row) =>
+    isMissionStatus(row.status) ? [{ ...row, status: row.status }] : [],
+  );
 }
 
 async function loadGscTotals(

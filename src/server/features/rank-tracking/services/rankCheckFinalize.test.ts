@@ -25,6 +25,8 @@ const baseRun = {
   completedAt: null,
 };
 
+const anyString: unknown = expect.any(String);
+
 describe("completeRankCheckRunFromSnapshots", () => {
   beforeEach(() => {
     mocks.getSnapshotsForRun.mockReset();
@@ -52,14 +54,14 @@ describe("completeRankCheckRunFromSnapshots", () => {
       expect.objectContaining({
         status: "completed",
         keywordsChecked: 2,
-        completedAt: expect.any(String),
+        completedAt: anyString,
       }),
     );
     expect(mocks.updateConfig).toHaveBeenCalledWith(
       "config_1",
       "project_1",
       expect.objectContaining({
-        lastCheckedAt: expect.any(String),
+        lastCheckedAt: anyString,
         lastSkipReason: null,
       }),
     );

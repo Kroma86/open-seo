@@ -18,6 +18,22 @@ type AgencyPixelSlice = {
   found: boolean;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+// Primitives stringify as String() would; objects and arrays never name a host.
+function hostText(value: unknown): string {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+  return "";
+}
+
 /** Non-empty string entries only — the hermes export drops empty keys too. */
 function cleanStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -27,9 +43,9 @@ function cleanStringList(value: unknown): string[] {
 }
 
 function cleanFixPaths(value: unknown): Record<string, string[]> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  if (!isRecord(value) || Array.isArray(value)) return {};
   const out: Record<string, string[]> = {};
-  for (const [path, keys] of Object.entries(value as Record<string, unknown>)) {
+  for (const [path, keys] of Object.entries(value)) {
     if (!path) continue;
     const clean = cleanStringList(keys);
     if (clean.length) out[path] = clean;
@@ -52,18 +68,15 @@ export function pickPixelFromAgencyMetrics(
     served_fix_paths: {},
     found: false,
   };
-  if (!payload || typeof payload !== "object") return empty;
-  const clients = (payload as { clients?: unknown }).clients;
+  if (!isRecord(payload)) return empty;
+  const clients = payload.clients;
   if (!Array.isArray(clients)) return empty;
   for (const row of clients) {
-    if (!row || typeof row !== "object") continue;
-    const r = row as Record<string, unknown>;
-    const host = normalizeOpsDomain(String(r.domain ?? r.host ?? ""));
+    if (!isRecord(row)) continue;
+    const r = row;
+    const host = normalizeOpsDomain(hostText(r.domain ?? r.host ?? ""));
     if (!host || host !== want) continue;
-    const pixel =
-      r.pixel && typeof r.pixel === "object"
-        ? (r.pixel as Record<string, unknown>)
-        : null;
+    const pixel = isRecord(r.pixel) ? r.pixel : null;
     const status =
       (pixel && typeof pixel.status === "string" ? pixel.status : null) ??
       (typeof r.niceseo_pixel_status === "string"
@@ -95,7 +108,7 @@ export function pickPixelFromAgencyMetrics(
       (r.served_fix_paths &&
       typeof r.served_fix_paths === "object" &&
       !Array.isArray(r.served_fix_paths)
-        ? (r.served_fix_paths as Record<string, unknown>)
+        ? r.served_fix_paths
         : null);
     const servedFixPaths = cleanFixPaths(servedFixPathsRaw);
     return {

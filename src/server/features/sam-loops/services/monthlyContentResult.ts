@@ -18,10 +18,11 @@ const MARKER = /\n?<!-- openseo-monthly-draft-v1:([a-f0-9]{64}) -->\s*$/;
 const ALL_MARKERS = /<!--\s*openseo-monthly-draft[^>]*-->/g;
 
 type Step = { toolResults?: Array<{ toolName: string; output?: unknown }> };
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 function record(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+  return isRecord(value) ? value : {};
 }
 function rows(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.map(record) : [];
@@ -76,15 +77,108 @@ export async function hasVerifiedMonthlyDraft(
   );
 }
 
+type SourcePages = Map<string, string[]>;
+
+function fail(reason: string) {
+  return {
+    report: `Monthly article not completed: ${reason}`,
+    error: reason,
+  };
+}
+
+function addKeywords(demand: Set<string>, keywordRows: unknown): void {
+  for (const row of rows(keywordRows))
+    if (typeof row.keyword === "string") demand.add(normalized(row.keyword));
+}
+
+function addSearchConsoleQueries(
+  demand: Set<string>,
+  data: Record<string, unknown>,
+): void {
+  const dimensions = Array.isArray(data.dimensions) ? data.dimensions : [];
+  const index = dimensions.indexOf("query");
+  if (index < 0) return;
+  for (const row of rows(data.rows)) {
+    const term: unknown = Array.isArray(row.keys) ? row.keys[index] : null;
+    if (typeof term === "string") demand.add(normalized(term));
+  }
+}
+
+function addPageSnapshots(
+  pages: SourcePages,
+  pageRows: unknown,
+  domain: string,
+): void {
+  for (const page of rows(pageRows)) {
+    const url = typeof page.url === "string" ? ownUrl(page.url, domain) : null;
+    if (url && typeof page.text === "string" && page.text.trim().length >= 80) {
+      const snapshots = pages.get(url) ?? [];
+      snapshots.push(page.text);
+      pages.set(url, snapshots);
+    }
+  }
+}
+
+function collectRunEvidence(
+  steps: Step[],
+  domain: string,
+): { demand: Set<string>; pages: SourcePages } {
+  const demand = new Set<string>();
+  const pages: SourcePages = new Map();
+  for (const step of steps) {
+    for (const result of step.toolResults ?? []) {
+      const out = record(result.output);
+      if (out.error || out.isError === true) continue;
+      const data = record(out.data);
+      if (result.toolName === "list_saved_keywords") {
+        addKeywords(demand, data.rows);
+      } else if (result.toolName === "get_rank_tracker") {
+        addKeywords(demand, record(data.results).rows);
+      } else if (
+        result.toolName === "get_search_console_performance" &&
+        data.ok === true
+      ) {
+        addSearchConsoleQueries(demand, data);
+      } else if (result.toolName === "read_pages" && out.blocked === false) {
+        addPageSnapshots(pages, out.pages, domain);
+      }
+    }
+  }
+  return { demand, pages };
+}
+
+function verifySource(
+  source: { url: string; excerpt: string },
+  pages: SourcePages,
+  domain: string,
+): { url: string } | { failure: string } {
+  const url = ownUrl(source.url, domain);
+  if (!url)
+    return {
+      failure:
+        "A supporting source URL is invalid or does not belong to this site.",
+    };
+  const snapshots = pages.get(url);
+  if (!snapshots)
+    return { failure: "A supporting source URL was not read during this run." };
+  const excerpt = source.excerpt.trim().replace(/\s+/g, " ");
+  if (excerpt.length < 30)
+    return {
+      failure: "A supporting source excerpt is shorter than 30 characters.",
+    };
+  if (!snapshots.some((page) => page.replace(/\s+/g, " ").includes(excerpt)))
+    return {
+      failure:
+        "A supporting source excerpt was not found in any page snapshot read during this run.",
+    };
+  return { url };
+}
+
 export async function validateMonthlyContent(
   output: unknown,
   steps: Step[],
   domain: string,
 ): Promise<{ report: string; error: string | null }> {
-  const fail = (reason: string) => ({
-    report: `Monthly article not completed: ${reason}`,
-    error: reason,
-  });
   const parsed = monthlyContentSchema.safeParse(output);
   if (!parsed.success)
     return fail("The run did not return a complete structured article result.");
@@ -94,51 +188,7 @@ export async function validateMonthlyContent(
       stripDraftEvidence(draft.reason).slice(0, 1000) ||
         "Required research or article content was unavailable.",
     );
-  const demand = new Set<string>();
-  const pages = new Map<string, string[]>();
-  for (const step of steps) {
-    for (const result of step.toolResults ?? []) {
-      const out = record(result.output);
-      if (out.error || out.isError === true) continue;
-      const data = record(out.data);
-      if (result.toolName === "list_saved_keywords") {
-        for (const row of rows(data.rows))
-          if (typeof row.keyword === "string")
-            demand.add(normalized(row.keyword));
-      } else if (result.toolName === "get_rank_tracker") {
-        for (const row of rows(record(data.results).rows))
-          if (typeof row.keyword === "string")
-            demand.add(normalized(row.keyword));
-      } else if (
-        result.toolName === "get_search_console_performance" &&
-        data.ok === true
-      ) {
-        const dimensions = Array.isArray(data.dimensions)
-          ? data.dimensions
-          : [];
-        const index = dimensions.indexOf("query");
-        if (index >= 0)
-          for (const row of rows(data.rows)) {
-            const term = Array.isArray(row.keys) ? row.keys[index] : null;
-            if (typeof term === "string") demand.add(normalized(term));
-          }
-      } else if (result.toolName === "read_pages" && out.blocked === false) {
-        for (const page of rows(out.pages)) {
-          const url =
-            typeof page.url === "string" ? ownUrl(page.url, domain) : null;
-          if (
-            url &&
-            typeof page.text === "string" &&
-            page.text.trim().length >= 80
-          ) {
-            const snapshots = pages.get(url) ?? [];
-            snapshots.push(page.text);
-            pages.set(url, snapshots);
-          }
-        }
-      }
-    }
-  }
+  const { demand, pages } = collectRunEvidence(steps, domain);
   if (
     !draft.targetKeyword.trim() ||
     !demand.has(normalized(draft.targetKeyword))
@@ -166,22 +216,9 @@ export async function validateMonthlyContent(
     return fail("No supporting source pages were supplied.");
   const sources: string[] = [];
   for (const source of draft.sources) {
-    const url = ownUrl(source.url, domain);
-    if (!url)
-      return fail(
-        "A supporting source URL is invalid or does not belong to this site.",
-      );
-    const snapshots = pages.get(url);
-    if (!snapshots)
-      return fail("A supporting source URL was not read during this run.");
-    const excerpt = source.excerpt.trim().replace(/\s+/g, " ");
-    if (excerpt.length < 30)
-      return fail("A supporting source excerpt is shorter than 30 characters.");
-    if (!snapshots.some((page) => page.replace(/\s+/g, " ").includes(excerpt)))
-      return fail(
-        "A supporting source excerpt was not found in any page snapshot read during this run.",
-      );
-    sources.push(url);
+    const verified = verifySource(source, pages, domain);
+    if ("failure" in verified) return fail(verified.failure);
+    sources.push(verified.url);
   }
   const report = [
     "DRAFT — source-grounded article for editorial review. Not published.",

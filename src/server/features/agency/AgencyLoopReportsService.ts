@@ -29,6 +29,12 @@ export type AgencyLoopReportsResult = {
   count: number;
 };
 
+const REPORT_STATUSES = ["completed", "failed"] as const;
+
+function isReportStatus(status: string): status is AgencyLoopReport["status"] {
+  return REPORT_STATUSES.some((reportStatus) => reportStatus === status);
+}
+
 function clampLimit(limit: number): number {
   if (!Number.isFinite(limit)) return 50;
   return Math.min(200, Math.max(1, Math.floor(limit)));
@@ -63,7 +69,7 @@ export async function getAgencyLoopReports(
     .innerJoin(projects, eq(samLoopRuns.projectId, projects.id))
     .where(
       and(
-        inArray(samLoopRuns.status, ["completed", "failed"]),
+        inArray(samLoopRuns.status, [...REPORT_STATUSES]),
         isNotNull(samLoopRuns.finishedAt),
         gte(samLoopRuns.finishedAt, since),
       ),
@@ -73,10 +79,18 @@ export async function getAgencyLoopReports(
 
   return {
     // Filter guarantees completed|failed; drizzle still types the full enum.
-    runs: rows.map((row) => ({
-      ...row,
-      report: row.report === null ? null : stripDraftEvidence(row.report),
-    })) as AgencyLoopReport[],
+    runs: rows.flatMap((row) =>
+      isReportStatus(row.status)
+        ? [
+            {
+              ...row,
+              status: row.status,
+              report:
+                row.report === null ? null : stripDraftEvidence(row.report),
+            },
+          ]
+        : [],
+    ),
     count: rows.length,
   };
 }

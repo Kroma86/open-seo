@@ -33,13 +33,17 @@ vi.mock("@/server/features/agency/AgencyOttoProposalsService", () => ({
  * handler that grows a field without declaring it fails here, not in
  * production.
  */
-function validateAsClientWould(outputSchema: unknown, payload: unknown) {
-  const normalized = normalizeObjectSchema(outputSchema as never);
-  const published = toJsonSchemaCompat(normalized as never, {
+function validateAsClientWould(
+  outputSchema: Parameters<typeof normalizeObjectSchema>[0],
+  payload: unknown,
+) {
+  const normalized = normalizeObjectSchema(outputSchema);
+  if (!normalized) throw new Error("tool declares no outputSchema");
+  const published = toJsonSchemaCompat(normalized, {
     strictUnions: true,
     pipeStrategy: "output",
   });
-  return new AjvJsonSchemaValidator().getValidator(published as never)(payload);
+  return new AjvJsonSchemaValidator().getValidator(published)(payload);
 }
 
 const proposal = {

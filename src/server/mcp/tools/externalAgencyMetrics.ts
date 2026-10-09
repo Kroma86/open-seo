@@ -42,6 +42,10 @@ function host(input: unknown): string | null {
     : null;
 }
 
+function empty(error: string) {
+  return { rank: null, ai: null, error };
+}
+
 /** Read only the authorized project's row from the existing internal agency feed. */
 export async function fetchExternalAgencyMetrics(
   domain: string | null,
@@ -51,7 +55,6 @@ export async function fetchExternalAgencyMetrics(
     fetchImpl?: typeof fetch;
   },
 ): Promise<{ rank: unknown; ai: unknown; error: string | null }> {
-  const empty = (error: string) => ({ rank: null, ai: null, error });
   const wanted = host(domain);
   if (!wanted)
     return empty(
