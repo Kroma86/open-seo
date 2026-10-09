@@ -205,12 +205,13 @@ export async function postSubscriptionLoopRequest(input: SubscriptionRequest) {
       throw new SubscriptionLoopError("deadline_expired");
     nextReceipt = await signReceipt(receipt);
   } catch {
+    const finishedAt = new Date().toISOString();
     const settled = await SamLoopRepository.compareAndSwapSubscriptionRun(
       run.id,
       pending,
       {
         status: "failed",
-        finishedAt: new Date().toISOString(),
+        finishedAt,
         error:
           "Tool output exceeded the deadline or evidence limit; consumed tool is not retried.",
         report:
@@ -221,6 +222,7 @@ export async function postSubscriptionLoopRequest(input: SubscriptionRequest) {
             ? "subscription:hold:proposal_outcome_unknown; model API cost $0"
             : `subscription; ${receipt.model}; model API cost $0`,
       },
+      { loopId: run.loopId, projectId: run.projectId, finishedAt },
     );
     if (!settled) throw new SubscriptionLoopError("tool_outcome_unknown");
     throw new SubscriptionLoopError("tool_outcome_unknown");
@@ -249,18 +251,20 @@ async function failSubscriptionRun(
   const mutationUnknown = run.costNote.startsWith(
     "subscription:pending:propose_homegrown_otto_fixes:",
   );
+  const finishedAt = new Date().toISOString();
   const updated = await SamLoopRepository.compareAndSwapSubscriptionRun(
     run.id,
     run.costNote,
     {
       status: "failed",
-      finishedAt: new Date().toISOString(),
+      finishedAt,
       error: `Generation did not return a complete valid result: ${input.reason}. Consumed steps are not retried.${mutationUnknown ? " Proposal outcome unknown; future runs held for operator inspection." : ""}`,
       report: "Not measured — subscription runner did not finish.",
       costNote: mutationUnknown
         ? "subscription:hold:proposal_outcome_unknown; model API cost $0"
         : "subscription; model API cost $0",
     },
+    { loopId: run.loopId, projectId: run.projectId, finishedAt },
   );
   if (!updated) throw new SubscriptionLoopError("state_changed");
   return { runId: run.id, status: "failed" };
@@ -303,6 +307,7 @@ async function claimSubscriptionLoop(
           report: "Not measured — runner did not finish.",
           costNote: "subscription; model API cost $0",
         },
+        { loopId: loop.id, projectId: loop.projectId, finishedAt: now },
       ))
     )
       throw new SubscriptionLoopError("state_changed");

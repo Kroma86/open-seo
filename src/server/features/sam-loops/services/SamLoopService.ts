@@ -221,6 +221,14 @@ export async function triggerSamLoop(input: {
   if (!loop.isEnabled) {
     return { ok: false, reason: "disabled" };
   }
+  // Subscription mode never starts a Worker run, so a manual click must not
+  // advance the schedule the external runner is waiting on.
+  if (
+    (env as Env & { SAM_LOOP_EXECUTOR?: string }).SAM_LOOP_EXECUTOR ===
+    "subscription"
+  ) {
+    return { ok: false, reason: "disabled" };
+  }
 
   // Manual trigger schedule rule:
   // - nextRunAt in the future → leave it alone (manual run is extra; scheduled

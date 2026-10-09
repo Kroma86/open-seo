@@ -7,6 +7,7 @@ import type { SamLoopRepository } from "../repositories/SamLoopRepository";
 export const mockEnv: {
   SAM_LOOP_WORKFLOW: object;
   SAM_LOOP_DAILY_RUN_CAP?: string;
+  SAM_LOOP_EXECUTOR?: string;
 } = { SAM_LOOP_WORKFLOW: {} };
 
 export const mocks = {

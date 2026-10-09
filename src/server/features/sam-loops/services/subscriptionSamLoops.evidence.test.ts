@@ -213,4 +213,20 @@ describe("subscription evidence and settlement", () => {
       { loopId, projectId, finishedAt: currentRun()?.finishedAt },
     );
   });
+  it("includes the loop timestamp when the runner reports a failure", async () => {
+    const claimed = await claim();
+    await postSubscriptionLoopRequest({
+      action: "fail",
+      projectId,
+      loopId,
+      runId: claimed.runId,
+      reason: "runner_failed",
+    });
+    expect(mocks.cas).toHaveBeenLastCalledWith(
+      claimed.runId,
+      expect.any(String),
+      expect.objectContaining({ status: "failed" }),
+      { loopId, projectId, finishedAt: currentRun()?.finishedAt },
+    );
+  });
 });

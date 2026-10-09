@@ -152,6 +152,14 @@ export const emailAccessGate = (options: {
     policyName: string;
     applicationName: string;
   };
+  /**
+   * Sam loop subscription route service-token gate (self-host only; needs
+   * `mcpServiceAuth`, whose service token and policy it reuses).
+   */
+  samLoopServiceAuth?: {
+    applicationId: string;
+    applicationName: string;
+  };
   /** OAuth discovery-path bypass (self-host only; metadata is public). */
   mcpDiscoveryBypass?: {
     policyId: string;
@@ -177,6 +185,7 @@ export const emailAccessGate = (options: {
     });
 
     let mcpPolicyAud: Alchemy.Input<string> | undefined;
+    let samLoopPolicyAud: Alchemy.Input<string> | undefined;
     if (options.mcpServiceAuth) {
       const token = yield* Cloudflare.Access.ServiceToken(
         options.mcpServiceAuth.serviceTokenId,
@@ -214,6 +223,29 @@ export const emailAccessGate = (options: {
         },
       );
       mcpPolicyAud = mcpApplication.aud;
+
+      if (options.samLoopServiceAuth) {
+        // Service Auth only (a machine route, never a browser). More specific
+        // than the /api/internal bypass, so it wins for this one path and
+        // issues SAM_LOOP_POLICY_AUD for the Worker's second gate.
+        const samLoopPaths = hostnames.map(
+          (hostname) => `${hostname}/api/internal/sam-loop-subscription`,
+        );
+        const samLoopApplication = yield* Cloudflare.Access.Application(
+          options.samLoopServiceAuth.applicationId,
+          {
+            type: "self_hosted",
+            name: options.samLoopServiceAuth.applicationName,
+            domain: samLoopPaths[0],
+            destinations: samLoopPaths.map((uri) => ({
+              type: "public" as const,
+              uri,
+            })),
+            policies: [mcpPolicy.policyId],
+          },
+        );
+        samLoopPolicyAud = samLoopApplication.aud;
+      }
     }
 
     if (options.mcpDiscoveryBypass) {
@@ -299,5 +331,5 @@ export const emailAccessGate = (options: {
       );
     }
 
-    return { application, mcpPolicyAud };
+    return { application, mcpPolicyAud, samLoopPolicyAud };
   });

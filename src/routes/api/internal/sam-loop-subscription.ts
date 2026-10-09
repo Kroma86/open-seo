@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "cloudflare:workers";
 import { withPgClient } from "@/db";
+import { isAccessServiceTokenFor } from "@/middleware/ensure-user/cloudflareAccess";
 import { subscriptionRequestSchema } from "@/server/features/sam-loops/services/subscriptionContract";
 import {
   getSubscriptionLoopRequest,
@@ -8,11 +9,18 @@ import {
   SubscriptionLoopError,
 } from "@/server/features/sam-loops/services/subscriptionSamLoops";
 
-function authenticate(request: Request): Response | null {
-  const expected = (
-    env as { AGENCY_SCORE_EXPORT_TOKEN?: string }
-  ).AGENCY_SCORE_EXPORT_TOKEN?.trim();
-  if (!expected)
+// Two gates: the shared bearer token AND a Cloudflare Access service-token
+// JWT from this route's own path-scoped Access app (SAM_LOOP_POLICY_AUD).
+// The /api/internal bypass does not cover this path, so a leaked bearer
+// alone cannot claim runs.
+async function authenticate(request: Request): Promise<Response | null> {
+  const { AGENCY_SCORE_EXPORT_TOKEN, SAM_LOOP_POLICY_AUD } = env as {
+    AGENCY_SCORE_EXPORT_TOKEN?: string;
+    SAM_LOOP_POLICY_AUD?: string;
+  };
+  const expected = AGENCY_SCORE_EXPORT_TOKEN?.trim();
+  const audience = SAM_LOOP_POLICY_AUD?.trim();
+  if (!expected || !audience)
     return Response.json({ error: "subscription_disabled" }, { status: 503 });
   const actual =
     /^Bearer\s+(.+)$/i
@@ -23,9 +31,12 @@ function authenticate(request: Request): Response | null {
   let difference = left.length ^ right.length;
   for (let index = 0; index < Math.max(left.length, right.length); index++)
     difference |= (left[index] ?? 0) ^ (right[index] ?? 0);
-  return difference === 0
-    ? null
-    : Response.json({ error: "unauthorized" }, { status: 401 });
+  if (
+    difference !== 0 ||
+    !(await isAccessServiceTokenFor(request.headers, audience))
+  )
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  return null;
 }
 
 async function responseFor(
@@ -49,13 +60,13 @@ async function responseFor(
 }
 
 export async function handleGet(request: Request): Promise<Response> {
-  const rejected = authenticate(request);
+  const rejected = await authenticate(request);
   if (rejected) return rejected;
   return responseFor(() => getSubscriptionLoopRequest(new URL(request.url)));
 }
 
 export async function handlePost(request: Request): Promise<Response> {
-  const rejected = authenticate(request);
+  const rejected = await authenticate(request);
   if (rejected) return rejected;
   if (
     (env as { SAM_LOOP_EXECUTOR?: string }).SAM_LOOP_EXECUTOR !== "subscription"

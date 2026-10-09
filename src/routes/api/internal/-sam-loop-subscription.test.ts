@@ -4,10 +4,14 @@ const mocks = vi.hoisted(() => ({
   env: {} as Record<string, string>,
   get: vi.fn(),
   post: vi.fn(),
+  machine: vi.fn<(headers: Headers, audience: string) => Promise<boolean>>(),
 }));
 vi.mock("cloudflare:workers", () => ({ env: mocks.env }));
 vi.mock("@/db", () => ({
   withPgClient: (operation: () => Promise<unknown>) => operation(),
+}));
+vi.mock("@/middleware/ensure-user/cloudflareAccess", () => ({
+  isAccessServiceTokenFor: mocks.machine,
 }));
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => () => ({}),
@@ -36,6 +40,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.env.AGENCY_SCORE_EXPORT_TOKEN = "fixture-internal-token";
   mocks.env.SAM_LOOP_EXECUTOR = "subscription";
+  mocks.env.SAM_LOOP_POLICY_AUD = "fixture-sam-loop-aud";
+  mocks.machine.mockResolvedValue(true);
 });
 describe("subscription loop authentication and contract", () => {
   it("rejects anonymous reports before touching a run", async () => {
@@ -56,6 +62,25 @@ describe("subscription loop authentication and contract", () => {
     ).toBe(503);
     expect(mocks.post).not.toHaveBeenCalled();
     expect(mocks.get).not.toHaveBeenCalled();
+  });
+  it("rejects a correct bearer without the Access machine login", async () => {
+    mocks.machine.mockResolvedValue(false);
+    expect(
+      (await handlePost(request({}, "fixture-internal-token"))).status,
+    ).toBe(401);
+    expect(mocks.machine).toHaveBeenCalledWith(
+      expect.any(Headers),
+      "fixture-sam-loop-aud",
+    );
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+  it("fails closed when the Access audience is not configured", async () => {
+    delete mocks.env.SAM_LOOP_POLICY_AUD;
+    expect(
+      (await handlePost(request({}, "fixture-internal-token"))).status,
+    ).toBe(503);
+    expect(mocks.machine).not.toHaveBeenCalled();
+    expect(mocks.post).not.toHaveBeenCalled();
   });
   it.each([
     ["anonymous", undefined, false, 401],

@@ -42,6 +42,7 @@ describe("triggerSamLoop", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete mockEnv.SAM_LOOP_DAILY_RUN_CAP;
+    delete mockEnv.SAM_LOOP_EXECUTOR;
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-31T15:00:00.000Z"));
     mocks.beginSamLoopRun.mockResolvedValue({ ok: true, runId: "run_1" });
@@ -80,6 +81,26 @@ describe("triggerSamLoop", () => {
     ).resolves.toEqual({ ok: false, reason: "disabled" });
     expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
     expect(mocks.claimDueLoop).not.toHaveBeenCalled();
+  });
+
+  it("leaves a due schedule alone in subscription mode", async () => {
+    mockEnv.SAM_LOOP_EXECUTOR = "subscription";
+    mocks.getLoopById.mockResolvedValue({
+      id: "loop_1",
+      projectId: "project_1",
+      isEnabled: true,
+      cadence: "weekly",
+      nextRunAt: "2026-01-01T00:00:00.000Z",
+    });
+    await expect(
+      triggerSamLoop({
+        projectId: "project_1",
+        loopId: "loop_1",
+        organizationId: "org_1",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "disabled" });
+    expect(mocks.claimDueLoop).not.toHaveBeenCalled();
+    expect(mocks.updateLoop).not.toHaveBeenCalled();
   });
 
   it("leaves a future nextRunAt untouched on manual trigger", async () => {
