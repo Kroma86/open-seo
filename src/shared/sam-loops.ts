@@ -1,5 +1,5 @@
 import type { InferSelectModel } from "drizzle-orm";
-import type { samLoops } from "@/db/app.schema";
+import type { samLoops } from "@/db/agency.schema";
 import { computeNextCheckAt } from "@/shared/rank-tracking";
 
 type SamLoopCadence = InferSelectModel<typeof samLoops>["cadence"];
