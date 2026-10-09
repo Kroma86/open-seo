@@ -3,7 +3,7 @@ import {
   DEFAULT_SAM_LOOP_TEMPLATES,
   DOGFOOD_SAM_LOOP_TRIGGER_CAP,
   SAM_LOOP_ALLOWED_DOMAINS,
-  SAM_LOOP_DAILY_RUN_CAP,
+  SAM_LOOP_DAILY_RUN_CAP_DEFAULT,
   SAM_LOOP_STEP_CAP,
   computeNextSamLoopRunAt,
   isSamLoopDomainAllowed,
@@ -153,7 +153,7 @@ describe("sam-loops shared helpers", () => {
     expect(isSamLoopDomainAllowed("example.com")).toBe(false);
     expect(isSamLoopDomainAllowed(null)).toBe(false);
     expect(startOfUtcDay(new Date("2026-09-01T23:59:59Z"))).toBe("2026-09-01");
-    expect(SAM_LOOP_DAILY_RUN_CAP).toBe(40);
+    expect(SAM_LOOP_DAILY_RUN_CAP_DEFAULT).toBe(40);
   });
 
   it("ORs the compiled house list with an explicit per-project loopsEnabled flag", () => {

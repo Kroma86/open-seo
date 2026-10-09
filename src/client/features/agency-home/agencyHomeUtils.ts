@@ -2,7 +2,7 @@ import type { AgencyHomePortfolioRow } from "@/server/features/agency/AgencyHome
 import type { AgencyHomePillTone } from "@/client/features/agency-home/AgencyHomeStatusPill";
 
 /** Stable hue for letter-tile avatars when favicon is unavailable. */
-export function hashDomainLabel(label: string): number {
+function hashDomainLabel(label: string): number {
   let hash = 0;
   for (let i = 0; i < label.length; i++) {
     hash = (hash * 31 + label.charCodeAt(i)) | 0;
@@ -19,7 +19,7 @@ export function domainLetterTile(
   return { letter, hue: hashDomainLabel(source.toLowerCase()) % 360 };
 }
 
-export type PortfolioRowStatus = { label: string; tone: AgencyHomePillTone };
+type PortfolioRowStatus = { label: string; tone: AgencyHomePillTone };
 
 /** Status pill derived only from portfolio row fields + optional running-mission flag. */
 export function portfolioRowStatus(
@@ -78,12 +78,12 @@ export function projectFaviconUrl(domain: string | null | undefined): string | n
 }
 
 /** sessionStorage key for Ask-Sam prefill (read by SamConversation). */
-export function samAskStorageKey(projectId: string): string {
+function samAskStorageKey(projectId: string): string {
   return `sam-loops-ask:${projectId}`;
 }
 
 /** sessionStorage key so Sam Loops can open with a run selected. */
-export function samLoopRunStorageKey(projectId: string): string {
+function samLoopRunStorageKey(projectId: string): string {
   return `sam-loops-select-run:${projectId}`;
 }
 

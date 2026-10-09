@@ -290,15 +290,6 @@ async function findProject(
   return rows.find((p) => domainsMatch(p.name, needle)) ?? null;
 }
 
-function rowHasSnapshotData(row: RankTrackingRow): boolean {
-  return (
-    row.desktop?.position != null ||
-    row.mobile?.position != null ||
-    row.desktop?.rankingUrl != null ||
-    row.mobile?.rankingUrl != null
-  );
-}
-
 function pushRankKeyword(
   keywords: NonNullable<AgencyScoreInputs["ranks"]>["keywords"],
   row: RankTrackingRow,

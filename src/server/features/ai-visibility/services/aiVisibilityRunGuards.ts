@@ -1,7 +1,6 @@
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import { reclaimStaleRunsForConfig } from "@/server/features/ai-visibility/services/aiVisibilityReconciler";
 import type {
-  AiVisibilityCheckTrigger,
   AiVisibilityCheckTriggerResult,
 } from "./AiVisibilityManagementService";
 
@@ -60,5 +59,3 @@ export async function beginAiVisibilityRun(input: {
     blockingRunId: blocker?.id ?? null,
   };
 }
-
-export type { AiVisibilityCheckTrigger };

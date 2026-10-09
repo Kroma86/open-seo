@@ -15,7 +15,7 @@ import {
 } from "@/client/features/audit/results/PageExplorerLogic";
 
 export type PageRow = AuditResultsData["pages"][number];
-export type IssueRow = AuditResultsData["issues"][number];
+type IssueRow = AuditResultsData["issues"][number];
 type PerformanceResultRow = AuditResultsData["lighthouse"][number];
 export type PerformanceRowData = PerformanceResultRow & {
   pageUrl: string | null;

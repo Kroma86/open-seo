@@ -89,7 +89,7 @@ async function verifyAccessTokenForAudience(
   }
 }
 
-export type CloudflareAccessMcpGate =
+type CloudflareAccessMcpGate =
   | { kind: "service_token" }
   // Verified identity ONLY — the workspace context (DB work) is resolved by
   // the caller inside its own client scope. Keeping DB out of this function

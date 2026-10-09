@@ -9,7 +9,7 @@ const KEY_PREFIX = "homegrown-otto:proposal:";
 const INDEX_KEY = "homegrown-otto:proposal-index";
 const MAX_INDEX = 500;
 
-export type HomegrownOttoProposal = {
+type HomegrownOttoProposal = {
   id: string;
   domain: string;
   projectId: string | null;

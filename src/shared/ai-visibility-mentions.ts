@@ -1,6 +1,6 @@
 import type { BrandLookupResult } from "@/types/schemas/ai-search";
 
-export type MentionsSum = {
+type MentionsSum = {
   total: number | null;
   partialMentions: boolean;
 };

@@ -4,7 +4,7 @@ const SOURCE_LABEL = "Hermes daily rank checks" as const;
 const MAX_OBSERVATIONS = 500;
 const STALE_AFTER_MS = 48 * 60 * 60 * 1000;
 
-export type ExternalRankObservationRow = {
+type ExternalRankObservationRow = {
   keyword: string;
   country: string;
   position: number | null;
@@ -14,7 +14,7 @@ export type ExternalRankObservationRow = {
   depth: null;
 };
 
-export type ExternalRankObservations = {
+type ExternalRankObservations = {
   source: typeof SOURCE_LABEL;
   status: "available" | "missing" | "invalid";
   updatedAt: string | null;

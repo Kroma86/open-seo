@@ -2,7 +2,7 @@ import type { InferSelectModel } from "drizzle-orm";
 import type { samLoops } from "@/db/app.schema";
 import { computeNextCheckAt } from "@/shared/rank-tracking";
 
-export type SamLoopCadence = InferSelectModel<typeof samLoops>["cadence"];
+type SamLoopCadence = InferSelectModel<typeof samLoops>["cadence"];
 
 /** Default loops seeded for every project (dogfood + clients). */
 export const DEFAULT_SAM_LOOP_TEMPLATES = [
@@ -110,9 +110,6 @@ export const SAM_LOOP_ALLOWED_DOMAINS = [
 
 /** Default ceiling on Sam loop runs created per UTC day (scheduled + manual). */
 export const SAM_LOOP_DAILY_RUN_CAP_DEFAULT = 40;
-
-/** Client-safe alias; server code should call getSamLoopDailyRunCap(env). */
-export const SAM_LOOP_DAILY_RUN_CAP = SAM_LOOP_DAILY_RUN_CAP_DEFAULT;
 
 export function isSamLoopDomainAllowed(
   domain: string | null | undefined,

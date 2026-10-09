@@ -1,4 +1,3 @@
-import type { BillingCustomerContext } from "@/server/billing/subscription";
 import { customerHasPaidPlan } from "@/server/billing/subscription";
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import { AppError } from "@/server/lib/errors";
@@ -7,7 +6,6 @@ import {
   computeNextRunAt,
   isScheduledAiVisibilityInterval,
   MAX_ACTIVE_PROMPTS_ERROR,
-  MAX_ACTIVE_PROMPTS_PER_CONFIG,
   parseCompetitorsJson,
   parsePlatformsJson,
 } from "@/shared/ai-visibility";

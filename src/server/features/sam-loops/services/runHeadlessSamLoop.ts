@@ -49,7 +49,7 @@ export type HeadlessSamLoopInput = {
   loopName: string;
 };
 
-export type HeadlessSamLoopResult = {
+type HeadlessSamLoopResult = {
   status: "completed" | "failed";
   error: string | null;
   report: string;

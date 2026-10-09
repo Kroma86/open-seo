@@ -1,6 +1,6 @@
 import { AgencyOpsArtifactsRepository } from "@/server/features/agency/repositories/AgencyOpsArtifactsRepository";
 
-export type MonthlyExportByDomainResult = {
+type MonthlyExportByDomainResult = {
   domain: string;
   month: string;
   sourceKey: string;
@@ -8,7 +8,7 @@ export type MonthlyExportByDomainResult = {
   export: unknown;
 };
 
-export type MonthlyExportByDomainInvalidResult = {
+type MonthlyExportByDomainInvalidResult = {
   domain: string;
   month: string;
   sourceKey: string;
@@ -17,14 +17,14 @@ export type MonthlyExportByDomainInvalidResult = {
   error: "content_invalid";
 };
 
-export type MonthlyExportIndexResult = {
+type MonthlyExportIndexResult = {
   month: string;
   sourceKey: string;
   receivedAt: string;
   index: unknown;
 };
 
-export type MonthlyExportIndexInvalidResult = {
+type MonthlyExportIndexInvalidResult = {
   month: string;
   sourceKey: string;
   receivedAt: string;

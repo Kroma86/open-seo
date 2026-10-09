@@ -8,7 +8,7 @@ export function normalizeOpsDomain(input: string): string {
     .split("?")[0];
 }
 
-export type AgencyPixelSlice = {
+type AgencyPixelSlice = {
   status: string | null;
   events_7d: number | null;
   as_of: string | null;

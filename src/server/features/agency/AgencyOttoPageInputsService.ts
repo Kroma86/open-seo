@@ -7,7 +7,7 @@ import { db } from "@/db";
 import { auditPages, projects } from "@/db/schema";
 import { AuditRepository } from "@/server/features/audit/repositories/AuditRepository";
 
-export type AgencyOttoPage = {
+type AgencyOttoPage = {
   url: string;
   path: string;
   httpStatus: number | null;
@@ -24,7 +24,7 @@ export type AgencyOttoPage = {
   checksFlagged: string[];
 };
 
-export type AgencyOttoPageInputs = {
+type AgencyOttoPageInputs = {
   domain: string;
   projectId: string | null;
   projectName: string | null;

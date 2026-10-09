@@ -1,7 +1,7 @@
 import { computeNextCheckAt } from "@/shared/rank-tracking";
 import type { PromptExplorerModel } from "@/types/schemas/ai-search";
 
-export type AiVisibilityScheduleInterval = "weekly" | "monthly" | "manual";
+type AiVisibilityScheduleInterval = "weekly" | "monthly" | "manual";
 
 export const MAX_ACTIVE_PROMPTS_PER_CONFIG = 10;
 
@@ -14,7 +14,7 @@ export const AI_VISIBILITY_PLATFORMS = [
   "perplexity",
 ] as const;
 
-export type AiVisibilityPlatform = (typeof AI_VISIBILITY_PLATFORMS)[number];
+type AiVisibilityPlatform = (typeof AI_VISIBILITY_PLATFORMS)[number];
 
 // Set<string> so .has() accepts any platform value; the filter's type guard
 // still narrows matches to PromptExplorerModel.

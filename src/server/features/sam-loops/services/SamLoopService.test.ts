@@ -62,7 +62,6 @@ import * as rankTracking from "@/shared/rank-tracking";
 import {
   DEFAULT_SAM_LOOP_TEMPLATES,
   DOGFOOD_SAM_LOOP_TRIGGER_CAP,
-  SAM_LOOP_DAILY_RUN_CAP,
   SAM_LOOP_DAILY_RUN_CAP_DEFAULT,
   computeNextSamLoopRunAt,
 } from "@/shared/sam-loops";
@@ -679,7 +678,7 @@ describe("triggerSamLoopsForDomain", () => {
   });
 
   it("returns daily_cap when today's run count is at the cap", async () => {
-    mocks.countRunsCreatedSince.mockResolvedValue(SAM_LOOP_DAILY_RUN_CAP);
+    mocks.countRunsCreatedSince.mockResolvedValue(SAM_LOOP_DAILY_RUN_CAP_DEFAULT);
     await expect(
       triggerSamLoopsForDomain({ domain: "niceseo.ai" }),
     ).resolves.toEqual({ ok: false, reason: "daily_cap" });
@@ -688,7 +687,7 @@ describe("triggerSamLoopsForDomain", () => {
   });
 
   it("caps started loops to remaining daily budget", async () => {
-    mocks.countRunsCreatedSince.mockResolvedValue(SAM_LOOP_DAILY_RUN_CAP - 1);
+    mocks.countRunsCreatedSince.mockResolvedValue(SAM_LOOP_DAILY_RUN_CAP_DEFAULT - 1);
     const result = await triggerSamLoopsForDomain({ domain: "niceseo.ai" });
     expect(result.ok).toBe(true);
     if (!result.ok) return;

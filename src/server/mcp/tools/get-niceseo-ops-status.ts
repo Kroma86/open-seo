@@ -9,12 +9,6 @@ import {
 } from "@/server/mcp/tools/agency-metrics-pixel";
 import { z } from "zod";
 
-export {
-  fetchAgencyPixelStatus,
-  normalizeOpsDomain,
-  pickPixelFromAgencyMetrics,
-} from "@/server/mcp/tools/agency-metrics-pixel";
-
 export const getNiceseoOpsStatusTool = {
   name: "get_niceseo_ops_status",
   config: {

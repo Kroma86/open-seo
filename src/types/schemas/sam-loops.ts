@@ -1,10 +1,8 @@
 import { z } from "zod";
 import type { InferSelectModel } from "drizzle-orm";
-import type { samLoopRuns } from "@/db/app.schema";
 import { samLoops } from "@/db/app.schema";
 
-export type SamLoop = InferSelectModel<typeof samLoops>;
-export type SamLoopRun = InferSelectModel<typeof samLoopRuns>;
+type SamLoop = InferSelectModel<typeof samLoops>;
 
 export type SamLoopTriggerResult =
   | { ok: true; runId: string }
@@ -57,23 +55,12 @@ export const updateSamLoopSchema = z.object({
   customPrompt: z.string().trim().min(1).max(20_000).optional(),
 });
 
-export const getSamLoopRunsSchema = z.object({
-  projectId: z.string().uuid(),
-  loopId: z.string().uuid().optional(),
-  limit: z.number().int().min(1).max(100).optional(),
-});
-
 export const triggerSamLoopSchema = z.object({
   projectId: z.string().uuid(),
   loopId: z.string().uuid(),
 });
 
-export const getSamLoopRunSchema = z.object({
-  projectId: z.string().uuid(),
-  runId: z.string().uuid(),
-});
-
-export type ContentVelocityMonthCounts = Record<string, number>;
+type ContentVelocityMonthCounts = Record<string, number>;
 
 export type ContentVelocityLoop = {
   loopId: string;

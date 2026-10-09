@@ -109,7 +109,7 @@ export async function getContentVelocity(
   };
 }
 
-export async function listAvailableSamLoopSkills() {
+async function listAvailableSamLoopSkills() {
   const skills = await buildSamSkillSource().list();
   return skills;
 }
@@ -338,19 +338,19 @@ export async function seedDefaultSamLoopsForProject(projectId: string) {
 }
 
 /** Resolve org id for a project (manual trigger / billing context). */
-export async function getOrganizationIdForProject(projectId: string) {
+async function getOrganizationIdForProject(projectId: string) {
   const project = await ProjectRepository.getProjectById(projectId);
   return project?.organizationId ?? null;
 }
 
-export type DomainLoopTriggerRow = {
+type DomainLoopTriggerRow = {
   loopId: string;
   loopName: string;
   skillName: string | null;
   result: SamLoopTriggerResult;
 };
 
-export type DomainLoopTriggerResult =
+type DomainLoopTriggerResult =
   | { ok: false; reason: "project_not_found" | "domain_not_allowed" | "daily_cap" }
   | {
       ok: false;

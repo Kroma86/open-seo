@@ -1,20 +1,20 @@
 import { z } from "zod";
 
-export type AuditReadinessAudit = {
+type AuditReadinessAudit = {
   id: string;
   status: string;
   startedAt: string | null;
   completedAt: string | null;
 };
 
-export type AuditReadinessPage = {
+type AuditReadinessPage = {
   url: string;
   statusCode: number | null;
   fetchClass: string;
   wordCount: number;
 };
 
-export type AuditReadinessResult =
+type AuditReadinessResult =
   | { ready: true; measuredAt: string; usablePages: number }
   | { ready: false; reason: string };
 
