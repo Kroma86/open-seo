@@ -1,9 +1,7 @@
 import { asSchema } from "ai";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
-import { MCP_SCOPE } from "@/lib/oauth-resource";
 import { SamLoopRepository } from "../repositories/SamLoopRepository";
-import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import {
   computeNextSamLoopRunAt,
   isSamLoopProjectAllowed,
@@ -11,7 +9,8 @@ import {
   startOfUtcDay,
 } from "@/shared/sam-loops";
 import { getSamLoopDailyRunCap } from "./samLoopRunGuards";
-import { prepareSamLoop, type PreparedSamLoop } from "./runHeadlessSamLoop";
+import type { PreparedSamLoop } from "./runHeadlessSamLoop";
+import { prepareSubscriptionLoop as prepare } from "./subscriptionPreparation";
 import {
   subscriptionTurnSchema,
   validateSubscriptionFinal,
@@ -26,73 +25,9 @@ import {
 } from "./subscriptionReceipt";
 export { SubscriptionLoopError } from "./subscriptionReceipt";
 import { countProposalsQueued } from "./countProposalsQueued";
+import type { SubscriptionHouseScope } from "@/db/samLoopSubscriptionWrites";
 
-const FREE_TOOLS = new Set([
-  "map_links",
-  "read_pages",
-  "whoami",
-  "get_product_info",
-  "list_saved_keywords",
-  "get_niceseo_ops_status",
-  "get_agency_score_inputs",
-  "get_agency_otto_page_inputs",
-  "list_homegrown_otto_proposals",
-  "get_audit_status",
-  "get_audit_issues",
-  "get_audit_pages",
-  "get_rank_tracker",
-  "estimate_rank_tracker_cost",
-  "get_search_console_performance",
-  "inspect_urls",
-  "get_google_analytics_organic_landing_pages",
-  "get_google_analytics_page_performance",
-  "get_google_analytics_key_events",
-  "get_search_opportunities",
-  "get_google_analytics_organic_overview",
-  "get_google_analytics_traffic_acquisition",
-  "get_google_analytics_measurement_health",
-  "get_google_analytics_ecommerce_performance",
-  "get_google_analytics_site_search",
-  "get_google_analytics_audience_breakdown",
-  "list_sam_loops",
-  "get_sam_loop_runs",
-  "get_ai_visibility_trend",
-  "propose_homegrown_otto_fixes",
-]);
 const DEADLINE_MS = 15 * 60_000;
-
-async function prepare(projectId: string, loopId: string, baseUrl: string) {
-  const project = await ProjectRepository.getProjectById(projectId);
-  const loop = await SamLoopRepository.getLoopById(loopId, projectId);
-  if (
-    !project ||
-    project.archivedAt ||
-    !loop?.isEnabled ||
-    !isSamLoopProjectAllowed(project)
-  )
-    throw new SubscriptionLoopError("loop_not_permitted", 403);
-  const prepared = await prepareSamLoop({
-    project,
-    sourceType: loop.sourceType,
-    skillName: loop.skillName,
-    customPrompt: loop.customPrompt,
-    loopName: loop.name,
-    authContext: {
-      userId: "system",
-      userEmail: "system@openseo.so",
-      organizationId: project.organizationId,
-      clientId: null,
-      scopes: [MCP_SCOPE],
-      baseUrl,
-    },
-  });
-  if (!("tools" in prepared))
-    throw new SubscriptionLoopError("loop_not_ready", 409);
-  prepared.tools = Object.fromEntries(
-    Object.entries(prepared.tools).filter(([name]) => FREE_TOOLS.has(name)),
-  );
-  return { project, loop, prepared };
-}
 
 export async function buildSubscriptionPrompt(prepared: PreparedSamLoop) {
   return {
@@ -120,8 +55,17 @@ export async function getSubscriptionLoopRequest(url: URL) {
       !z.string().uuid().safeParse(loopId).success
     )
       throw new SubscriptionLoopError("invalid_identity", 400);
-    const { prepared, loop } = await prepare(projectId!, loopId!, url.origin);
+    const house = url.searchParams.get("houseOnly");
+    if (house !== null && house !== "true")
+      throw new SubscriptionLoopError("invalid_house_scope", 400);
+    const { prepared, loop } = await prepare(
+      projectId!,
+      loopId!,
+      url.origin,
+      house === "true",
+    );
     return {
+      ...(house === "true" ? { houseOnly: true } : {}),
       loop: {
         id: loop.id,
         projectId: loop.projectId,
@@ -157,7 +101,26 @@ export async function postSubscriptionLoopRequest(input: SubscriptionRequest) {
     input.projectId,
     input.loopId,
     baseUrl,
+    input.houseOnly === true,
   );
+  const houseScope: SubscriptionHouseScope | undefined = input.houseOnly
+    ? { projectId: loop.projectId, loopId: loop.id, domain: "niceseo.ai" }
+    : undefined;
+  const updateScopedRun = (
+    ...arguments_: Parameters<
+      typeof SamLoopRepository.compareAndSwapSubscriptionRun
+    >
+  ) => {
+    if (houseScope)
+      return SamLoopRepository.compareAndSwapSubscriptionRun(
+        arguments_[0],
+        arguments_[1],
+        arguments_[2],
+        arguments_[3],
+        houseScope,
+      );
+    return SamLoopRepository.compareAndSwapSubscriptionRun(...arguments_);
+  };
   if (input.action === "claim")
     return claimSubscriptionLoop(input, { project, loop, prepared });
   const run = await SamLoopRepository.getRunById(input.runId);
@@ -170,6 +133,8 @@ export async function postSubscriptionLoopRequest(input: SubscriptionRequest) {
   )
     throw new SubscriptionLoopError("run_not_active");
   const receipt = await readReceipt(input.receipt);
+  if (receipt.houseOnly !== input.houseOnly)
+    throw new SubscriptionLoopError("house_scope_changed");
   if (
     receipt.runId !== run.id ||
     receipt.projectId !== loop.projectId ||
@@ -188,7 +153,7 @@ export async function postSubscriptionLoopRequest(input: SubscriptionRequest) {
     );
     const finishedAt = new Date().toISOString();
     if (
-      !(await SamLoopRepository.compareAndSwapSubscriptionRun(
+      !(await updateScopedRun(
         run.id,
         run.costNote,
         {
@@ -216,11 +181,10 @@ export async function postSubscriptionLoopRequest(input: SubscriptionRequest) {
     .parse(JSON.parse(wireJson(validated.value)));
   const pending = `subscription:pending:${input.tool}:${crypto.randomUUID()}`;
   if (
-    !(await SamLoopRepository.compareAndSwapSubscriptionRun(
-      run.id,
-      run.costNote,
-      { costNote: pending, stepsUsed: input.step },
-    ))
+    !(await updateScopedRun(run.id, run.costNote, {
+      costNote: pending,
+      stepsUsed: input.step,
+    }))
   )
     throw new SubscriptionLoopError("state_changed");
   const output: unknown = await tool.execute(structuredClone(scopedInput), {
@@ -262,7 +226,7 @@ export async function postSubscriptionLoopRequest(input: SubscriptionRequest) {
     throw new SubscriptionLoopError("tool_outcome_unknown");
   }
   if (
-    !(await SamLoopRepository.compareAndSwapSubscriptionRun(run.id, pending, {
+    !(await updateScopedRun(run.id, pending, {
       costNote: await receiptState(nextReceipt),
       proposalsQueued,
     }))
@@ -363,6 +327,7 @@ async function claimSubscriptionLoop(
     startedAt: now,
     scheduledFor: input.scheduledFor,
     steps: [],
+    ...(input.houseOnly ? { houseOnly: true as const } : {}),
   });
   const wire = await buildSubscriptionPrompt(prepared);
   const admitted = await SamLoopRepository.claimSubscriptionRun(
@@ -385,6 +350,7 @@ async function claimSubscriptionLoop(
   );
   if (!admitted) throw new SubscriptionLoopError("admission_refused");
   return {
+    ...(input.houseOnly ? { houseOnly: true } : {}),
     runId,
     receipt,
     loop: {

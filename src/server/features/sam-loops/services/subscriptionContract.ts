@@ -28,10 +28,12 @@ export const subscriptionTurnSchema = z.discriminatedUnion("kind", [
 ]);
 
 const identity = { projectId: z.string().uuid(), loopId: z.string().uuid() };
+const houseOnly = z.literal(true).optional();
 export const subscriptionRequestSchema = z.discriminatedUnion("action", [
   z
     .object({
       action: z.literal("claim"),
+      houseOnly,
       ...identity,
       scheduledFor: z.iso.datetime(),
       model: z.enum(["grok-4.7", "grok-4.7-build-fast"]),
@@ -40,6 +42,7 @@ export const subscriptionRequestSchema = z.discriminatedUnion("action", [
   z
     .object({
       action: z.literal("tool"),
+      houseOnly,
       ...identity,
       runId: z.string().uuid(),
       receipt: z.string().max(1_000_000),
@@ -51,6 +54,7 @@ export const subscriptionRequestSchema = z.discriminatedUnion("action", [
   z
     .object({
       action: z.literal("complete"),
+      houseOnly,
       ...identity,
       runId: z.string().uuid(),
       receipt: z.string().max(1_000_000),
