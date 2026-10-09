@@ -26,8 +26,9 @@ function extractBearer(request: Request): string | null {
 
 function assertAgencyToken(request: Request): Response | null {
   // Reusing AGENCY_SCORE_EXPORT_TOKEN is deliberate (one internal-export credential; spec forbade a new token).
-  const expected = (env as { AGENCY_SCORE_EXPORT_TOKEN?: string })
-    .AGENCY_SCORE_EXPORT_TOKEN?.trim();
+  const expected = (
+    env as { AGENCY_SCORE_EXPORT_TOKEN?: string }
+  ).AGENCY_SCORE_EXPORT_TOKEN?.trim();
   if (!expected) {
     return Response.json(
       { error: "agency_score_export_disabled" },
@@ -36,7 +37,10 @@ function assertAgencyToken(request: Request): Response | null {
   }
   const token = extractBearer(request);
   if (!token || !timingSafeEqual(token, expected)) {
-    return Response.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE });
+    return Response.json(
+      { error: "unauthorized" },
+      { status: 401, headers: NO_STORE },
+    );
   }
   return null;
 }
@@ -96,9 +100,13 @@ export async function handleGet(request: Request): Promise<Response> {
   const organizationId = resolveOrganizationId();
   if (organizationId === null) return unsupportedAuthMode();
 
-  const projectId = new URL(request.url).searchParams.get("projectId")?.trim() ?? "";
+  const projectId =
+    new URL(request.url).searchParams.get("projectId")?.trim() ?? "";
   if (!projectId) {
-    return Response.json({ error: "invalid_query" }, { status: 400, headers: NO_STORE });
+    return Response.json(
+      { error: "invalid_query" },
+      { status: 400, headers: NO_STORE },
+    );
   }
 
   const owned = await findOwnedProject(organizationId, projectId);
@@ -123,15 +131,24 @@ export async function handlePost(request: Request): Promise<Response> {
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "invalid_json" }, { status: 400, headers: NO_STORE });
+    return Response.json(
+      { error: "invalid_json" },
+      { status: 400, headers: NO_STORE },
+    );
   }
   if (!body || typeof body !== "object") {
-    return Response.json({ error: "invalid_body" }, { status: 400, headers: NO_STORE });
+    return Response.json(
+      { error: "invalid_body" },
+      { status: 400, headers: NO_STORE },
+    );
   }
 
   const parsed = setLoopsEnabledSchema.safeParse(body);
   if (!parsed.success) {
-    return Response.json({ error: "invalid_body" }, { status: 400, headers: NO_STORE });
+    return Response.json(
+      { error: "invalid_body" },
+      { status: 400, headers: NO_STORE },
+    );
   }
 
   const owned = await findOwnedProject(organizationId, parsed.data.projectId);

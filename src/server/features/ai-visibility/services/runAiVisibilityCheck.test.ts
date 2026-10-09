@@ -92,9 +92,7 @@ describe("runAiVisibilityCheck", () => {
       resolvedTarget: "acme.com",
       fetchedAt: new Date().toISOString(),
       hasData: true,
-      perPlatform: [
-        { platform: "google", mentions: 5, impressions: null },
-      ],
+      perPlatform: [{ platform: "google", mentions: 5, impressions: null }],
       topPages: [],
       shareOfVoice: null,
     });

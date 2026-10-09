@@ -1,7 +1,5 @@
 import { z } from "zod";
-import {
-  AI_VISIBILITY_PLATFORMS,
-} from "@/shared/ai-visibility";
+import { AI_VISIBILITY_PLATFORMS } from "@/shared/ai-visibility";
 import { BRAND_LOOKUP_MAX_INPUT_LENGTH } from "@/types/schemas/ai-search";
 
 const scheduleIntervalSchema = z.enum(["weekly", "monthly", "manual"]);

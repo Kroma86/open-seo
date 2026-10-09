@@ -267,9 +267,10 @@ describe("filterLoopTools", () => {
               (caps.gbp || !GBP_TOOLS.includes(n)),
           )
           .toSorted();
-        expect(Object.keys(scoped).toSorted(), `${t.name} scoped tool set`).toEqual(
-          expected,
-        );
+        expect(
+          Object.keys(scoped).toSorted(),
+          `${t.name} scoped tool set`,
+        ).toEqual(expected);
       }
     });
   });

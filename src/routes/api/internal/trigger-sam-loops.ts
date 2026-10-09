@@ -20,8 +20,9 @@ function extractBearer(request: Request): string | null {
 }
 
 function assertAgencyToken(request: Request): Response | null {
-  const expected = (env as { AGENCY_SCORE_EXPORT_TOKEN?: string })
-    .AGENCY_SCORE_EXPORT_TOKEN?.trim();
+  const expected = (
+    env as { AGENCY_SCORE_EXPORT_TOKEN?: string }
+  ).AGENCY_SCORE_EXPORT_TOKEN?.trim();
   if (!expected) {
     return Response.json(
       { error: "agency_score_export_disabled" },
@@ -91,7 +92,8 @@ export async function handlePost(request: Request): Promise<Response> {
     );
   }
 
-  const names = readNames(record.names) ?? readNames(url.searchParams.get("names"));
+  const names =
+    readNames(record.names) ?? readNames(url.searchParams.get("names"));
 
   const result = await SamLoopService.triggerSamLoopsForDomain({
     domain,

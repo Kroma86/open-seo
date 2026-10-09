@@ -27,7 +27,10 @@ import type {
 import type { z } from "zod";
 
 function publicRun<T extends { report: string | null }>(run: T): T {
-  return { ...run, report: run.report === null ? null : stripDraftEvidence(run.report) };
+  return {
+    ...run,
+    report: run.report === null ? null : stripDraftEvidence(run.report),
+  };
 }
 
 /** Pure list — defaults are seeded on project create, not on every read. */
@@ -76,17 +79,17 @@ export async function getContentVelocity(
         throw new Error("unknown cadence: " + loop.cadence);
       }
       return [
-      loop.id,
-      {
-        loopId: loop.id,
-        loopName: loop.name,
-        cadence: loop.cadence,
-        isEnabled: loop.isEnabled,
-        expectedPerMonth: expectedSamLoopDraftsPerMonth(loop.cadence),
-        drafted: emptyMonthCounts(months),
-        completedWithoutDraft: emptyMonthCounts(months),
-      },
-    ];
+        loop.id,
+        {
+          loopId: loop.id,
+          loopName: loop.name,
+          cadence: loop.cadence,
+          isEnabled: loop.isEnabled,
+          expectedPerMonth: expectedSamLoopDraftsPerMonth(loop.cadence),
+          drafted: emptyMonthCounts(months),
+          completedWithoutDraft: emptyMonthCounts(months),
+        },
+      ];
     }),
   );
 
@@ -130,7 +133,10 @@ export async function createSamLoop(
   if (input.sourceType === "skill" && input.skillName) {
     const skill = await buildSamSkillSource().load(input.skillName);
     if (!skill) {
-      throw new AppError("VALIDATION_ERROR", `Unknown skill: ${input.skillName}`);
+      throw new AppError(
+        "VALIDATION_ERROR",
+        `Unknown skill: ${input.skillName}`,
+      );
     }
   }
 
@@ -297,8 +303,7 @@ export async function triggerSamLoop(input: {
   const nextRunMs = loop.nextRunAt
     ? new Date(loop.nextRunAt).getTime()
     : Number.NaN;
-  const nextRunIsFuture =
-    Number.isFinite(nextRunMs) && nextRunMs > Date.now();
+  const nextRunIsFuture = Number.isFinite(nextRunMs) && nextRunMs > Date.now();
 
   if (!nextRunIsFuture) {
     // CAS only when we have a parsable observed nextRunAt. A corrupt value
@@ -351,7 +356,10 @@ type DomainLoopTriggerRow = {
 };
 
 type DomainLoopTriggerResult =
-  | { ok: false; reason: "project_not_found" | "domain_not_allowed" | "daily_cap" }
+  | {
+      ok: false;
+      reason: "project_not_found" | "domain_not_allowed" | "daily_cap";
+    }
   | {
       ok: false;
       reason: "ambiguous_project_domain";
@@ -420,9 +428,8 @@ export async function triggerSamLoopsForDomain(input: {
   }
 
   const dailyRunCap = getSamLoopDailyRunCap(env);
-  const runsToday = await SamLoopRepository.countRunsCreatedSince(
-    startOfUtcDay(),
-  );
+  const runsToday =
+    await SamLoopRepository.countRunsCreatedSince(startOfUtcDay());
   if (runsToday >= dailyRunCap) {
     return { ok: false, reason: "daily_cap" };
   }

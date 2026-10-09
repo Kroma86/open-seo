@@ -1,4 +1,16 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
 import { getDatabaseProvider } from "@/db/provider";
@@ -120,11 +132,14 @@ async function claimDueLoop(input: {
   return claimed.length > 0;
 }
 
-async function tryCreateRun(data: {
-  id: string;
-  loopId: string;
-  projectId: string;
-}, admission?: { sinceDate: string; cap: number }): Promise<boolean> {
+async function tryCreateRun(
+  data: {
+    id: string;
+    loopId: string;
+    projectId: string;
+  },
+  admission?: { sinceDate: string; cap: number },
+): Promise<boolean> {
   // Count and insert are one SQLite statement, so parallel D1 invocations
   // cannot both claim the last slot. Postgres needs a transaction lock because
   // its concurrent statement snapshots do not serialize the count by itself.
@@ -248,7 +263,12 @@ async function getContentVelocityForProject(
         or(
           and(
             eq(samLoops.sourceType, "custom"),
-            eq(samLoops.customPrompt, DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content")!.customPrompt),
+            eq(
+              samLoops.customPrompt,
+              DEFAULT_SAM_LOOP_TEMPLATES.find(
+                (template) => template.name === "Monthly content",
+              )!.customPrompt,
+            ),
           ),
           eq(samLoops.name, "Monthly content"),
           inArray(samLoops.skillName, [...CONTENT_LOOP_SKILL_NAMES]),
@@ -256,14 +276,16 @@ async function getContentVelocityForProject(
       ),
     );
 
-  return Promise.all(rows.map(async (row) => ({
-    loopId: row.loopId,
-    loopName: row.loopName,
-    cadence: row.cadence,
-    isEnabled: row.isEnabled,
-    finishedAt: row.finishedAt!,
-    hasDraft: await hasVerifiedMonthlyDraft(row.report),
-  })));
+  return Promise.all(
+    rows.map(async (row) => ({
+      loopId: row.loopId,
+      loopName: row.loopName,
+      cadence: row.cadence,
+      isEnabled: row.isEnabled,
+      finishedAt: row.finishedAt!,
+      hasDraft: await hasVerifiedMonthlyDraft(row.report),
+    })),
+  );
 }
 
 /**
@@ -300,8 +322,7 @@ async function ensureDefaultLoops(projectId: string) {
         projectId,
         name: template.name,
         sourceType: template.sourceType,
-        skillName:
-          template.sourceType === "skill" ? template.skillName : null,
+        skillName: template.sourceType === "skill" ? template.skillName : null,
         customPrompt:
           template.sourceType === "custom" ? template.customPrompt : null,
         cadence: template.cadence,

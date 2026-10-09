@@ -216,9 +216,9 @@ describe("AiVisibilityRepository queries", () => {
     ]);
     const outcomes = [raceFirst, raceSecond];
     expect(outcomes.filter((row) => row.ok)).toHaveLength(1);
-    expect(outcomes.filter((row) => !row.ok && row.reason === "cap")).toHaveLength(
-      1,
-    );
+    expect(
+      outcomes.filter((row) => !row.ok && row.reason === "cap"),
+    ).toHaveLength(1);
     expect(
       await AiVisibilityRepository.countActivePromptsForConfig("config_1"),
     ).toBe(10);
@@ -239,9 +239,8 @@ describe("AiVisibilityRepository queries", () => {
       args: [staleStarted, staleStarted],
     });
 
-    const { reclaimStaleRunsForConfig } = await import(
-      "../services/aiVisibilityReconciler"
-    );
+    const { reclaimStaleRunsForConfig } =
+      await import("../services/aiVisibilityReconciler");
     await reclaimStaleRunsForConfig("config_1");
 
     const created = await AiVisibilityRepository.tryCreateRun({
@@ -268,9 +267,8 @@ describe("AiVisibilityRepository queries", () => {
       args: [recentStarted, recentStarted],
     });
 
-    const { reclaimStaleRunsForConfig } = await import(
-      "../services/aiVisibilityReconciler"
-    );
+    const { reclaimStaleRunsForConfig } =
+      await import("../services/aiVisibilityReconciler");
     await reclaimStaleRunsForConfig("config_1");
 
     const created = await AiVisibilityRepository.tryCreateRun({
@@ -297,9 +295,8 @@ describe("AiVisibilityRepository queries", () => {
       args: [staleStarted, staleStarted],
     });
 
-    const { reconcileStaleAiVisibilityRuns } = await import(
-      "../services/aiVisibilityReconciler"
-    );
+    const { reconcileStaleAiVisibilityRuns } =
+      await import("../services/aiVisibilityReconciler");
     await reconcileStaleAiVisibilityRuns();
 
     const row = await client.execute({

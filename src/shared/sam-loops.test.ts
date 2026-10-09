@@ -28,11 +28,13 @@ describe("sam-loops shared helpers", () => {
     expect(SAM_LOOP_STEP_CAP).toBe(24);
     expect(DEFAULT_SAM_LOOP_TEMPLATES).toHaveLength(13);
     expect(DOGFOOD_SAM_LOOP_TRIGGER_CAP).toBe(13);
-    expect(DOGFOOD_SAM_LOOP_TRIGGER_CAP).toBe(DEFAULT_SAM_LOOP_TEMPLATES.length);
+    expect(DOGFOOD_SAM_LOOP_TRIGGER_CAP).toBe(
+      DEFAULT_SAM_LOOP_TEMPLATES.length,
+    );
     expect(
-      DEFAULT_SAM_LOOP_TEMPLATES.filter(
-        (t) => t.sourceType === "skill",
-      ).map((t) => t.skillName),
+      DEFAULT_SAM_LOOP_TEMPLATES.filter((t) => t.sourceType === "skill").map(
+        (t) => t.skillName,
+      ),
     ).toEqual([
       "site-health",
       "rank-slippage",
@@ -109,18 +111,18 @@ describe("sam-loops shared helpers", () => {
   });
 
   it("advances daily/weekly from the previous anchor without drift", () => {
-    expect(
-      computeNextSamLoopRunAt("daily", "2026-03-14T05:30:00.000Z"),
-    ).toBe("2026-03-16T05:30:00.000Z");
-    expect(
-      computeNextSamLoopRunAt("weekly", "2026-03-08T05:30:00.000Z"),
-    ).toBe("2026-03-22T05:30:00.000Z");
+    expect(computeNextSamLoopRunAt("daily", "2026-03-14T05:30:00.000Z")).toBe(
+      "2026-03-16T05:30:00.000Z",
+    );
+    expect(computeNextSamLoopRunAt("weekly", "2026-03-08T05:30:00.000Z")).toBe(
+      "2026-03-22T05:30:00.000Z",
+    );
   });
 
   it("advances monthly to a later end-of-month after the anchor", () => {
-    expect(
-      computeNextSamLoopRunAt("monthly", "2026-02-28T05:30:00.000Z"),
-    ).toBe("2026-03-31T05:30:00.000Z");
+    expect(computeNextSamLoopRunAt("monthly", "2026-02-28T05:30:00.000Z")).toBe(
+      "2026-03-31T05:30:00.000Z",
+    );
   });
 
   it("clamps to now+interval when the computed next time is in the past", () => {
@@ -129,9 +131,9 @@ describe("sam-loops shared helpers", () => {
       .mockReturnValueOnce("2020-01-01T00:00:00.000Z")
       .mockReturnValueOnce(fromNow);
 
-    expect(
-      computeNextSamLoopRunAt("daily", "2019-12-31T00:00:00.000Z"),
-    ).toBe(fromNow);
+    expect(computeNextSamLoopRunAt("daily", "2019-12-31T00:00:00.000Z")).toBe(
+      fromNow,
+    );
 
     expect(rankTracking.computeNextCheckAt).toHaveBeenCalledTimes(2);
     expect(rankTracking.computeNextCheckAt).toHaveBeenNthCalledWith(
@@ -167,21 +169,21 @@ describe("sam-loops shared helpers", () => {
       isSamLoopProjectAllowed({ domain: "example.com", loopsEnabled: false }),
     ).toBe(false);
     expect(isSamLoopProjectAllowed({ domain: "example.com" })).toBe(false);
-    expect(
-      isSamLoopProjectAllowed({ domain: null, loopsEnabled: true }),
-    ).toBe(false);
-    expect(
-      isSamLoopProjectAllowed({ domain: null, loopsEnabled: false }),
-    ).toBe(false);
+    expect(isSamLoopProjectAllowed({ domain: null, loopsEnabled: true })).toBe(
+      false,
+    );
+    expect(isSamLoopProjectAllowed({ domain: null, loopsEnabled: false })).toBe(
+      false,
+    );
     expect(
       isSamLoopProjectAllowed({ domain: undefined, loopsEnabled: true }),
     ).toBe(false);
-    expect(
-      isSamLoopProjectAllowed({ domain: "", loopsEnabled: true }),
-    ).toBe(false);
-    expect(
-      isSamLoopProjectAllowed({ domain: "   ", loopsEnabled: true }),
-    ).toBe(false);
+    expect(isSamLoopProjectAllowed({ domain: "", loopsEnabled: true })).toBe(
+      false,
+    );
+    expect(isSamLoopProjectAllowed({ domain: "   ", loopsEnabled: true })).toBe(
+      false,
+    );
   });
 
   it("samLoopSpreadOffsetDays is deterministic and bounded per cadence", () => {
@@ -209,8 +211,8 @@ describe("sam-loops shared helpers", () => {
 
   it("samLoopSpreadOffsetDays varies across loop names for one project", () => {
     const offsets = new Set(
-      DEFAULT_SAM_LOOP_TEMPLATES.filter((t) => t.cadence !== "daily").map(
-        (t) => samLoopSpreadOffsetDays(`project_1:${t.name}`, t.cadence),
+      DEFAULT_SAM_LOOP_TEMPLATES.filter((t) => t.cadence !== "daily").map((t) =>
+        samLoopSpreadOffsetDays(`project_1:${t.name}`, t.cadence),
       ),
     );
     // Not a strict spread proof — just that one project's loops don't all
@@ -357,9 +359,9 @@ describe("sam-loops shared helpers", () => {
 
   it("computeNextSamLoopRunAt throws on an unparseable anchor instead of treating it as none", () => {
     const seed = "project_1:Site health";
-    expect(() =>
-      computeNextSamLoopRunAt("weekly", "not-a-date", seed),
-    ).toThrow(/unparseable anchor/);
+    expect(() => computeNextSamLoopRunAt("weekly", "not-a-date", seed)).toThrow(
+      /unparseable anchor/,
+    );
     expect(() =>
       computeNextSamLoopRunAt("monthly", "not-a-date", seed),
     ).toThrow(/unparseable anchor/);

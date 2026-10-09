@@ -99,10 +99,14 @@ describe("listHomegrownOttoProposals", () => {
       base({ id: "b", status: "pulled", domain: "one.ca" }),
       base({ id: "c", status: "pending", domain: "two.ca" }),
     ]);
-    expect((await listHomegrownOttoProposals({ status: "pulled" })).map((r) => r.id))
-      .toEqual(["b"]);
-    expect((await listHomegrownOttoProposals({ domain: "https://www.two.ca/x" })).map((r) => r.id))
-      .toEqual(["c"]);
+    expect(
+      (await listHomegrownOttoProposals({ status: "pulled" })).map((r) => r.id),
+    ).toEqual(["b"]);
+    expect(
+      (
+        await listHomegrownOttoProposals({ domain: "https://www.two.ca/x" })
+      ).map((r) => r.id),
+    ).toEqual(["c"]);
   });
 });
 

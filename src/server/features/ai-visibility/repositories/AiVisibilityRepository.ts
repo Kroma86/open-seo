@@ -68,7 +68,9 @@ async function getConfigByProjectBrand(projectId: string, brand: string) {
   return rows[0] ?? null;
 }
 
-async function createConfig(data: InferInsertModel<typeof aiVisibilityConfigs>) {
+async function createConfig(
+  data: InferInsertModel<typeof aiVisibilityConfigs>,
+) {
   await db.insert(aiVisibilityConfigs).values(data);
 }
 
@@ -331,7 +333,11 @@ async function addPromptRespectingCap(data: {
   const promptId = inserted[0]?.id;
   if (!promptId) return { ok: false, reason: "duplicate" };
 
-  const repaired = await repairActivePromptCap(data.configId, promptId, "insert");
+  const repaired = await repairActivePromptCap(
+    data.configId,
+    promptId,
+    "insert",
+  );
   if (repaired === "cap") return { ok: false, reason: "cap" };
   return { ok: true, promptId };
 }
