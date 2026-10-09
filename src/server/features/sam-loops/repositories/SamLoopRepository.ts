@@ -1,8 +1,18 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+} from "drizzle-orm";
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
-import { getDatabaseProvider } from "@/db/provider";
-import { pgDb } from "@/db/pg/client";
+import { tryCreateAdmittedSamLoopRun } from "@/db/samLoopAdmission";
 import { projects, samLoopRuns, samLoops } from "@/db/schema";
 import { hasVerifiedMonthlyDraft } from "../services/monthlyContentResult";
 import {
@@ -43,7 +53,7 @@ async function createLoop(
   >,
 ) {
   const inserted = await db.insert(samLoops).values(data).returning();
-  return inserted[0]!;
+  return inserted[0];
 }
 
 async function updateLoop(
@@ -120,29 +130,15 @@ async function claimDueLoop(input: {
   return claimed.length > 0;
 }
 
-async function tryCreateRun(data: {
-  id: string;
-  loopId: string;
-  projectId: string;
-}, admission?: { sinceDate: string; cap: number }): Promise<boolean> {
-  // Count and insert are one SQLite statement, so parallel D1 invocations
-  // cannot both claim the last slot. Postgres needs a transaction lock because
-  // its concurrent statement snapshots do not serialize the count by itself.
-  if (admission) {
-    const query = sql`insert into ${samLoopRuns} (id, loop_id, project_id, status)
-      select ${data.id}, ${data.loopId}, ${data.projectId}, 'pending'
-      where (select count(*) from ${samLoopRuns} where ${samLoopRuns.createdAt} >= ${admission.sinceDate}) < ${admission.cap}
-      on conflict do nothing returning id`;
-    if (getDatabaseProvider() === "postgres") {
-      return pgDb.transaction(async (tx) => {
-        await tx.execute(sql`select pg_advisory_xact_lock(734629105)`);
-        const rows = await tx.execute(query);
-        return rows.length > 0;
-      });
-    }
-    const rows = await db.all<{ id: string }>(query);
-    return rows.length > 0;
-  }
+async function tryCreateRun(
+  data: {
+    id: string;
+    loopId: string;
+    projectId: string;
+  },
+  admission?: { sinceDate: string; cap: number },
+): Promise<boolean> {
+  if (admission) return tryCreateAdmittedSamLoopRun(data, admission);
   const inserted = await db
     .insert(samLoopRuns)
     .values({ ...data, status: "pending" })
@@ -248,7 +244,12 @@ async function getContentVelocityForProject(
         or(
           and(
             eq(samLoops.sourceType, "custom"),
-            eq(samLoops.customPrompt, DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content")!.customPrompt!),
+            eq(
+              samLoops.customPrompt,
+              DEFAULT_SAM_LOOP_TEMPLATES.find(
+                (template) => template.name === "Monthly content",
+              )!.customPrompt,
+            ),
           ),
           eq(samLoops.name, "Monthly content"),
           inArray(samLoops.skillName, [...CONTENT_LOOP_SKILL_NAMES]),
@@ -256,14 +257,16 @@ async function getContentVelocityForProject(
       ),
     );
 
-  return Promise.all(rows.map(async (row) => ({
-    loopId: row.loopId,
-    loopName: row.loopName,
-    cadence: row.cadence,
-    isEnabled: row.isEnabled,
-    finishedAt: row.finishedAt!,
-    hasDraft: await hasVerifiedMonthlyDraft(row.report),
-  })));
+  return Promise.all(
+    rows.map(async (row) => ({
+      loopId: row.loopId,
+      loopName: row.loopName,
+      cadence: row.cadence,
+      isEnabled: row.isEnabled,
+      finishedAt: row.finishedAt!,
+      hasDraft: await hasVerifiedMonthlyDraft(row.report),
+    })),
+  );
 }
 
 /**
@@ -300,8 +303,7 @@ async function ensureDefaultLoops(projectId: string) {
         projectId,
         name: template.name,
         sourceType: template.sourceType,
-        skillName:
-          template.sourceType === "skill" ? template.skillName : null,
+        skillName: template.sourceType === "skill" ? template.skillName : null,
         customPrompt:
           template.sourceType === "custom" ? template.customPrompt : null,
         cadence: template.cadence,

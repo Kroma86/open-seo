@@ -85,7 +85,8 @@ function normalizeHostname(value: unknown): string | null {
 export function parseExternalAiVisibility(
   input: unknown,
   expectedDomain: string,
-  now: Date,
+  /** Checked at runtime: anything but a valid Date yields "invalid". */
+  now: unknown,
 ) {
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
     return unavailable("invalid", INVALID_NOTE);
@@ -108,7 +109,7 @@ export function parseExternalAiVisibility(
   if (Number.isNaN(measured.getTime()) || measured.getTime() > now.getTime()) {
     return unavailable("invalid", INVALID_NOTE);
   }
-  if (payload.answers.length === 0 && payload.google_scan_present === false) {
+  if (payload.answers.length === 0 && !payload.google_scan_present) {
     return unavailable("invalid", INVALID_NOTE);
   }
   const n = payload.answers.length;

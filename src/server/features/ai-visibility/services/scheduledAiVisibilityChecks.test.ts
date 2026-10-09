@@ -1,3 +1,4 @@
+import { env as workerEnv } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type DueConfigRow = {
@@ -13,7 +14,8 @@ type DueConfigRow = {
 };
 
 const mocks = vi.hoisted(() => ({
-  getDueConfigsWithOrganization: vi.fn<(nowIso: string) => Promise<DueConfigRow[]>>(),
+  getDueConfigsWithOrganization:
+    vi.fn<(nowIso: string) => Promise<DueConfigRow[]>>(),
   getActivePromptsForConfig: vi.fn(),
   claimDueConfig: vi.fn(),
   updateConfig: vi.fn(),
@@ -34,12 +36,18 @@ vi.mock(
     },
   }),
 );
-vi.mock("@/server/features/ai-visibility/services/aiVisibilityReconciler", () => ({
-  reconcileStaleAiVisibilityRuns: vi.fn().mockResolvedValue(undefined),
-}));
-vi.mock("@/server/features/ai-visibility/services/runAiVisibilityCheck", () => ({
-  runAiVisibilityCheck: mocks.runAiVisibilityCheck,
-}));
+vi.mock(
+  "@/server/features/ai-visibility/services/aiVisibilityReconciler",
+  () => ({
+    reconcileStaleAiVisibilityRuns: vi.fn().mockResolvedValue(undefined),
+  }),
+);
+vi.mock(
+  "@/server/features/ai-visibility/services/runAiVisibilityCheck",
+  () => ({
+    runAiVisibilityCheck: mocks.runAiVisibilityCheck,
+  }),
+);
 vi.mock("@/server/billing/subscription", () => ({
   customerHasPaidPlan: mocks.customerHasPaidPlan,
 }));
@@ -63,10 +71,9 @@ function dueConfig(overrides: Partial<DueConfigRow> = {}): DueConfigRow {
 }
 
 async function runTick() {
-  const { runScheduledAiVisibilityChecks } = await import(
-    "./scheduledAiVisibilityChecks"
-  );
-  await runScheduledAiVisibilityChecks({} as Env);
+  const { runScheduledAiVisibilityChecks } =
+    await import("./scheduledAiVisibilityChecks");
+  await runScheduledAiVisibilityChecks(workerEnv);
 }
 
 describe("runScheduledAiVisibilityChecks", () => {

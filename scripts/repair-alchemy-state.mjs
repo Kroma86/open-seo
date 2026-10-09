@@ -30,7 +30,10 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { SETTLED_STATUSES, readStateStoreCreds } from "./alchemy-state-health.mjs";
+import {
+  SETTLED_STATUSES,
+  readStateStoreCreds,
+} from "./alchemy-state-health.mjs";
 
 const settled = new Set(SETTLED_STATUSES);
 const UA = "open-seo-state-repair/1.0";
@@ -61,7 +64,11 @@ export function summarizeDoc(doc) {
 export function planRepair({ doc, live, targetAppId }) {
   const refusals = [];
   if (!doc) {
-    return { action: "none", changes: [], refusals: ["no state document found"] };
+    return {
+      action: "none",
+      changes: [],
+      refusals: ["no state document found"],
+    };
   }
   const now = summarizeDoc(doc);
   const changes = [];
@@ -79,7 +86,11 @@ export function planRepair({ doc, live, targetAppId }) {
     if (refusals.length > 0) return { action: "none", changes, refusals };
 
     if (now.applicationId !== targetAppId) {
-      changes.push({ field: "attr.applicationId", from: now.applicationId, to: targetAppId });
+      changes.push({
+        field: "attr.applicationId",
+        from: now.applicationId,
+        to: targetAppId,
+      });
     }
     if (live.aud && now.aud !== live.aud) {
       changes.push({ field: "attr.aud", from: now.aud, to: live.aud });
@@ -123,7 +134,12 @@ export function planRepair({ doc, live, targetAppId }) {
   }
 
   if (changes.length === 0) {
-    return { action: "none", changes: [], refusals: [], reason: "already consistent" };
+    return {
+      action: "none",
+      changes: [],
+      refusals: [],
+      reason: "already consistent",
+    };
   }
   return {
     action: targetAppId ? "repoint" : "settle",
@@ -167,7 +183,8 @@ export function applyPlanToDoc(doc, plan) {
  */
 export function assertSafeToWrite(before, after) {
   const problems = [];
-  const hadDownstream = (before?.downstream ?? []).length > 0 ||
+  const hadDownstream =
+    (before?.downstream ?? []).length > 0 ||
     (before?.old?.downstream ?? []).length > 0;
   if (hadDownstream && (after?.downstream ?? []).length === 0) {
     problems.push(
@@ -175,7 +192,9 @@ export function assertSafeToWrite(before, after) {
     );
   }
   if (!after?.attr?.applicationId) {
-    problems.push("refusing to write: the repaired document has no attr.applicationId");
+    problems.push(
+      "refusing to write: the repaired document has no attr.applicationId",
+    );
   }
   if (!settled.has(after?.status)) {
     problems.push(`refusing to write: status would still be ${after?.status}`);
@@ -217,12 +236,18 @@ function parseArgs(argv) {
 
 function cloudflareToken() {
   if (process.env.CLOUDFLARE_API_TOKEN) {
-    return { token: process.env.CLOUDFLARE_API_TOKEN, source: "CLOUDFLARE_API_TOKEN" };
+    return {
+      token: process.env.CLOUDFLARE_API_TOKEN,
+      source: "CLOUDFLARE_API_TOKEN",
+    };
   }
   const profile = process.env.ALCHEMY_PROFILE || "default";
   try {
     const creds = JSON.parse(
-      readFileSync(`${homedir()}/.alchemy/credentials/${profile}/cf-oauth.json`, "utf8"),
+      readFileSync(
+        `${homedir()}/.alchemy/credentials/${profile}/cf-oauth.json`,
+        "utf8",
+      ),
     );
     if (Number(creds.expires ?? 0) < Date.now()) {
       return {
@@ -233,7 +258,10 @@ function cloudflareToken() {
     }
     return { token: creds.access, source: `alchemy profile ${profile}` };
   } catch {
-    return { error: "no Cloudflare token available (no CLOUDFLARE_API_TOKEN, no alchemy login)." };
+    return {
+      error:
+        "no Cloudflare token available (no CLOUDFLARE_API_TOKEN, no alchemy login).",
+    };
   }
 }
 
@@ -246,7 +274,9 @@ async function observeLiveApplication(recordedId) {
     { headers: { Authorization: `Bearer ${token}`, "User-Agent": UA } },
   );
   if (!res.ok) {
-    return { error: `Cloudflare Access API returned HTTP ${res.status} (token from ${source})` };
+    return {
+      error: `Cloudflare Access API returned HTTP ${res.status} (token from ${source})`,
+    };
   }
   const body = await res.json();
   const apps = body?.result ?? [];
@@ -273,32 +303,48 @@ async function stateFetch(creds, path, { method = "GET", body } = {}) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.fqn) {
-    console.error("usage: node scripts/repair-alchemy-state.mjs --fqn <FQN> [--repoint <appId>] [--apply]");
+    console.error(
+      "usage: node scripts/repair-alchemy-state.mjs --fqn <FQN> [--repoint <appId>] [--apply]",
+    );
     process.exit(2);
   }
-  const creds = readStateStoreCreds({ homedir: homedir(), readFileSync, env: process.env });
+  const creds = readStateStoreCreds({
+    homedir: homedir(),
+    readFileSync,
+    env: process.env,
+  });
   if (!creds) {
-    console.error("no alchemy state-store credentials found — run `pnpm alchemy login` first.");
+    console.error(
+      "no alchemy state-store credentials found — run `pnpm alchemy login` first.",
+    );
     process.exit(2);
   }
   const path = `/state/stacks/${args.stack}/stages/${args.stage}/resources/${args.fqn}`;
   const doc = await stateFetch(creds, path);
   const now = summarizeDoc(doc);
 
-  console.log(`${args.fqn}: status=${now.status} applicationId=${now.applicationId}`);
-  console.log(`  downstream=${JSON.stringify(now.downstream)} old=${now.hasOld ? "present" : "absent"}`);
+  console.log(
+    `${args.fqn}: status=${now.status} applicationId=${now.applicationId}`,
+  );
+  console.log(
+    `  downstream=${JSON.stringify(now.downstream)} old=${now.hasOld ? "present" : "absent"}`,
+  );
 
   let live;
   const observed = await observeLiveApplication(now.applicationId);
   if (observed.error) {
     console.log(`  live check skipped: ${observed.error}`);
   } else if (observed.recorded) {
-    console.log(`  the recorded application ${now.applicationId} IS live in Cloudflare`);
+    console.log(
+      `  the recorded application ${now.applicationId} IS live in Cloudflare`,
+    );
     live = { applicationId: observed.recorded.id, aud: observed.recorded.aud };
   } else {
     const domain = doc?.attr?.domain;
     const byDomain = observed.apps.find((a) => a.domain === domain);
-    console.log(`  the recorded application ${now.applicationId} is NOT live in Cloudflare`);
+    console.log(
+      `  the recorded application ${now.applicationId} is NOT live in Cloudflare`,
+    );
     if (byDomain) {
       console.log(`  the live application on ${domain} is ${byDomain.id}`);
       live = { applicationId: byDomain.id, aud: byDomain.aud };
@@ -309,7 +355,8 @@ async function main() {
   console.log("");
   console.log(formatPlan(plan, { fqn: args.fqn }));
 
-  if (plan.refusals?.length || plan.action === "none") process.exit(plan.refusals?.length ? 1 : 0);
+  if (plan.refusals?.length || plan.action === "none")
+    process.exit(plan.refusals?.length ? 1 : 0);
 
   const repaired = applyPlanToDoc(doc, plan);
   const problems = assertSafeToWrite(doc, repaired);
@@ -328,7 +375,9 @@ async function main() {
   writeFileSync(backup, JSON.stringify(doc, null, 2));
   console.log(`\nbackup written: ${backup}`);
   await stateFetch(creds, path, { method: "PUT", body: repaired });
-  console.log("written. Re-run `node scripts/selfhost-deploy-preflight.mjs` to confirm.");
+  console.log(
+    "written. Re-run `node scripts/selfhost-deploy-preflight.mjs` to confirm.",
+  );
 }
 
 // Only run when invoked directly, so the pure functions above stay importable.

@@ -1,4 +1,8 @@
-import { Outlet, createFileRoute, useRouterState } from "@tanstack/react-router";
+import {
+  Outlet,
+  createFileRoute,
+  useRouterState,
+} from "@tanstack/react-router";
 import { AuthPageShell } from "@/client/features/auth/AuthPage";
 import { useHostedAuthRouteGuard } from "@/client/features/auth/useHostedAuthRouteGuard";
 

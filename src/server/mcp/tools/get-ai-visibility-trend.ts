@@ -68,7 +68,11 @@ export const getAiVisibilityTrendTool = {
       fetchExternalAgencyMetrics(context.project.domain),
     ]);
 
-    const externalObservations = parseExternalAiVisibility(feed.ai, context.project.domain ?? "", new Date());
+    const externalObservations = parseExternalAiVisibility(
+      feed.ai,
+      context.project.domain ?? "",
+      new Date(),
+    );
     const text = latest.measured
       ? [
           `Tracked AI visibility for ${latest.config?.brand ?? "project"}`,
@@ -84,7 +88,9 @@ export const getAiVisibilityTrendTool = {
       : "AI visibility: not measured yet for this project.";
 
     return mcpResponse({
-      text: text + `\n\nHermes AI observations: ${externalObservations.status}; ${externalObservations.answers.length} saved ChatGPT answers; measured ${externalObservations.measuredAt ?? "unknown"}; run ${externalObservations.runStatus ?? "unknown"}. ${feed.error ?? externalObservations.note}`,
+      text:
+        text +
+        `\n\nHermes AI observations: ${externalObservations.status}; ${externalObservations.answers.length} saved ChatGPT answers; measured ${externalObservations.measuredAt ?? "unknown"}; run ${externalObservations.runStatus ?? "unknown"}. ${feed.error ?? externalObservations.note}`,
       meta: buildProjectMeta(
         context,
         args.projectId,

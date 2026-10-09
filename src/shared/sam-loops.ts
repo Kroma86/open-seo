@@ -1,8 +1,8 @@
 import type { InferSelectModel } from "drizzle-orm";
-import type { samLoops } from "@/db/app.schema";
+import type { samLoops } from "@/db/agency.schema";
 import { computeNextCheckAt } from "@/shared/rank-tracking";
 
-export type SamLoopCadence = InferSelectModel<typeof samLoops>["cadence"];
+type SamLoopCadence = InferSelectModel<typeof samLoops>["cadence"];
 
 /** Default loops seeded for every project (dogfood + clients). */
 export const DEFAULT_SAM_LOOP_TEMPLATES = [
@@ -60,7 +60,7 @@ export const DEFAULT_SAM_LOOP_TEMPLATES = [
     name: "On-page priorities",
     sourceType: "custom" as const,
     customPrompt:
-      "The scheduler only has weekly, not every-two-weeks. Treat this as every two weeks: call get_sam_loop_runs for this project. If this loop already has a completed run with a report in the last 12 days, write \"too soon — skip\" and stop. Do not queue.\n\nQueue-only on-page pass (seo-audit intent + homegrown-otto). Never live-apply. Never start a new crawl. Never buy paid research.\n1. get_niceseo_ops_status.\n2. Read the latest audit with get_audit_status, get_audit_issues, get_audit_pages.\n3. Read get_agency_otto_page_inputs for current title, meta, and H1.\n4. Pick up to 5 priority pages: homepage, plus Search Console landing pages with impressions when get_search_console_performance is available, else pages with the most audit issues. If a source is missing, say not measured.\n5. For each page, if title/meta/H1 is missing, empty, or too long for the page's main query, write a concrete replacement (no placeholders). Call propose_homegrown_otto_fixes with before_* copied from the audit. Pending only.\n6. Call list_homegrown_otto_proposals and list the new ids.\n\nReport: pages checked, proposals queued, pages skipped and why. Never claim a fix is live.",
+      'The scheduler only has weekly, not every-two-weeks. Treat this as every two weeks: call get_sam_loop_runs for this project. If this loop already has a completed run with a report in the last 12 days, write "too soon — skip" and stop. Do not queue.\n\nQueue-only on-page pass (seo-audit intent + homegrown-otto). Never live-apply. Never start a new crawl. Never buy paid research.\n1. get_niceseo_ops_status.\n2. Read the latest audit with get_audit_status, get_audit_issues, get_audit_pages.\n3. Read get_agency_otto_page_inputs for current title, meta, and H1.\n4. Pick up to 5 priority pages: homepage, plus Search Console landing pages with impressions when get_search_console_performance is available, else pages with the most audit issues. If a source is missing, say not measured.\n5. For each page, if title/meta/H1 is missing, empty, or too long for the page\'s main query, write a concrete replacement (no placeholders). Call propose_homegrown_otto_fixes with before_* copied from the audit. Pending only.\n6. Call list_homegrown_otto_proposals and list the new ids.\n\nReport: pages checked, proposals queued, pages skipped and why. Never claim a fix is live.',
     cadence: "weekly" as const,
     skillName: null as string | null,
   },
@@ -68,7 +68,7 @@ export const DEFAULT_SAM_LOOP_TEMPLATES = [
     name: "Keyword portfolio",
     sourceType: "custom" as const,
     customPrompt:
-      "Analyze keyword portfolio health from data we already have. Do not buy keyword research. Do not save keywords. Do not call research_keywords, get_keyword_metrics, or save_keywords.\n1. get_niceseo_ops_status.\n2. list_saved_keywords.\n3. get_rank_tracker (free read).\n4. get_search_console_performance when Search Console is connected (high rowLimit). Filter client-side. Do not invent numbers.\n\nSay, with proof or \"not measured\":\n- How many saved or tracked terms exist.\n- Wasted or declining terms (rank drop or Search Console clicks down).\n- Near-page-one terms (positions 5–20) worth a push.\n- Concentration risk if most clicks sit on one or two queries.\n\nEnd with one do-this-month action an agent can take: site, page, do, do-not, proof. Never claim live changes.",
+      'Analyze keyword portfolio health from data we already have. Do not buy keyword research. Do not save keywords. Do not call research_keywords, get_keyword_metrics, or save_keywords.\n1. get_niceseo_ops_status.\n2. list_saved_keywords.\n3. get_rank_tracker (free read).\n4. get_search_console_performance when Search Console is connected (high rowLimit). Filter client-side. Do not invent numbers.\n\nSay, with proof or "not measured":\n- How many saved or tracked terms exist.\n- Wasted or declining terms (rank drop or Search Console clicks down).\n- Near-page-one terms (positions 5–20) worth a push.\n- Concentration risk if most clicks sit on one or two queries.\n\nEnd with one do-this-month action an agent can take: site, page, do, do-not, proof. Never claim live changes.',
     cadence: "monthly" as const,
     skillName: null as string | null,
   },
@@ -76,7 +76,7 @@ export const DEFAULT_SAM_LOOP_TEMPLATES = [
     name: "Review watch",
     sourceType: "custom" as const,
     customPrompt:
-      "You run weekly for every client. Read-only: never queue fixes, never post anything anywhere, never buy paid research beyond the single review collection described here.\n1. get_niceseo_ops_status for context.\n2. get_business_reviews for this project's business. If a collection is already running, wait for the taskId to finish instead of starting a second one. If reviews cannot be fetched, say \"not measured\" and stop.\n3. List reviews from the last 7 days: author, star rating, date, whether the owner replied.\n4. Flag any review at 3 stars or lower without an owner reply as NEEDS A REPLY, with a one-sentence suggested reply the owner can edit (never post it).\n5. If there are no new reviews, say so plainly and stop — a quiet week is a good report, keep it to two sentences.\nReport: new reviews count, average rating this week, the NEEDS A REPLY list, and one praise-worthy quote when one exists. Plain English the owner can read in Slack.",
+      'You run weekly for every client. Read-only: never queue fixes, never post anything anywhere, never buy paid research beyond the single review collection described here.\n1. get_niceseo_ops_status for context.\n2. get_business_reviews for this project\'s business. If a collection is already running, wait for the taskId to finish instead of starting a second one. If reviews cannot be fetched, say "not measured" and stop.\n3. List reviews from the last 7 days: author, star rating, date, whether the owner replied.\n4. Flag any review at 3 stars or lower without an owner reply as NEEDS A REPLY, with a one-sentence suggested reply the owner can edit (never post it).\n5. If there are no new reviews, say so plainly and stop — a quiet week is a good report, keep it to two sentences.\nReport: new reviews count, average rating this week, the NEEDS A REPLY list, and one praise-worthy quote when one exists. Plain English the owner can read in Slack.',
     cadence: "weekly" as const,
     skillName: null as string | null,
   },
@@ -84,7 +84,7 @@ export const DEFAULT_SAM_LOOP_TEMPLATES = [
     name: "GBP drift",
     sourceType: "custom" as const,
     customPrompt:
-      "You run monthly for every client. Read-only: never queue fixes, never post anywhere.\n1. get_business_profile for this project's business. If it cannot be fetched, say \"not measured\" and stop.\n2. Compare against the values from your last completed run (call get_sam_loop_runs for this project and read your previous report). First run: record the current values and say \"baseline recorded\".\n3. Report only CHANGES: business hours, phone number, categories, description, website link. For each change: old value → new value, and whether it looks intentional (e.g. holiday hours) or suspicious (e.g. phone number changed with no other edit).\n4. If nothing changed, one line: \"Profile unchanged since <date>.\"\nNever invent a previous value. When unsure, say not measured.",
+      'You run monthly for every client. Read-only: never queue fixes, never post anywhere.\n1. get_business_profile for this project\'s business. If it cannot be fetched, say "not measured" and stop.\n2. Compare against the values from your last completed run (call get_sam_loop_runs for this project and read your previous report). First run: record the current values and say "baseline recorded".\n3. Report only CHANGES: business hours, phone number, categories, description, website link. For each change: old value → new value, and whether it looks intentional (e.g. holiday hours) or suspicious (e.g. phone number changed with no other edit).\n4. If nothing changed, one line: "Profile unchanged since <date>."\nNever invent a previous value. When unsure, say not measured.',
     cadence: "monthly" as const,
     skillName: null as string | null,
   },
@@ -92,7 +92,7 @@ export const DEFAULT_SAM_LOOP_TEMPLATES = [
     name: "CTR opportunities",
     sourceType: "custom" as const,
     customPrompt:
-      "You run monthly for every client. You may only propose title and description fixes (pending only, never published). Never propose H1, schema, og tags, canonicals, or content. Never buy paid research.\n1. get_search_console_performance for this project (query+page rows, high rowLimit). If Search Console is not connected, say \"not measured\" and stop.\n2. From the last 28 days, find up to 3 queries with: position 5–20, impressions ≥ 30, and CTR ≤ 1%. Rank them by impressions.\n3. For each: identify the ranking page, read its current title and description (get_agency_otto_page_inputs), and draft a replacement title (≤60 chars) and description (≤155 chars) that matches the query's intent using only facts from the page. No invented claims, no clickbait.\n4. Call propose_homegrown_otto_fixes with status pending for title and description only, copying before_* from the page inputs. List the proposal ids.\n5. If nothing qualifies, say so in one sentence — that is a good report.\nReport: the query, its position/impressions/CTR, the page, and the proposed new title/description. Never claim a fix is live.",
+      'You run monthly for every client. You may only propose title and description fixes (pending only, never published). Never propose H1, schema, og tags, canonicals, or content. Never buy paid research.\n1. get_search_console_performance for this project (query+page rows, high rowLimit). If Search Console is not connected, say "not measured" and stop.\n2. From the last 28 days, find up to 3 queries with: position 5–20, impressions ≥ 30, and CTR ≤ 1%. Rank them by impressions.\n3. For each: identify the ranking page, read its current title and description (get_agency_otto_page_inputs), and draft a replacement title (≤60 chars) and description (≤155 chars) that matches the query\'s intent using only facts from the page. No invented claims, no clickbait.\n4. Call propose_homegrown_otto_fixes with status pending for title and description only, copying before_* from the page inputs. List the proposal ids.\n5. If nothing qualifies, say so in one sentence — that is a good report.\nReport: the query, its position/impressions/CTR, the page, and the proposed new title/description. Never claim a fix is live.',
     cadence: "monthly" as const,
     skillName: null as string | null,
   },
@@ -110,9 +110,6 @@ export const SAM_LOOP_ALLOWED_DOMAINS = [
 
 /** Default ceiling on Sam loop runs created per UTC day (scheduled + manual). */
 export const SAM_LOOP_DAILY_RUN_CAP_DEFAULT = 40;
-
-/** Client-safe alias; server code should call getSamLoopDailyRunCap(env). */
-export const SAM_LOOP_DAILY_RUN_CAP = SAM_LOOP_DAILY_RUN_CAP_DEFAULT;
 
 export function isSamLoopDomainAllowed(
   domain: string | null | undefined,
@@ -133,7 +130,9 @@ export function isSamLoopProjectAllowed(project: {
   loopsEnabled?: boolean | null;
 }): boolean {
   if (project.domain == null || project.domain.trim() === "") return false;
-  return isSamLoopDomainAllowed(project.domain) || project.loopsEnabled === true;
+  return (
+    isSamLoopDomainAllowed(project.domain) || project.loopsEnabled === true
+  );
 }
 
 /** UTC calendar date `YYYY-MM-DD` (a date prefix, not a full ISO timestamp). */
@@ -157,8 +156,12 @@ export function isSamContentLoop(loop: {
   customPrompt?: string | null;
 }): boolean {
   return (
-    (loop.sourceType === "custom" && !!loop.customPrompt && loop.customPrompt ===
-      DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content")?.customPrompt) ||
+    (loop.sourceType === "custom" &&
+      !!loop.customPrompt &&
+      loop.customPrompt ===
+        DEFAULT_SAM_LOOP_TEMPLATES.find(
+          (template) => template.name === "Monthly content",
+        )?.customPrompt) ||
     loop.name === "Monthly content" ||
     (loop.skillName !== null &&
       (CONTENT_LOOP_SKILL_NAMES as readonly string[]).includes(loop.skillName))
@@ -166,9 +169,7 @@ export function isSamContentLoop(loop: {
 }
 
 /** Approximate drafts per month implied by cadence (labeled approximations in UI). */
-export function expectedSamLoopDraftsPerMonth(
-  cadence: SamLoopCadence,
-): number {
+export function expectedSamLoopDraftsPerMonth(cadence: SamLoopCadence): number {
   switch (cadence) {
     case "monthly":
       return 1;
@@ -281,7 +282,12 @@ export function computeNextSamLoopRunAt(
     while (needsRoll(candidate) && guard < 36) {
       const d = new Date(candidate);
       candidate = new Date(
-        Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, assignedDay, ...timeParts),
+        Date.UTC(
+          d.getUTCFullYear(),
+          d.getUTCMonth() + 1,
+          assignedDay,
+          ...timeParts,
+        ),
       );
       guard += 1;
     }

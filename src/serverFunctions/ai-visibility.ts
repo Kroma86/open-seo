@@ -13,10 +13,7 @@ import {
   createAiVisibilityConfigSchema,
   getAiVisibilityLatestSchema,
   getAiVisibilityTrendSchema,
-  removeAiVisibilityPromptSchema,
   runAiVisibilityCheckSchema,
-  toggleAiVisibilityPromptSchema,
-  updateAiVisibilityConfigSchema,
 } from "@/types/schemas/ai-visibility";
 
 export const getAiVisibilityTracking = createServerFn({ method: "POST" })
@@ -52,29 +49,6 @@ export const createAiVisibilityTrackingConfig = createServerFn({
     );
   });
 
-export const updateAiVisibilityTrackingConfig = createServerFn({
-  method: "POST",
-})
-  .middleware(requireProjectContext)
-  .validator(updateAiVisibilityConfigSchema)
-  .handler(async ({ data, context }) => {
-    await AiVisibilityManagementService.updateConfig(
-      data.configId,
-      context.projectId,
-      {
-        brand: data.brand,
-        competitors: data.competitors,
-        platforms: data.platforms,
-        scheduleInterval: data.scheduleInterval,
-        isActive: data.isActive,
-      },
-    );
-    return AiVisibilityManagementService.getConfigWithPrompts(
-      data.configId,
-      context.projectId,
-    );
-  });
-
 export const addAiVisibilityTrackingPrompt = createServerFn({ method: "POST" })
   .middleware(requireProjectContext)
   .validator(addAiVisibilityPromptSchema)
@@ -83,41 +57,6 @@ export const addAiVisibilityTrackingPrompt = createServerFn({ method: "POST" })
       data.configId,
       context.projectId,
       data.prompt,
-    );
-    return AiVisibilityManagementService.getConfigWithPrompts(
-      data.configId,
-      context.projectId,
-    );
-  });
-
-export const removeAiVisibilityTrackingPrompt = createServerFn({
-  method: "POST",
-})
-  .middleware(requireProjectContext)
-  .validator(removeAiVisibilityPromptSchema)
-  .handler(async ({ data, context }) => {
-    await AiVisibilityManagementService.removePrompt(
-      data.configId,
-      context.projectId,
-      data.promptId,
-    );
-    return AiVisibilityManagementService.getConfigWithPrompts(
-      data.configId,
-      context.projectId,
-    );
-  });
-
-export const toggleAiVisibilityTrackingPrompt = createServerFn({
-  method: "POST",
-})
-  .middleware(requireProjectContext)
-  .validator(toggleAiVisibilityPromptSchema)
-  .handler(async ({ data, context }) => {
-    await AiVisibilityManagementService.togglePrompt(
-      data.configId,
-      context.projectId,
-      data.promptId,
-      data.isActive,
     );
     return AiVisibilityManagementService.getConfigWithPrompts(
       data.configId,

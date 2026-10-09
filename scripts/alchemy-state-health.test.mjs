@@ -10,14 +10,22 @@ import {
 // The real open-seo/selfhost snapshot, 2026-09-17 after the repair: 17
 // resources, 12 created + 5 updated. If the check fires on this it is useless.
 const HEALTHY = [
-  ["DB", "created"], ["GrokBotMcpServiceToken", "created"], ["KV", "created"],
-  ["OAUTH_KV", "created"], ["open-seo", "updated"], ["R2", "created"],
+  ["DB", "created"],
+  ["GrokBotMcpServiceToken", "created"],
+  ["KV", "created"],
+  ["OAUTH_KV", "created"],
+  ["open-seo", "updated"],
+  ["R2", "created"],
   ["rank-check-workflow-selfhost", "created"],
   ["sam-loop-workflow-selfhost", "created"],
-  ["SelfHostAccess", "updated"], ["SelfHostAllowUsers", "updated"],
-  ["SelfHostInternalAccess", "created"], ["SelfHostInternalBypass", "created"],
-  ["SelfHostMcpAccess", "updated"], ["SelfHostMcpDiscoveryAccess", "created"],
-  ["SelfHostMcpDiscoveryBypass", "created"], ["SelfHostMcpServiceAuth", "updated"],
+  ["SelfHostAccess", "updated"],
+  ["SelfHostAllowUsers", "updated"],
+  ["SelfHostInternalAccess", "created"],
+  ["SelfHostInternalBypass", "created"],
+  ["SelfHostMcpAccess", "updated"],
+  ["SelfHostMcpDiscoveryAccess", "created"],
+  ["SelfHostMcpDiscoveryBypass", "created"],
+  ["SelfHostMcpServiceAuth", "updated"],
   ["site-audit-workflow-selfhost", "created"],
 ].map(([fqn, status]) => ({ fqn, status }));
 
@@ -89,9 +97,7 @@ describe("checkStateSettled", () => {
     env: {},
     fetchImpl: async (url) => {
       const body = url.match(/resources\/(.+)$/)
-        ? JSON.stringify(
-            resources.find((r) => url.endsWith(`/${r.fqn}`)) ?? {},
-          )
+        ? JSON.stringify(resources.find((r) => url.endsWith(`/${r.fqn}`)) ?? {})
         : JSON.stringify(resources.map((r) => r.fqn));
       return { ok: true, status: 200, text: async () => body };
     },
@@ -120,7 +126,8 @@ describe("checkStateSettled", () => {
       { stack: "open-seo", stage: "selfhost" },
       {
         homedir: "/home/test",
-        readFileSync: () => JSON.stringify({ url: "https://x/", authToken: "t" }),
+        readFileSync: () =>
+          JSON.stringify({ url: "https://x/", authToken: "t" }),
         env: {},
         fetchImpl: async () => {
           throw new Error("network down");
@@ -152,7 +159,10 @@ describe("readStateStoreCreds", () => {
       readFileSync: () => {
         throw new Error("should not be read");
       },
-      env: { ALCHEMY_STATE_URL: "https://ci/", ALCHEMY_STATE_TOKEN: "ci-token" },
+      env: {
+        ALCHEMY_STATE_URL: "https://ci/",
+        ALCHEMY_STATE_TOKEN: "ci-token",
+      },
     });
     expect(creds).toEqual({ url: "https://ci/", authToken: "ci-token" });
   });

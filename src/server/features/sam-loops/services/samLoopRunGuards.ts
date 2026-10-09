@@ -7,10 +7,10 @@ import {
 
 const warnedInvalidSamLoopDailyRunCaps = new Set<string>();
 
-export function getSamLoopDailyRunCap(env: {
+export function getSamLoopDailyRunCap(config: {
   SAM_LOOP_DAILY_RUN_CAP?: string;
 }): number {
-  const raw = env.SAM_LOOP_DAILY_RUN_CAP?.trim();
+  const raw = config.SAM_LOOP_DAILY_RUN_CAP?.trim();
   if (!raw) return SAM_LOOP_DAILY_RUN_CAP_DEFAULT;
 
   const parsed = Number.parseInt(raw, 10);
@@ -152,17 +152,19 @@ export async function beginSamLoopRun(input: {
   for (let attempt = 0; attempt < 2; attempt++) {
     const runId = crypto.randomUUID();
     // Cheap early rejection; the repository repeats admission atomically at insert.
-    const runsToday = await SamLoopRepository.countRunsCreatedSince(
-      startOfUtcDay(),
-    );
+    const runsToday =
+      await SamLoopRepository.countRunsCreatedSince(startOfUtcDay());
     if (runsToday >= getSamLoopDailyRunCap(env)) {
       return { ok: false, reason: "daily_cap" };
     }
-    const created = await SamLoopRepository.tryCreateRun({
-      id: runId,
-      loopId: input.loopId,
-      projectId: input.projectId,
-    }, { sinceDate: startOfUtcDay(), cap: getSamLoopDailyRunCap(env) });
+    const created = await SamLoopRepository.tryCreateRun(
+      {
+        id: runId,
+        loopId: input.loopId,
+        projectId: input.projectId,
+      },
+      { sinceDate: startOfUtcDay(), cap: getSamLoopDailyRunCap(env) },
+    );
 
     if (created) {
       try {
@@ -191,7 +193,10 @@ export async function beginSamLoopRun(input: {
 
     const blocker = await SamLoopRepository.getActiveRunForLoop(input.loopId);
     if (!blocker) {
-      if (await SamLoopRepository.countRunsCreatedSince(startOfUtcDay()) >= getSamLoopDailyRunCap(env)) {
+      if (
+        (await SamLoopRepository.countRunsCreatedSince(startOfUtcDay())) >=
+        getSamLoopDailyRunCap(env)
+      ) {
         return { ok: false, reason: "daily_cap" };
       }
       continue;

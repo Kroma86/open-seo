@@ -60,13 +60,15 @@ export function AgencyHomeAlertsCard({
         <div className="space-y-4 rounded-xl border border-base-300/70 bg-base-100 px-4 py-4">
           {Object.keys(data.countsBySeverity).length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {Object.entries(data.countsBySeverity).map(([severity, count]) => (
-                <AgencyHomeStatusPill
-                  key={severity}
-                  label={`${severity}: ${count}`}
-                  tone={severityTone(severity)}
-                />
-              ))}
+              {Object.entries(data.countsBySeverity).map(
+                ([severity, count]) => (
+                  <AgencyHomeStatusPill
+                    key={severity}
+                    label={`${severity}: ${count}`}
+                    tone={severityTone(severity)}
+                  />
+                ),
+              )}
             </div>
           ) : null}
 

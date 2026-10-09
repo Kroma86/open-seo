@@ -25,6 +25,8 @@ const baseRun = {
   completedAt: null,
 };
 
+const anyString: unknown = expect.any(String);
+
 describe("completeRankCheckRunFromSnapshots", () => {
   beforeEach(() => {
     mocks.getSnapshotsForRun.mockReset();
@@ -52,23 +54,21 @@ describe("completeRankCheckRunFromSnapshots", () => {
       expect.objectContaining({
         status: "completed",
         keywordsChecked: 2,
-        completedAt: expect.any(String),
+        completedAt: anyString,
       }),
     );
     expect(mocks.updateConfig).toHaveBeenCalledWith(
       "config_1",
       "project_1",
       expect.objectContaining({
-        lastCheckedAt: expect.any(String),
+        lastCheckedAt: anyString,
         lastSkipReason: null,
       }),
     );
   });
 
   it("skips when snapshot coverage is still incomplete and requireFullCoverage is set", async () => {
-    mocks.getSnapshotsForRun.mockResolvedValue([
-      { trackingKeywordId: "kw_1" },
-    ]);
+    mocks.getSnapshotsForRun.mockResolvedValue([{ trackingKeywordId: "kw_1" }]);
 
     await expect(
       completeRankCheckRunFromSnapshots({
@@ -80,9 +80,7 @@ describe("completeRankCheckRunFromSnapshots", () => {
   });
 
   it("completes partial coverage when requireFullCoverage is off", async () => {
-    mocks.getSnapshotsForRun.mockResolvedValue([
-      { trackingKeywordId: "kw_1" },
-    ]);
+    mocks.getSnapshotsForRun.mockResolvedValue([{ trackingKeywordId: "kw_1" }]);
 
     const result = await completeRankCheckRunFromSnapshots({ run: baseRun });
     expect(result).toMatchObject({ keywordsChecked: 1, keywordsTotal: 2 });

@@ -1,20 +1,20 @@
 import { z } from "zod";
 
-export type AuditReadinessAudit = {
+type AuditReadinessAudit = {
   id: string;
   status: string;
   startedAt: string | null;
   completedAt: string | null;
 };
 
-export type AuditReadinessPage = {
+type AuditReadinessPage = {
   url: string;
   statusCode: number | null;
   fetchClass: string;
   wordCount: number;
 };
 
-export type AuditReadinessResult =
+type AuditReadinessResult =
   | { ready: true; measuredAt: string; usablePages: number }
   | { ready: false; reason: string };
 
@@ -35,7 +35,12 @@ function timestampMs(value: string | null): number | null {
 function httpUrl(value: string): URL | null {
   try {
     const url = new URL(value);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password
+    )
+      return null;
     return url;
   } catch {
     return null;
@@ -57,7 +62,10 @@ export function checkAuditReadiness(
     return { ready: false, reason: "No site audit is available." };
   }
   if (audit.status !== "completed") {
-    return { ready: false, reason: "The latest site audit has not completed successfully." };
+    return {
+      ready: false,
+      reason: "The latest site audit has not completed successfully.",
+    };
   }
   const nowMs = now.getTime();
   if (!Number.isFinite(nowMs)) {
@@ -69,10 +77,16 @@ export function checkAuditReadiness(
     return { ready: false, reason: "The site audit has invalid timestamps." };
   }
   if (startedAt > nowMs || completedAt > nowMs) {
-    return { ready: false, reason: "The site audit has timestamps in the future." };
+    return {
+      ready: false,
+      reason: "The site audit has timestamps in the future.",
+    };
   }
   if (completedAt < startedAt) {
-    return { ready: false, reason: "The site audit completed before it started." };
+    return {
+      ready: false,
+      reason: "The site audit completed before it started.",
+    };
   }
   if (nowMs - startedAt > MAX_AUDIT_AGE_MS) {
     return { ready: false, reason: "The site audit is older than 7 days." };
@@ -82,12 +96,21 @@ export function checkAuditReadiness(
     ? httpUrl(domain.includes("://") ? domain : `https://${domain}`)
     : null;
   if (!projectUrl) {
-    return { ready: false, reason: "The project domain is missing or invalid." };
+    return {
+      ready: false,
+      reason: "The project domain is missing or invalid.",
+    };
   }
   const expectedHost = ownHost(projectUrl);
   const usableUrls = new Set<string>();
   for (const page of pages) {
-    if (page.statusCode !== 200 || page.fetchClass !== "ok" || !Number.isFinite(page.wordCount) || page.wordCount < 80) continue;
+    if (
+      page.statusCode !== 200 ||
+      page.fetchClass !== "ok" ||
+      !Number.isFinite(page.wordCount) ||
+      page.wordCount < 80
+    )
+      continue;
     const url = httpUrl(page.url);
     if (!url || ownHost(url) !== expectedHost) continue;
     // Require distinct paths: scheme, www, query and fragment variants of one
@@ -95,7 +118,10 @@ export function checkAuditReadiness(
     usableUrls.add(url.pathname.replace(/\/+$/, "") || "/");
   }
   if (usableUrls.size < 2) {
-    return { ready: false, reason: "The site audit needs at least 2 usable own-site pages." };
+    return {
+      ready: false,
+      reason: "The site audit needs at least 2 usable own-site pages.",
+    };
   }
   return {
     ready: true,

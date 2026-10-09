@@ -238,7 +238,7 @@ describe("parseExternalAiVisibility", () => {
 
   it.each([
     { name: "NaN Date", now: new Date(Number.NaN) },
-    { name: "non-Date", now: "2026-09-04T12:00:00Z" as unknown as Date },
+    { name: "non-Date", now: "2026-09-04T12:00:00Z" },
   ])("invalid now ($name) even if input is missing", ({ now }) => {
     expectNullFields(
       parseExternalAiVisibility(undefined, DOMAIN, now),

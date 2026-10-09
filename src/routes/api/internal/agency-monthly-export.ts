@@ -36,8 +36,9 @@ function parseMonth(raw: string | null): string | null {
 }
 
 export async function handleGet(request: Request): Promise<Response> {
-  const expected = (env as { AGENCY_SCORE_EXPORT_TOKEN?: string })
-    .AGENCY_SCORE_EXPORT_TOKEN?.trim();
+  const expected = (
+    env as { AGENCY_SCORE_EXPORT_TOKEN?: string }
+  ).AGENCY_SCORE_EXPORT_TOKEN?.trim();
   if (!expected) {
     return Response.json(
       { error: "agency_score_export_disabled" },
@@ -47,7 +48,10 @@ export async function handleGet(request: Request): Promise<Response> {
 
   const token = extractBearer(request);
   if (!token || !timingSafeEqual(token, expected)) {
-    return Response.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE });
+    return Response.json(
+      { error: "unauthorized" },
+      { status: 401, headers: NO_STORE },
+    );
   }
 
   const url = new URL(request.url);
@@ -74,14 +78,20 @@ export async function handleGet(request: Request): Promise<Response> {
   if (hasDomain) {
     const data = await getAgencyMonthlyExportByDomain(domain!, month);
     if (!data) {
-      return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
+      return Response.json(
+        { error: "not_found" },
+        { status: 404, headers: NO_STORE },
+      );
     }
     return Response.json(data, { headers: NO_STORE });
   }
 
   const data = await getAgencyMonthlyExportIndex(month);
   if (!data) {
-    return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
+    return Response.json(
+      { error: "not_found" },
+      { status: 404, headers: NO_STORE },
+    );
   }
   return Response.json(data, { headers: NO_STORE });
 }

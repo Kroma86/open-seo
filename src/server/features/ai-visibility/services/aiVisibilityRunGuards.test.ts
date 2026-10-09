@@ -47,7 +47,8 @@ describe("beginAiVisibilityRun", () => {
       promptSetVersion: 2,
     });
 
-    expect(result).toEqual({ ok: true, runId: expect.any(String) });
+    const anyString: unknown = expect.any(String);
+    expect(result).toEqual({ ok: true, runId: anyString });
     expect(mocks.tryCreateRun).toHaveBeenCalledWith(
       expect.objectContaining({
         configId: "config_1",

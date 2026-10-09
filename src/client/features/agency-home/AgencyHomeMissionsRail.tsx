@@ -10,7 +10,9 @@ import {
   type AgencyHomePillTone,
 } from "@/client/features/agency-home/AgencyHomeStatusPill";
 
-function missionStatusTone(status: AgencyHomeMission["status"]): AgencyHomePillTone {
+function missionStatusTone(
+  status: AgencyHomeMission["status"],
+): AgencyHomePillTone {
   if (status === "completed") return "success";
   if (status === "failed") return "error";
   return "warning";

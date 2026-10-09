@@ -14,7 +14,7 @@ export type PageIssueCounts = {
   worstSeverity: IssueSeverity;
 };
 
-export type IndexableDisplay =
+type IndexableDisplay =
   | { indexable: true; reason: null }
   | {
       indexable: false;
@@ -31,7 +31,7 @@ type DuplicatePageInput = {
   statusCode: number | null;
 };
 
-export type PageExplorerRow = {
+type PageExplorerRow = {
   url: string;
   statusCode: number | null;
   title: string | null;
@@ -47,14 +47,14 @@ export type PageExplorerRow = {
   fetchClass: string;
 };
 
-export function asIssueSeverity(value: string): IssueSeverity {
+function asIssueSeverity(value: string): IssueSeverity {
   if (value === "critical" || value === "warning" || value === "info") {
     return value;
   }
   return "info";
 }
 
-export function worseSeverity(
+function worseSeverity(
   left: IssueSeverity,
   right: IssueSeverity,
 ): IssueSeverity {

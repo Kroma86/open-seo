@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { projects } from "@/db/schema";
+import type { ProjectService } from "@/server/features/projects/services/ProjectService";
 
-const {
-  mockEnv,
-  setLoopsEnabled,
-  getProjectRow,
-} = vi.hoisted(() => ({
+const { mockEnv, setLoopsEnabled, getProjectRow } = vi.hoisted(() => ({
   mockEnv: {} as { AGENCY_SCORE_EXPORT_TOKEN?: string; AUTH_MODE?: string },
-  setLoopsEnabled: vi.fn(),
-  getProjectRow: vi.fn(),
+  setLoopsEnabled: vi.fn<(typeof ProjectService)["setLoopsEnabled"]>(),
+  // The repository returns null when no row matches; its inferred type omits it.
+  getProjectRow:
+    vi.fn<
+      (
+        projectId: string,
+        organizationId: string,
+      ) => Promise<typeof projects.$inferSelect | null>
+    >(),
 }));
 
 vi.mock("cloudflare:workers", () => ({
@@ -20,13 +25,13 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/server/features/projects/services/ProjectService", () => ({
   ProjectService: {
-    setLoopsEnabled: (...args: unknown[]) => setLoopsEnabled(...args),
+    setLoopsEnabled,
   },
 }));
 
 vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
   ProjectRepository: {
-    getProjectForOrganization: (...args: unknown[]) => getProjectRow(...args),
+    getProjectForOrganization: getProjectRow,
   },
 }));
 
@@ -37,14 +42,15 @@ const BASE = "http://localhost/api/internal/loops-enabled";
 const ORG_ID = "shared-workspace";
 const PROJECT_ID = "project_1";
 
-const PROJECT = {
+const PROJECT: typeof projects.$inferSelect = {
   id: PROJECT_ID,
+  organizationId: ORG_ID,
   name: "Acme",
   domain: "niceseo.ai",
   locationCode: 2840,
   languageCode: "en",
   createdAt: "2026-01-01 00:00:00",
-  archivedAt: null as string | null,
+  archivedAt: null,
   loopsEnabled: false,
 };
 
@@ -79,11 +85,7 @@ beforeEach(() => {
     },
   );
   setLoopsEnabled.mockImplementation(
-    async (
-      _organizationId: string,
-      projectId: string,
-      enabled: boolean,
-    ) => ({
+    async (_organizationId: string, projectId: string, enabled: boolean) => ({
       ...PROJECT,
       id: projectId,
       loopsEnabled: enabled,
