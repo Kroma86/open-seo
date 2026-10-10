@@ -203,8 +203,9 @@ async function executeRun(input: {
   );
   const promptResults: RunDetail["prompts"] = [];
   // Up to 10 prompts, each explorePrompt call isolated in try/catch so one failure
-  // cannot abort the run. Worst case ~10 sequential calls still fits inside the
-  // 60-minute stale threshold (STALE_AI_VISIBILITY_RUN_MS).
+  // cannot abort the run. Worst case ~20 sequential calls (a question may be asked
+  // twice) still fits inside the 60-minute stale threshold
+  // (STALE_AI_VISIBILITY_RUN_MS).
   for (const trackedPrompt of activePrompts) {
     if (explorerModels.length === 0) {
       promptResults.push({
