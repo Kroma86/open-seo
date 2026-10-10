@@ -169,7 +169,9 @@ describe("runAiVisibilityCheck", () => {
             brandMentioned: null,
           },
         ],
-      });
+      })
+      // the errored question is asked once more; that retry throws
+      .mockRejectedValueOnce(new Error("retry unavailable"));
 
     await runAiVisibilityCheck({
       configId: "config_1",
@@ -187,6 +189,77 @@ describe("runAiVisibilityCheck", () => {
     });
     const detail = JSON.parse(String(completedUpdate?.[1]?.detail));
     expect(detail.promptsAttempted).toBe(2);
+  });
+
+  it("asks a failed question once more and keeps the first result when the retry fails or throws", async () => {
+    mocks.getValidatedConfig.mockResolvedValue({
+      ...config,
+      platforms: '["chat_gpt","google"]',
+    });
+    mocks.getActivePromptsForConfig.mockResolvedValue([
+      { id: "prompt_1", prompt: "flaky" },
+      { id: "prompt_2", prompt: "dead" },
+      { id: "prompt_3", prompt: "throws" },
+    ]);
+    const failed = {
+      prompt: "x",
+      highlightBrand: "Acme",
+      fetchedAt: new Date().toISOString(),
+      results: [
+        {
+          model: "chat_gpt",
+          status: "error",
+          error: "model temporarily unavailable",
+          response: null,
+          citations: [],
+          brandMentioned: null,
+        },
+      ],
+    };
+    const answered = {
+      ...failed,
+      results: [
+        {
+          model: "chat_gpt",
+          status: "success",
+          error: null,
+          response: "Acme is great",
+          citations: [],
+          brandMentioned: true,
+        },
+      ],
+    };
+    const failedAgain = { ...failed, fetchedAt: "2000-01-01T00:00:00.000Z" };
+    // flaky: fail then succeed; dead: fail then fail again; throws: fail then the retry throws
+    mocks.explorePrompt
+      .mockResolvedValueOnce(failed)
+      .mockResolvedValueOnce(answered)
+      .mockResolvedValueOnce(failed)
+      .mockResolvedValueOnce(failedAgain)
+      .mockResolvedValueOnce(failed)
+      .mockRejectedValueOnce(new Error("retry unavailable"));
+
+    await runAiVisibilityCheck({
+      configId: "config_1",
+      projectId: "project_1",
+      billingCustomer,
+      trigger: "manual",
+    });
+
+    expect(mocks.explorePrompt).toHaveBeenCalledTimes(6);
+    const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
+      (call) => call[1]?.status === "completed",
+    );
+    expect(completedUpdate?.[1]).toMatchObject({
+      promptsChecked: 1,
+      promptsWithBrand: 1,
+    });
+    const detail = JSON.parse(String(completedUpdate?.[1]?.detail));
+    expect(detail.promptsAttempted).toBe(3);
+    expect(detail.prompts[1].fetchedAt).toBe(failed.fetchedAt);
+    expect(String(completedUpdate?.[1]?.costNote)).toContain(
+      "6 prompt check(s)",
+    );
   });
 
   it("does not write results when the run was reclaimed before completion", async () => {
