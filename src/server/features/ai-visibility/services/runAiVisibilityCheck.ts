@@ -66,6 +66,25 @@ function promptRowMentionsBrand(
   return flags.some(Boolean);
 }
 
+// A provider hiccup ("model temporarily unavailable") leaves no usable answer
+// for a question. Ask once more; a retry that also fails or throws keeps the
+// first result. Each retry is one more paid call, counted in the cost note.
+async function exploreWithOneRetry(
+  ask: () => Promise<PromptExplorerResult>,
+): Promise<{ explorer: PromptExplorerResult; retried: boolean }> {
+  const explorer = await ask();
+  if (promptRowMentionsBrand(explorer.results) !== null) {
+    return { explorer, retried: false };
+  }
+  try {
+    const retry = await ask();
+    const usable = promptRowMentionsBrand(retry.results) !== null;
+    return { explorer: usable ? retry : explorer, retried: true };
+  } catch {
+    return { explorer, retried: true };
+  }
+}
+
 function countPromptsWithDefinitiveAnswer(
   promptResults: RunDetail["prompts"],
 ): number {
@@ -167,6 +186,7 @@ async function executeRun(input: {
   }
 
   let promptExplorerCalls = 0;
+  let promptRetries = 0;
   // The budget can be shared by every config in a scheduled tick; this run
   // stores only what it spent itself.
   const jevSpentBefore = input.nameBudget.spentUsd;
@@ -198,16 +218,19 @@ async function executeRun(input: {
 
     promptExplorerCalls += 1;
     try {
-      const explorer = await explorePrompt(
-        {
-          projectId: input.projectId,
-          prompt: trackedPrompt.prompt,
-          models: explorerModels,
-          highlightBrand: config.brand,
-          webSearch: true,
-        },
-        input.billingCustomer,
-      );
+      const ask = () =>
+        explorePrompt(
+          {
+            projectId: input.projectId,
+            prompt: trackedPrompt.prompt,
+            models: explorerModels,
+            highlightBrand: config.brand,
+            webSearch: true,
+          },
+          input.billingCustomer,
+        );
+      const { explorer, retried } = await exploreWithOneRetry(ask);
+      if (retried) promptRetries += 1;
       await applyNameGrades(
         explorer.results,
         config.brand,
@@ -266,7 +289,9 @@ async function executeRun(input: {
       promptsWithBrand,
       promptsChecked,
       detail: JSON.stringify(detail),
-      costNote: buildCostNote({ promptExplorerCalls }),
+      costNote: buildCostNote({
+        promptExplorerCalls: promptExplorerCalls + promptRetries,
+      }),
     },
     { requireRunning: true },
   );

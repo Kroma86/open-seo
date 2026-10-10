@@ -189,6 +189,72 @@ describe("runAiVisibilityCheck", () => {
     expect(detail.promptsAttempted).toBe(2);
   });
 
+  it("asks a failed question once more and keeps the first result when the retry also fails", async () => {
+    mocks.getValidatedConfig.mockResolvedValue({
+      ...config,
+      platforms: '["chat_gpt","google"]',
+    });
+    mocks.getActivePromptsForConfig.mockResolvedValue([
+      { id: "prompt_1", prompt: "flaky" },
+      { id: "prompt_2", prompt: "dead" },
+    ]);
+    const failed = {
+      prompt: "x",
+      highlightBrand: "Acme",
+      fetchedAt: new Date().toISOString(),
+      results: [
+        {
+          model: "chat_gpt",
+          status: "error",
+          error: "model temporarily unavailable",
+          response: null,
+          citations: [],
+          brandMentioned: null,
+        },
+      ],
+    };
+    const answered = {
+      ...failed,
+      results: [
+        {
+          model: "chat_gpt",
+          status: "success",
+          error: null,
+          response: "Acme is great",
+          citations: [],
+          brandMentioned: true,
+        },
+      ],
+    };
+    // flaky: fail then succeed; dead: fail then fail (retry must not turn it into an answer)
+    mocks.explorePrompt
+      .mockResolvedValueOnce(failed)
+      .mockResolvedValueOnce(answered)
+      .mockResolvedValueOnce(failed)
+      .mockResolvedValueOnce(failed);
+
+    await runAiVisibilityCheck({
+      configId: "config_1",
+      projectId: "project_1",
+      billingCustomer,
+      trigger: "manual",
+    });
+
+    expect(mocks.explorePrompt).toHaveBeenCalledTimes(4);
+    const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
+      (call) => call[1]?.status === "completed",
+    );
+    expect(completedUpdate?.[1]).toMatchObject({
+      promptsChecked: 1,
+      promptsWithBrand: 1,
+    });
+    const detail = JSON.parse(String(completedUpdate?.[1]?.detail));
+    expect(detail.promptsAttempted).toBe(2);
+    expect(String(completedUpdate?.[1]?.costNote)).toContain(
+      "4 prompt check(s)",
+    );
+  });
+
   it("does not write results when the run was reclaimed before completion", async () => {
     mocks.updateRunIfInFlight.mockResolvedValue(false);
 
