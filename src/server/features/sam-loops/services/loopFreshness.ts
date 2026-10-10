@@ -16,7 +16,7 @@ export type AuditReadinessPage = {
 
 export type AuditReadinessResult =
   | { ready: true; measuredAt: string; usablePages: number; stale?: { ageDays: number } }
-  | { ready: false; reason: string };
+  | { ready: false; reason: string; thinSite?: true };
 
 const MAX_AUDIT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const isoTimestamp = z.iso.datetime({ offset: true });
@@ -44,6 +44,16 @@ function httpUrl(value: string): URL | null {
 
 function ownHost(url: URL): string {
   return url.hostname.toLowerCase().replace(/^www\./, "");
+}
+
+/** A row that points to a crawl fault, not to a small site: blocked, errored, 5xx, no status, or an empty 200 (client-rendered or challenge page). */
+function crawlFailed(page: AuditReadinessPage): boolean {
+  return (
+    page.fetchClass !== "ok" ||
+    page.statusCode === null ||
+    page.statusCode >= 500 ||
+    (page.statusCode === 200 && !(page.wordCount > 0 && Number.isFinite(page.wordCount)))
+  );
 }
 
 /** Checks usable crawl evidence for later analysis, not overall site health. */
@@ -88,16 +98,25 @@ export function checkAuditReadiness(
   }
   const expectedHost = ownHost(projectUrl);
   const usableUrls = new Set<string>();
+  let ownHostFailures = 0;
   for (const page of pages) {
-    if (page.statusCode !== 200 || page.fetchClass !== "ok" || !Number.isFinite(page.wordCount) || page.wordCount < 80) continue;
     const url = httpUrl(page.url);
+    // Fail closed: an unparseable URL could be the site's own row.
+    if ((!url || ownHost(url) === expectedHost) && crawlFailed(page)) ownHostFailures += 1;
+    if (page.statusCode !== 200 || page.fetchClass !== "ok" || !Number.isFinite(page.wordCount) || page.wordCount < 80) continue;
     if (!url || ownHost(url) !== expectedHost) continue;
     // Require distinct paths: scheme, www, query and fragment variants of one
     // page must not make a one-page crawl look like broader site evidence.
     usableUrls.add(url.pathname.replace(/\/+$/, "") || "/");
   }
   if (usableUrls.size < 2) {
-    return { ready: false, reason: "The site audit needs at least 2 usable own-site pages." };
+    // Exactly one readable own-site page and no sign the crawl failed means
+    // the site itself is small. A stale audit never proves that.
+    return {
+      ready: false,
+      reason: "The site audit needs at least 2 usable own-site pages.",
+      ...(usableUrls.size === 1 && ownHostFailures === 0 && !stale ? { thinSite: true as const } : {}),
+    };
   }
   return {
     ready: true,

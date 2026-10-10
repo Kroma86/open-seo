@@ -250,6 +250,16 @@ export async function runHeadlessSamLoop(
     } catch {
       readiness = { ready: false, reason: "The saved crawl could not be read." };
     }
+    if (!readiness.ready && readiness.thinSite) {
+      // The crawl read exactly one usable page and nothing failed: that is a
+      // property of the site, not a fault, so skip at no model cost.
+      return {
+        status: "completed",
+        error: null,
+        report: `Skipped: thin site. ${readiness.reason} The crawl read one usable page, so this loop has too little evidence to run. No model or research tools were called.`,
+        stepsUsed: 0, proposalsQueued: 0, costNote: "no model call",
+      };
+    }
     if (!readiness.ready) {
       return {
         status: "failed",
