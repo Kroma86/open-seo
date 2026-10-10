@@ -46,6 +46,16 @@ function ownHost(url: URL): string {
   return url.hostname.toLowerCase().replace(/^www\./, "");
 }
 
+/** A row that points to a crawl fault, not to a small site: blocked, errored, 5xx, no status, or an empty 200 (client-rendered or challenge page). */
+function crawlFailed(page: AuditReadinessPage): boolean {
+  return (
+    page.fetchClass !== "ok" ||
+    page.statusCode === null ||
+    page.statusCode >= 500 ||
+    (page.statusCode === 200 && !(page.wordCount > 0 && Number.isFinite(page.wordCount)))
+  );
+}
+
 /** Checks usable crawl evidence for later analysis, not overall site health. */
 export function checkAuditReadiness(
   audit: AuditReadinessAudit | null | undefined,
@@ -91,7 +101,8 @@ export function checkAuditReadiness(
   let ownHostFailures = 0;
   for (const page of pages) {
     const url = httpUrl(page.url);
-    if (url && ownHost(url) === expectedHost && page.fetchClass !== "ok") ownHostFailures += 1;
+    // Fail closed: an unparseable URL could be the site's own row.
+    if ((!url || ownHost(url) === expectedHost) && crawlFailed(page)) ownHostFailures += 1;
     if (page.statusCode !== 200 || page.fetchClass !== "ok" || !Number.isFinite(page.wordCount) || page.wordCount < 80) continue;
     if (!url || ownHost(url) !== expectedHost) continue;
     // Require distinct paths: scheme, www, query and fragment variants of one
@@ -99,12 +110,12 @@ export function checkAuditReadiness(
     usableUrls.add(url.pathname.replace(/\/+$/, "") || "/");
   }
   if (usableUrls.size < 2) {
-    // Exactly one readable own-site page and no blocked or errored own-site
-    // fetch means the site itself is small, not that the crawl failed.
+    // Exactly one readable own-site page and no sign the crawl failed means
+    // the site itself is small. A stale audit never proves that.
     return {
       ready: false,
       reason: "The site audit needs at least 2 usable own-site pages.",
-      ...(usableUrls.size === 1 && ownHostFailures === 0 ? { thinSite: true as const } : {}),
+      ...(usableUrls.size === 1 && ownHostFailures === 0 && !stale ? { thinSite: true as const } : {}),
     };
   }
   return {

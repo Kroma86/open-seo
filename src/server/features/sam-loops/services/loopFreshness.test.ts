@@ -18,12 +18,13 @@ const pages = [page, { ...page, url: "https://example.com/services" }];
 const unavailable = { ready: false, reason: "No site audit is available." };
 const invalidTimestamps = { ready: false, reason: "The site audit has invalid timestamps." };
 const insufficientPages = { ready: false, reason: "The site audit needs at least 2 usable own-site pages." };
+const thinPages = { ...insufficientPages, thinSite: true };
 
 describe("checkAuditReadiness", () => {
   it("allows old evidence only with the explicit flag and records its age", () => {
     const old = { ...audit, startedAt: "2026-09-01T12:00:00Z", completedAt: "2026-09-01T13:00:00Z" };
     expect(checkAuditReadiness(old, pages, "example.com", now, { allowStale: true })).toMatchObject({ ready: true, stale: { ageDays: 11 } });
-    expect(checkAuditReadiness(old, [page], "example.com", now, { allowStale: true })).toMatchObject(insufficientPages);
+    expect(checkAuditReadiness(old, [page], "example.com", now, { allowStale: true })).toEqual(insufficientPages);
     expect(checkAuditReadiness({ ...old, status: "failed" }, pages, "example.com", now, { allowStale: true }).ready).toBe(false);
   });
   it("accepts a recent completed audit with two usable own-site URLs", () => {
@@ -37,6 +38,10 @@ describe("checkAuditReadiness", () => {
   it.each([
     ["one readable page", [page], true],
     ["one readable page and a 404 own-site page", [page, { ...page, url: "https://example.com/gone", statusCode: 404, wordCount: 0 }], true],
+    ["one readable page and a 500 own-site page", [page, { ...page, url: "https://example.com/a", statusCode: 500, wordCount: 0 }], false],
+    ["one readable page and an own-site page with no status", [page, { ...page, url: "https://example.com/a", statusCode: null }], false],
+    ["one readable page and an empty 200 own-site page", [page, { ...page, url: "https://example.com/a", wordCount: 0 }], false],
+    ["one readable page and a blocked row whose URL does not parse", [page, { ...page, url: "not-a-url", fetchClass: "blocked" }], false],
     ["no pages", [], false],
     ["only blank pages", [{ ...page, wordCount: 0 }], false],
     ["one readable page and a blocked own-site page", [page, { ...page, url: "https://example.com/a", fetchClass: "blocked" }], false],
@@ -44,8 +49,7 @@ describe("checkAuditReadiness", () => {
     ["readable pages only on another host", pages.map((p) => ({ ...p, url: p.url.replace("example.com", "example.ca") })), false],
   ])("flags a thin site only when the crawl read exactly one usable page and nothing failed: %s", (_name, candidate, thin) => {
     const result = checkAuditReadiness(audit, candidate, "example.com", now);
-    expect(result).toMatchObject(insufficientPages);
-    expect("thinSite" in result).toBe(thin);
+    expect(result).toEqual(thin ? thinPages : insufficientPages);
   });
 
   it.each([null, undefined])("rejects a missing audit", (missing) => {
@@ -135,37 +139,37 @@ describe("checkAuditReadiness", () => {
     });
   });
 
-  it.each([{ pages: [] }, { pages: [page] }, { pages: [{ ...page, wordCount: 0 }] }])("rejects empty, single-page or blank completed audits", (candidate) => {
-    expect(checkAuditReadiness(audit, candidate.pages, "example.com", now)).toMatchObject(insufficientPages);
+  it.each([{ pages: [] }, { pages: [{ ...page, wordCount: 0 }] }])("rejects empty or blank completed audits", (candidate) => {
+    expect(checkAuditReadiness(audit, candidate.pages, "example.com", now)).toEqual(insufficientPages);
   });
 
   it.each([
-    { ...pages[1]!, url: "https://elsewhere.example/services" },
-    { ...pages[1]!, url: "https://example.com.evil.example/services" },
-    { ...pages[1]!, url: "https://sub.example.com/services" },
-    { ...pages[1]!, url: "/services" },
-    { ...pages[1]!, url: "not-a-url" },
-    { ...pages[1]!, url: "ftp://example.com/services" },
-    { ...pages[1]!, url: "https://user@example.com/services" },
-    { ...pages[1]!, url: "https://user:password@example.com/services" },
-    { ...pages[1]!, statusCode: null },
-    { ...pages[1]!, statusCode: 201 },
-    { ...pages[1]!, statusCode: 301 },
-    { ...pages[1]!, statusCode: 404 },
-    { ...pages[1]!, statusCode: 500 },
-    { ...pages[1]!, fetchClass: "blocked" },
-    { ...pages[1]!, fetchClass: "error" },
-    { ...pages[1]!, wordCount: 0 },
-    { ...pages[1]!, wordCount: 79 },
-    { ...pages[1]!, wordCount: NaN },
-    { ...pages[1]!, wordCount: Infinity },
-  ])("does not count an unusable second page", (unusable) => {
-    expect(checkAuditReadiness(audit, [page, unusable], "example.com", now)).toMatchObject(insufficientPages);
+    [{ ...pages[1]!, url: "https://elsewhere.example/services" }, true],
+    [{ ...pages[1]!, url: "https://example.com.evil.example/services" }, true],
+    [{ ...pages[1]!, url: "https://sub.example.com/services" }, true],
+    [{ ...pages[1]!, url: "/services" }, true],
+    [{ ...pages[1]!, url: "not-a-url" }, true],
+    [{ ...pages[1]!, url: "ftp://example.com/services" }, true],
+    [{ ...pages[1]!, url: "https://user@example.com/services" }, true],
+    [{ ...pages[1]!, url: "https://user:password@example.com/services" }, true],
+    [{ ...pages[1]!, statusCode: null }, false],
+    [{ ...pages[1]!, statusCode: 201 }, true],
+    [{ ...pages[1]!, statusCode: 301 }, true],
+    [{ ...pages[1]!, statusCode: 404 }, true],
+    [{ ...pages[1]!, statusCode: 500 }, false],
+    [{ ...pages[1]!, fetchClass: "blocked" }, false],
+    [{ ...pages[1]!, fetchClass: "error" }, false],
+    [{ ...pages[1]!, wordCount: 0 }, false],
+    [{ ...pages[1]!, wordCount: 79 }, true],
+    [{ ...pages[1]!, wordCount: NaN }, false],
+    [{ ...pages[1]!, wordCount: Infinity }, false],
+  ])("does not count an unusable second page (and flags a thin site only when nothing points to a crawl fault)", (unusable, thin) => {
+    expect(checkAuditReadiness(audit, [page, unusable], "example.com", now)).toEqual(thin ? thinPages : insufficientPages);
   });
 
   it("deduplicates repeated URL rows and fragment variants", () => {
     const duplicates = [page, { ...page }, { ...page, url: "https://example.com/#contact" }];
-    expect(checkAuditReadiness(audit, duplicates, "example.com", now)).toMatchObject(insufficientPages);
+    expect(checkAuditReadiness(audit, duplicates, "example.com", now)).toEqual(thinPages);
   });
 
   it("counts only the unique usable own-site URLs", () => {
@@ -178,13 +182,13 @@ describe("checkAuditReadiness", () => {
 
   it("does not count homepage scheme, www or tracking variants as separate pages", () => {
     const ownPages = ["http://example.com/", "https://www.example.com/", "https://example.com/?utm_source=example"].map(url => ({ ...page, url }));
-    expect(checkAuditReadiness(audit, ownPages, "WWW.EXAMPLE.COM", now)).toMatchObject(insufficientPages);
+    expect(checkAuditReadiness(audit, ownPages, "WWW.EXAMPLE.COM", now)).toEqual(thinPages);
   });
 
   it("does not expose the audit ID or invalid page URL in rejection reasons", () => {
     const candidate = { ...audit, id: "private-audit-marker" };
     const result = checkAuditReadiness(candidate, [{ ...page, url: "https://secret-user:secret-password@example.com/private-path" }], "example.com", now);
-    expect(result).toMatchObject(insufficientPages);
+    expect(result).toEqual(insufficientPages);
     expect(JSON.stringify(result)).not.toMatch(/private|secret|example\.com/);
   });
 
