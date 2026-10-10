@@ -19,6 +19,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -36,19 +37,23 @@ jobs:
       # findings on files nobody is touching), so a whole-repo gate is red on
       # every PR. Format and lint only what this change touches; type checks
       # still cover the whole repo. knip reports but does not block until its
-      # baseline is cleaned.
+      # baseline is cleaned. Limits: type-aware lint regressions in unchanged
+      # callers are not caught, and `pnpm run ci:check` (whole repo) no longer
+      # matches this job.
       - name: List changed files
         run: |
           base="${{ github.event.pull_request.base.sha || github.event.before }}"
-          git fetch --no-tags --depth=1 origin "$base"
-          git diff --name-only --diff-filter=ACMR "$base" HEAD > "$RUNNER_TEMP/changed.txt"
-          echo "changed files: $(wc -l < "$RUNNER_TEMP/changed.txt")"
+          if ! [[ "$base" =~ ^[0-9a-f]{40}$ ]] || [[ "$base" =~ ^0+$ ]]; then base="HEAD~1"; fi
+          git cat-file -e "$base^{commit}" 2>/dev/null || git fetch --no-tags origin "$base" || base="HEAD~1"
+          git -c core.quotePath=false diff --name-only --diff-filter=ACMR "$base"...HEAD > "$RUNNER_TEMP/changed.txt"
+          echo "base $base; changed files: $(wc -l < "$RUNNER_TEMP/changed.txt")"
 
       - name: Prettier (changed files)
-        run: xargs -a "$RUNNER_TEMP/changed.txt" -r pnpm exec prettier --check --ignore-unknown
+        run: xargs -a "$RUNNER_TEMP/changed.txt" -d '\n' -r pnpm exec prettier --check --ignore-unknown
 
       - name: Oxlint (changed files)
-        run: grep -E '\.(ts|tsx|mjs|js|cjs)$' "$RUNNER_TEMP/changed.txt" | xargs -r pnpm exec oxlint --type-aware
+        run: |
+          { grep -E '\.(ts|tsx|mjs|js|cjs)$' "$RUNNER_TEMP/changed.txt" || true; } | xargs -d '\n' -r pnpm exec oxlint --type-aware
 
       - name: Type checks
         run: pnpm exec tsc --noEmit && pnpm exec tsc --noEmit -p badseo/tsconfig.json
