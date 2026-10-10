@@ -37,7 +37,7 @@ vi.mock("alchemy/Cloudflare", async () => {
   };
 });
 
-import { SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES } from "./src/shared/mcp-discovery-paths.ts";
+import { SELFHOST_OAUTH_PUBLIC_PATH_PREFIXES } from "./src/shared/mcp-discovery-paths.ts";
 import { emailAccessGate } from "./alchemy.access";
 
 const OPTIONS = {
@@ -85,27 +85,38 @@ describe("emailAccessGate topology", () => {
     // The user gate: email policy only. A service-token policy here would
     // mint user-audience JWTs for machines — the C1 hole.
     expect(byId.get("SelfHostAccess")).toEqual(["pol:SelfHostAllowUsers"]);
-    // The service-token policy attaches to the /mcp app and nowhere else.
-    expect(byId.get("SelfHostMcpAccess")).toEqual(["pol:SelfHostMcpServiceAuth"]);
+    // /mcp needs identity Allow (browser / Cursor Managed OAuth) AND Service
+    // Auth (machine callers). Service Auth still must not land on the host app.
+    expect(byId.get("SelfHostMcpAccess")).toEqual([
+      "pol:SelfHostAllowUsers",
+      "pol:SelfHostMcpServiceAuth",
+    ]);
     const appsWithServicePolicy = [...byId.entries()]
       .filter(([, policies]) => policies.includes("pol:SelfHostMcpServiceAuth"))
       .map(([id]) => id);
     expect(appsWithServicePolicy).toEqual(["SelfHostMcpAccess"]);
-    // Discovery is bypass-everyone on its own scoped app.
+    // Public OAuth (discovery + token/register) is bypass-everyone on its
+    // own scoped app — never authorize, never the bare hostname.
     expect(byId.get("SelfHostMcpDiscoveryAccess")).toEqual([
       "pol:SelfHostMcpDiscoveryBypass",
     ]);
-    // ...and its destinations are EXACTLY the shared discovery prefixes on
-    // each hostname — a bare-hostname typo here would bypass-everyone the
+    // Destinations are EXACTLY the shared public OAuth prefixes on each
+    // hostname — a bare-hostname typo here would bypass-everyone the
     // entire site, and this assertion is the only thing that catches it.
     const destinationsById = new Map(
       calls.applications.map((a) => [a.id, a.destinations]),
     );
     expect(destinationsById.get("SelfHostMcpDiscoveryAccess")).toEqual(
-      [...SELFHOST_OAUTH_DISCOVERY_PATH_PREFIXES].map(
+      [...SELFHOST_OAUTH_PUBLIC_PATH_PREFIXES].map(
         (p) => `seo.example.com${p}`,
       ),
     );
+    expect(destinationsById.get("SelfHostMcpDiscoveryAccess")).toEqual([
+      "seo.example.com/.well-known/oauth-authorization-server",
+      "seo.example.com/.well-known/oauth-protected-resource",
+      "seo.example.com/api/auth/oauth2/token",
+      "seo.example.com/api/auth/oauth2/register",
+    ]);
     expect(destinationsById.get("SelfHostMcpAccess")).toEqual([
       "seo.example.com/mcp",
     ]);

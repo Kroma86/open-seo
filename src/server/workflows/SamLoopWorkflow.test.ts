@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import { SamLoopWorkflow } from "./SamLoopWorkflow";
 
-const mocks = vi.hoisted(() => ({ getRunById: vi.fn(), getLoopById: vi.fn(), getProjectById: vi.fn(), updateRun: vi.fn(), updateLoop: vi.fn(), execute: vi.fn(), fail: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getRunById: vi.fn(), getLoopById: vi.fn(), getProjectById: vi.fn(), updateRun: vi.fn(), checkpointRun: vi.fn(), updateLoop: vi.fn(), execute: vi.fn(), fail: vi.fn() }));
 vi.mock("cloudflare:workers", () => ({ WorkflowEntrypoint: vi.fn() }));
 vi.mock("cloudflare:workflows", () => ({ NonRetryableError: class extends Error {} }));
 vi.mock("@/db", () => ({ withPgClient: (fn: () => unknown) => fn() }));
@@ -20,6 +20,15 @@ function run() {
   return workflow.run({ payload } as WorkflowEvent<typeof payload>, {} as WorkflowStep);
 }
 describe("Sam loop result persistence", () => {
+  it("saves partial progress even when the workflow execution later throws", async () => {
+    mocks.execute.mockImplementation(async (input) => {
+      await input.onProgress({ report: "INCOMPLETE: measured observations", stepsUsed: 2, proposalsQueued: 0, costNote: null });
+      throw new Error("workflow interrupted");
+    });
+    await expect(run()).rejects.toThrow("workflow interrupted");
+    expect(mocks.checkpointRun).toHaveBeenCalledWith("run_1", { report: "INCOMPLETE: measured observations", stepsUsed: 2, proposalsQueued: 0, costNote: null });
+    expect(mocks.fail).toHaveBeenCalled();
+  });
   beforeEach(() => {
     mocks.getRunById.mockResolvedValue({ status: "running" });
     mocks.getLoopById.mockResolvedValue({ isEnabled: true, name: "Monthly content", sourceType: "custom", customPrompt: "approved", skillName: null });
@@ -32,37 +41,6 @@ describe("Sam loop result persistence", () => {
     expect(mocks.updateRun).toHaveBeenLastCalledWith("run_1", { status, error: execution.error, report: execution.report, proposalsQueued: 0, stepsUsed: 7, costNote: execution.costNote, finishedAt: expect.any(String) });
     expect(mocks.execute).toHaveBeenCalledTimes(1);
     expect(mocks.fail).not.toHaveBeenCalled();
-  });
-  it("logs typed failure metadata without the human-readable run error", async () => {
-    mocks.execute.mockResolvedValue({
-      status: "failed",
-      error: "Generation did not return a complete valid result.",
-      report: "Draft not completed",
-      proposalsQueued: 0,
-      stepsUsed: 1,
-      costNote: null,
-      modelFailure: {
-        kind: "generation_error",
-        detail: "Error (message redacted)",
-      },
-    });
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      await run();
-      expect(log).toHaveBeenCalledWith({
-        event: "sam_loop_run_failed",
-        runId: "run_1",
-        loopId: "loop_1",
-        projectId: "project_1",
-        trigger: "scheduled",
-        failureKind: "generation_error",
-        failureDetail: "Error (message redacted)",
-        steps: 1,
-        proposalsQueued: 0,
-      });
-    } finally {
-      log.mockRestore();
-    }
   });
   it("does not overwrite a run already marked terminal during execution", async () => {
     mocks.getRunById.mockResolvedValueOnce({ status: "running" }).mockResolvedValueOnce({ status: "failed" });

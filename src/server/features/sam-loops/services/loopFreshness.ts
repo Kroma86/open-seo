@@ -15,7 +15,7 @@ export type AuditReadinessPage = {
 };
 
 export type AuditReadinessResult =
-  | { ready: true; measuredAt: string; usablePages: number }
+  | { ready: true; measuredAt: string; usablePages: number; stale?: { ageDays: number } }
   | { ready: false; reason: string };
 
 const MAX_AUDIT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -52,6 +52,7 @@ export function checkAuditReadiness(
   pages: readonly AuditReadinessPage[],
   domain: string | null,
   now: Date,
+  options: { allowStale?: boolean } = {},
 ): AuditReadinessResult {
   if (!audit) {
     return { ready: false, reason: "No site audit is available." };
@@ -74,7 +75,8 @@ export function checkAuditReadiness(
   if (completedAt < startedAt) {
     return { ready: false, reason: "The site audit completed before it started." };
   }
-  if (nowMs - startedAt > MAX_AUDIT_AGE_MS) {
+  const stale = nowMs - startedAt > MAX_AUDIT_AGE_MS;
+  if (stale && options.allowStale !== true) {
     return { ready: false, reason: "The site audit is older than 7 days." };
   }
 
@@ -101,5 +103,6 @@ export function checkAuditReadiness(
     ready: true,
     measuredAt: new Date(startedAt).toISOString(),
     usablePages: usableUrls.size,
+    ...(stale ? { stale: { ageDays: (nowMs - startedAt) / 86_400_000 } } : {}),
   };
 }

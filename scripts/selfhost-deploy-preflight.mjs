@@ -95,6 +95,11 @@ if (!process.env.CLOUDFLARE_API_TOKEN) {
   }
 }
 
+// State left mid-reconcile by an interrupted deploy (NIC-775). Cheap to look
+// for, and the earliest point where "alchemy holds an id Cloudflare deleted" is
+// legible — the Cloudflare conflict this turns into names neither id.
+// Best-effort like everything above: unreadable login or unreachable store is
+// silence, not a failure.
 // 2026-09-21: the machine-identity /mcp path (c5271d6) was deployed on Sep 16
 // and then overwritten on Sep 17 by a deploy from a branch that forked before
 // the merge. Grok Bot lost its MCP for four days and nobody could see why.
@@ -115,4 +120,13 @@ if (!process.env.CLOUDFLARE_API_TOKEN) {
       `Merge agency-platform (or cherry-pick a0665ec) into this line first.`,
     );
   }
+}
+
+const { checkStateSettled } = await import("./alchemy-state-health.mjs");
+const stateHealth = await checkStateSettled(
+  { stack: "open-seo", stage: "selfhost" },
+  { homedir: homedir(), readFileSync, env: process.env },
+);
+if (stateHealth.outcome === "unsettled") {
+  fail(...stateHealth.message.split("\n"));
 }

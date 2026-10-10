@@ -1,117 +1,241 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AppError } from "@/server/lib/errors";
-import {
-  getAgencyOttoPageInputs,
-  getAgencyOttoPageInputsGlobal,
-} from "./AgencyOttoPageInputsService";
 
-const mocks = vi.hoisted(() => ({
-  resolveProjectByDomain: vi.fn(),
-  getLatestAuditForProject: vi.fn(),
+// Rows here mirror real board data from 2026-09-18, when 18 of 39 clients had
+// their "homepage" SEO checks scored against the wrong page. Two of them were
+// scored against a different domain entirely.
+
+const queue: unknown[][] = [];
+
+function builder() {
+  const b: Record<string, unknown> = {};
+  const self = () => b;
+  b.from = self;
+  b.where = self;
+  b.orderBy = self;
+  b.limit = self;
+  b.then = (
+    resolve: (value: unknown) => unknown,
+    reject: (reason: unknown) => unknown,
+  ) => Promise.resolve(queue.shift() ?? []).then(resolve, reject);
+  return b;
+}
+
+vi.mock("drizzle-orm", () => ({
+  and: () => ({}),
+  asc: () => ({}),
+  eq: () => ({}),
+  inArray: () => ({}),
+  isNull: () => ({}),
 }));
-
-vi.mock("cloudflare:workers", () => ({ env: {} }));
-vi.mock("@/db", () => ({
-  db: {
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          orderBy: () => ({
-            limit: () => Promise.resolve([]),
-          }),
-        }),
-      }),
-    }),
+vi.mock("@/db", () => ({ db: { select: () => builder() } }));
+vi.mock("@/db/schema", () => ({
+  auditPages: {
+    url: {},
+    statusCode: {},
+    title: {},
+    metaDescription: {},
+    canonicalUrl: {},
+    ogTitle: {},
+    ogDescription: {},
+    h1Count: {},
+    wordCount: {},
+    imagesMissingAlt: {},
+    crawlDepth: {},
+    auditId: {},
+    fetchClass: {},
   },
+  projects: { organizationId: {}, archivedAt: {}, domain: {}, name: {} },
 }));
+
 vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
-  normalizeProjectDomain: (raw: string | null | undefined) => {
-    if (raw == null) return null;
-    let host = raw.trim().toLowerCase();
-    for (const prefix of ["https://", "http://"]) {
-      if (host.startsWith(prefix)) host = host.slice(prefix.length);
-    }
-    if (host.startsWith("www.")) host = host.slice(4);
-    host = host.split("/")[0] ?? host;
-    return host || null;
-  },
   ProjectRepository: {
-    resolveProjectByDomain: (...args: unknown[]) =>
-      mocks.resolveProjectByDomain(...args),
+    // Project resolution is covered in AgencyOttoPageInputsService.resolution.test.ts;
+    // here the first queued rows stand in for the resolved project.
+    resolveProjectByDomain: async () =>
+      (queue.shift() as unknown[] | undefined)?.[0] ?? null,
   },
 }));
+
+const audit: { id: string; startUrl: string | null; completedAt: string | null; startedAt: string | null } =
+  { id: "a1", startUrl: null, completedAt: "2026-09-17T04:26:06Z", startedAt: null };
+
 vi.mock("@/server/features/audit/repositories/AuditRepository", () => ({
-  AuditRepository: {
-    getLatestAuditForProject: (...args: unknown[]) =>
-      mocks.getLatestAuditForProject(...args),
-  },
+  AuditRepository: { getLatestAuditForProject: async () => audit },
 }));
 
-const PROJECT = {
-  id: "p1",
-  name: "Client",
-  domain: "client.com",
-  organizationId: "org1",
-  archivedAt: null,
-};
+const { getAgencyOttoPageInputs } = await import(
+  "./AgencyOttoPageInputsService"
+);
 
-describe("getAgencyOttoPageInputs project resolution", () => {
-  beforeEach(() => {
-    mocks.resolveProjectByDomain.mockReset();
-    mocks.getLatestAuditForProject.mockReset();
-    mocks.getLatestAuditForProject.mockResolvedValue(null);
+const page = (url: string) => ({
+  url,
+  statusCode: 200,
+  title: url,
+  metaDescription: "d",
+  canonicalUrl: url,
+  ogTitle: null,
+  ogDescription: null,
+  h1Count: 1,
+  wordCount: 400,
+  imagesMissingAlt: 0,
+  crawlDepth: 0,
+});
+
+const ROOTS = new Set(
+  ["https://", "http://"].flatMap((s) =>
+    ["", "www."].flatMap((w) => [s + w, s + w]),
+  ),
+);
+
+function isRootUrl(url: string) {
+  try {
+    const u = new URL(url);
+    return u.pathname === "/" && !u.search;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Three queries run in order: the project row, the limited page window, then
+ * the dedicated root lookup. `windowUrls` is what the paged query returns and
+ * `allUrls` is everything the audit holds — they differ because the root sorts
+ * behind every null-depth row and falls outside the window.
+ */
+function seed(
+  domain: string,
+  windowUrls: string[],
+  startUrl: string | null = null,
+  allUrls: string[] = windowUrls,
+) {
+  void ROOTS;
+  audit.startUrl = startUrl;
+  queue.length = 0;
+  queue.push([{ id: "p1", name: domain, domain, organizationId: null }]);
+  queue.push([...windowUrls].sort().map(page));
+  queue.push(allUrls.filter(isRootUrl).map(page));
+}
+
+beforeEach(() => {
+  queue.length = 0;
+  audit.startUrl = null;
+});
+
+describe("homepage selection", () => {
+  it("returns the root page of the project's own domain", async () => {
+    seed("millcreekbakery.ca", [
+      "https://millcreekbakery.ca/about",
+      "https://millcreekbakery.ca/",
+    ]);
+    const out = await getAgencyOttoPageInputs({ domain: "millcreekbakery.ca", organizationId: null });
+    expect(out.homepage?.path).toBe("/");
+    expect(out.homepageReason).toBe("ok");
   });
 
-  it("resolves by exact domain inside the caller's organization", async () => {
-    mocks.resolveProjectByDomain.mockResolvedValue(PROJECT);
-    const data = await getAgencyOttoPageInputs({
-      domain: "https://www.client.com/about",
-      organizationId: "org1",
-    });
-    expect(mocks.resolveProjectByDomain).toHaveBeenCalledWith({
-      domain: "client.com",
-      organizationId: "org1",
-    });
-    expect(data.projectId).toBe("p1");
-    expect(data.projectName).toBe("Client");
-    expect(data.pages).toEqual([]);
+  it("treats www as the same domain", async () => {
+    seed("millcreekbakery.ca", ["https://www.millcreekbakery.ca/"]);
+    const out = await getAgencyOttoPageInputs({ domain: "millcreekbakery.ca", organizationId: null });
+    expect(out.homepage?.path).toBe("/");
+    expect(out.homepageReason).toBe("ok");
   });
 
-  it("uses the unscoped resolver only for the global (Hermes) export", async () => {
-    mocks.resolveProjectByDomain.mockResolvedValue(PROJECT);
-    await getAgencyOttoPageInputsGlobal("client.com");
-    expect(mocks.resolveProjectByDomain).toHaveBeenCalledWith({
-      domain: "client.com",
+  // The regression. Ordering is `asc(crawlDepth), asc(url)`, so when the root
+  // page is absent the old `?? pages[0]` fallback returned whichever path
+  // sorted first and called it the homepage.
+  it("returns null, not the alphabetically-first page, when the root was not crawled", async () => {
+    seed("veruminnovations.com", [
+      "https://veruminnovations.com/about",
+      "https://veruminnovations.com/services",
+    ]);
+    const out = await getAgencyOttoPageInputs({
+      domain: "veruminnovations.com",
       organizationId: null,
     });
+    expect(out.homepage).toBeNull();
+    expect(out.homepageReason).toBe("root_not_in_audit");
   });
 
-  it("returns the empty shape (no project id) when the domain resolves to nothing", async () => {
-    mocks.resolveProjectByDomain.mockResolvedValue(null);
-    const data = await getAgencyOttoPageInputs({
-      domain: "nobody.example",
-      organizationId: "org1",
+  it("does not accept an underscore-prefixed platform endpoint as the homepage", async () => {
+    seed("fenskefinancialcoaching.com", [
+      "https://www.fenskefinancialcoaching.com/_serverless/challenges-web-serverless/redirect-invite-link?programId=15fe39c6",
+      "https://www.fenskefinancialcoaching.com/blog",
+    ]);
+    const out = await getAgencyOttoPageInputs({
+      domain: "fenskefinancialcoaching.com",
+      organizationId: null,
     });
-    expect(data).toMatchObject({
-      domain: "nobody.example",
-      projectId: null,
-      projectName: null,
-      auditId: null,
-      homepage: null,
-      pages: [],
-    });
-    expect(mocks.getLatestAuditForProject).not.toHaveBeenCalled();
+    expect(out.homepage).toBeNull();
+    expect(out.homepageReason).toBe("root_not_in_audit");
   });
 
-  it("surfaces CONFLICT when two projects share the domain", async () => {
-    mocks.resolveProjectByDomain.mockRejectedValue(
-      new AppError(
-        "CONFLICT",
-        "ambiguous_project_domain: 2 projects share client.com",
-      ),
+  // wellhealthcounselling.com was being scored against consciouspathcounselling.ca.
+  it("rejects pages belonging to a different domain", async () => {
+    seed("wellhealthcounselling.com", [
+      "https://consciouspathcounselling.ca/",
+      "https://consciouspathcounselling.ca/about",
+    ]);
+    const out = await getAgencyOttoPageInputs({
+      domain: "wellhealthcounselling.com",
+      organizationId: null,
+    });
+    expect(out.homepage).toBeNull();
+    expect(out.homepageReason).toBe("no_pages_on_project_domain");
+  });
+
+  it("ignores a start URL that points at another domain", async () => {
+    seed(
+      "cinnamoncounselling.ca",
+      ["https://cinnamoncounselling.ca/adhd-coaching"],
+      "https://cinnamoncounselling.com/adhd-coaching",
     );
-    await expect(
-      getAgencyOttoPageInputs({ domain: "client.com", organizationId: "org1" }),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
+    const out = await getAgencyOttoPageInputs({
+      domain: "cinnamoncounselling.ca",
+      organizationId: null,
+    });
+    expect(out.homepage).toBeNull();
+    expect(out.homepageReason).toBe("root_not_in_audit");
+  });
+
+  it("honours a start URL on the project's own domain", async () => {
+    seed(
+      "example.ca",
+      ["https://example.ca/en/", "https://example.ca/about"],
+      "https://example.ca/en/",
+    );
+    const out = await getAgencyOttoPageInputs({ domain: "example.ca", organizationId: null });
+    expect(out.homepage?.path).toBe("/en/");
+    expect(out.homepageReason).toBe("ok");
+  });
+
+  // The root is stored with crawlDepth 0 while every other page has a null
+  // depth. SQLite sorts nulls first on ASC, so the root sits behind all of
+  // them and never appears in the limited page window.
+  it("finds the root even when it falls outside the paged window", async () => {
+    seed(
+      "veruminnovations.com",
+      [
+        "https://veruminnovations.com/about",
+        "https://veruminnovations.com/blog",
+      ],
+      null,
+      [
+        "https://veruminnovations.com/",
+        "https://veruminnovations.com/about",
+        "https://veruminnovations.com/blog",
+      ],
+    );
+    const out = await getAgencyOttoPageInputs({
+      domain: "veruminnovations.com",
+      organizationId: null,
+    });
+    expect(out.homepage?.url).toBe("https://veruminnovations.com/");
+    expect(out.homepageReason).toBe("ok");
+  });
+
+  it("reports when nothing was crawled at all", async () => {
+    seed("example.ca", []);
+    const out = await getAgencyOttoPageInputs({ domain: "example.ca", organizationId: null });
+    expect(out.homepage).toBeNull();
+    expect(out.homepageReason).toBe("no_pages_crawled");
   });
 });

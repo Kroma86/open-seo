@@ -405,7 +405,7 @@ function ProductSection() {
   );
 }
 
-// ─── MCP: the page's one Fin Orange moment ───────────────────────────
+// ─── MCP: the page's deepest accent moment ───────────────────────────
 
 type McpClient = {
   name: string;
@@ -426,9 +426,7 @@ function McpSection() {
       <Container>
         <div className="itc-mcp-grid">
           <div>
-            <p className="itc-eyebrow" style={{ color: "#ff5600" }}>
-              Model Context Protocol
-            </p>
+            <p className="itc-eyebrow">Model Context Protocol</p>
             <h2 className="itc-display-lg">Get superpowers with the MCP</h2>
             <p className="itc-body-lg itc-muted" style={{ margin: "20px 0 0" }}>
               Give your agent real SEO data instead of guesses. It can research

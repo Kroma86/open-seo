@@ -1,5 +1,8 @@
 import { env } from "cloudflare:workers";
 import { SamLoopRepository } from "@/server/features/sam-loops/repositories/SamLoopRepository";
+import { SAM_BOX_COST_PREFIX, SAM_BOX_LEASE_SECONDS } from "./samBoxTypes";
+import { finishSamBoxRun } from "./samBoxFinalize";
+import { samBoxExpiredFinish } from "./samBoxSweep";
 import {
   SAM_LOOP_DAILY_RUN_CAP_DEFAULT,
   startOfUtcDay,
@@ -96,6 +99,15 @@ async function getStaleRunReason(input: {
   runId: string;
   ageMs: number;
 }) {
+  if (
+    input.run?.costNote?.startsWith(SAM_BOX_COST_PREFIX) &&
+    input.run.status === "running"
+  ) {
+    const startedMs = input.run.startedAt ? Date.parse(input.run.startedAt) : NaN;
+    return Number.isFinite(startedMs) && Date.now() <= startedMs + SAM_BOX_LEASE_SECONDS * 1000
+      ? null
+      : "Box lease expired before a result was posted.";
+  }
   const workflowStatus = await getWorkflowStatus(input.runId);
 
   if (workflowStatus && ACTIVE_WORKFLOW_STATUSES.has(workflowStatus.status)) {
@@ -132,6 +144,15 @@ export async function failSamLoopRunIfActive(
     current.status === "completed" ||
     current.status === "failed"
   ) {
+    return;
+  }
+  if (current.costNote?.startsWith(SAM_BOX_COST_PREFIX)) {
+    await finishSamBoxRun({
+      run: { id: current.id, loopId: current.loopId, projectId: current.projectId },
+      data: samBoxExpiredFinish(),
+      touchLastRun: true,
+      advance: true,
+    });
     return;
   }
   await SamLoopRepository.updateRun(runId, {

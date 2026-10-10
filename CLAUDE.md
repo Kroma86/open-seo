@@ -24,6 +24,14 @@
 - One test per invariant. Don't re-test Zod or a library, and don't repeat an output-schema round-trip in every happy path.
 - Don't mock ORM builder chains. Test repositories through services or real SQL evaluation; chain mocks break on refactors that change no behavior.
 
+### Prove the test can fail
+
+- A test guarding something that reaches production must be **proven to fail when that thing is broken**. Break the code, run the test, see red, restore. It costs two minutes and it is the only check that catches a vacuous test.
+- `otto-output-schemas.test.ts` originally shipped green against the exact bug it existed to catch. It validated with `z.object(shape).safeParse(payload)`, and zod's default object mode is *strip* — unknown keys are silently removed, so undeclared fields never raise. Validate through the real path (`normalizeObjectSchema` -> `toJsonSchemaCompat` -> `AjvJsonSchemaValidator`), never an approximation of it.
+- Where a suite guards an invariant that can rot silently, carry an explicit non-vacuity block. See `describe("the check above is not vacuous")` in `otto-output-schemas.test.ts`, `scripts/alchemy-state-health.test.mjs` and `scripts/repair-alchemy-state.test.mjs`.
+- Declare the environment a test depends on instead of inheriting a default. `oauth-refresh.e2e.test.ts` went stale unnoticed because `getAuthMode()` fail-closes to `cloudflare_access` when `AUTH_MODE` is unset, while the tests pin the hosted Better Auth flow.
+- The same rule applies to a green deploy or a passing smoke check: state what would have made it fail. If nothing would have, it proved nothing.
+
 ## Log papercuts
 
 When small, non-blocking repository friction occurs—a retried tool call, confusing setup step, flaky command, stale cache, misleading error, or non-obvious gotcha—use the `papercuts` skill and append it to `.agents/PAPERCUTS.md` in the moment. Continue the current task. Real bugs and tracked work are not papercuts, and sensitive data must never be logged.

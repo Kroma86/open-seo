@@ -109,6 +109,37 @@ export async function enqueueHomegrownOttoProposal(input: {
   return proposal;
 }
 
+/**
+ * Project a stored record onto the declared shape.
+ *
+ * These rows are JSON in KV written by several producers over time, so a row
+ * can carry keys this module never declared (2026-09-18: rows with an extra key
+ * made every `list_homegrown_otto_proposals` call fail output validation,
+ * because the tool publishes `additionalProperties: false`). Read normalizes;
+ * the pull path below still round-trips the whole record, so nothing is
+ * dropped from storage.
+ */
+function toProposal(raw: unknown): HomegrownOttoProposal | null {
+  const r = raw as Partial<HomegrownOttoProposal> | null;
+  if (!r || typeof r.id !== "string" || typeof r.domain !== "string") return null;
+  return {
+    id: r.id,
+    domain: r.domain,
+    organizationId: r.organizationId ?? null,
+    projectId: r.projectId ?? null,
+    status: r.status ?? "pending",
+    proposedAt: r.proposedAt ?? "",
+    proposedBy: r.proposedBy ?? "api",
+    path: r.path ?? "/",
+    fixes: r.fixes ?? {},
+    before: r.before ?? {},
+    humanReview: r.humanReview ?? [],
+    flags: r.flags ?? [],
+    rationale: r.rationale ?? null,
+    pulledAt: r.pulledAt ?? null,
+  };
+}
+
 export async function listHomegrownOttoProposals(input?: {
   status?: HomegrownOttoProposal["status"];
   domain?: string;
@@ -138,7 +169,8 @@ export async function listHomegrownOttoProposals(input?: {
       if (out.length >= limit) break;
       if (!raw) continue;
       try {
-        const proposal = JSON.parse(raw) as HomegrownOttoProposal;
+        const proposal = toProposal(JSON.parse(raw));
+        if (!proposal) continue;
         if (input?.status && proposal.status !== input.status) continue;
         if (
           scoped &&

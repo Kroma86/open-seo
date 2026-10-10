@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "@/server/lib/errors";
 import {
@@ -51,6 +52,50 @@ beforeEach(() => {
 });
 
 describe("get_business_profile", () => {
+  it.each(["ANTHROPIC_API_KEY", "XAI_API_KEY", "OPENAI_API_KEY"])(
+    "refuses %s before provider work",
+    async (key) => {
+      vi.stubEnv(key, "");
+      try {
+        await expect(
+          getBusinessProfileTool.handler(
+            { projectId: "project_1", cid: "123" },
+            toolContext,
+          ),
+        ).rejects.toThrow("API-key environment refused");
+        expect(mocks.createDataforseoClient).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
+  it.each([
+    ["+17787767060", "+1 (778) 776-7060"],
+    ["17787767060", "+1 (778) 776-7060"],
+    ["778.776.7060", "+1 (778) 776-7060"],
+    ["778 776 7060", "+1 (778) 776-7060"],
+    ["7787767060 x123", "+1 (778) 776-7060 ext. 123"],
+    ["7787767060 / 6043778385", "7787767060 / 6043778385"],
+    ["+1 (178) 776-7060", "+1 (178) 776-7060"],
+  ])(
+    "adds a safe display phone while preserving the provider phone: %s",
+    async (raw, expected) => {
+      const upstream = Object.freeze({ title: "Test business", phone: raw });
+      mocks.createDataforseoClient.mockReturnValue({
+        business: { myBusinessInfo: vi.fn().mockResolvedValue(upstream) },
+      });
+      const result = await getBusinessProfileTool.handler(
+        { projectId: "project_1", cid: "123" },
+        toolContext,
+      );
+      expect(textContent(result)).toContain(`- phone: ${expected}`);
+      expect(result.structuredContent.profile?.phone).toBe(raw);
+      expect(result.structuredContent.profile?.phoneDisplay).toBe(expected);
+      expect(upstream.phone).toBe(raw);
+    },
+  );
+
   it("rejects anything other than exactly one business identifier", async () => {
     await expect(
       getBusinessProfileTool.handler(

@@ -300,7 +300,7 @@ async function readSnapshot(
   projectId: string,
 ): Promise<AgencyScoreInputs["gsc"]> {
   try {
-    return (await loadGscTotals(projectId, true)) ?? null;
+    return (await loadGscTotals(projectId, true)).totals;
   } catch {
     return null;
   }

@@ -9,11 +9,13 @@ import {
 } from "@cloudflare/workers-oauth-provider";
 import { z } from "zod";
 import { getHostedBaseUrl } from "@/lib/auth";
+import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
 import {
   getMcpResource,
   MCP_OAUTH_SCOPES,
   MCP_SCOPE,
 } from "@/lib/oauth-resource";
+import { withPgClient } from "@/db";
 import { asAppError } from "@/server/lib/errors";
 import { recordMcpAuthorized } from "@/server/features/activation/mcpActivation";
 import { captureServerEvent } from "@/server/lib/posthog";
@@ -26,14 +28,19 @@ import {
 import { normalizeClientRegistrationRequest } from "@/server/mcp/oauth-registration";
 import { getPublicOrigin } from "@/server/mcp/public-origin";
 import { handleAuthenticatedOpenSeoMcpRequest } from "@/server/mcp/transport";
+import { resolveCloudflareAccessMcpGate } from "@/middleware/ensure-user/cloudflareAccess";
+import {
+  resolveLocalNoAuthContext,
+  resolveSharedWorkspaceContext,
+} from "@/middleware/ensure-user/delegated";
 import { resolveHostedContext } from "@/middleware/ensure-user/hosted";
 import { handleMcpApiKeyRequest } from "@/server/mcp/api-key-auth";
-
-const OAUTH_AUTHORIZE_PATH = "/api/auth/oauth2/authorize";
-const OAUTH_TOKEN_PATH = "/api/auth/oauth2/token";
-const OAUTH_REGISTER_PATH = "/api/auth/oauth2/register";
-
-const OAUTH_CONSENT_RESPONSE_PATH = "/api/oauth/consent";
+import {
+  OAUTH_AUTHORIZE_PATH,
+  OAUTH_CONSENT_RESPONSE_PATH,
+  OAUTH_REGISTER_PATH,
+  OAUTH_TOKEN_PATH,
+} from "@/shared/mcp-discovery-paths";
 const OAUTH_AUTHORIZATION_PARAM_NAMES = [
   "response_type",
   "client_id",
@@ -160,32 +167,96 @@ function csrfProtected(request: Request) {
   return origin === getPublicOrigin(request);
 }
 
-async function getAuthorizeSessionBlocker(request: Request) {
+function unauthorized() {
+  return new Response("Unauthorized", { status: 401 });
+}
+
+async function getAuthorizeSessionBlocker(
+  request: Request,
+  env: OpenSeoOAuthEnv,
+) {
+  const authMode = getAuthMode(env.AUTH_MODE);
+
+  if (isHostedAuthMode(authMode)) {
+    try {
+      await resolveHostedContext(request.headers);
+      return null;
+    } catch (error) {
+      const appError = asAppError(error);
+      if (appError?.code === "UNAUTHENTICATED") {
+        return redirectToSignIn(request);
+      }
+
+      if (appError?.code === "AUTH_CONFIG_MISSING") {
+        return new Response("Missing Better Auth hosted configuration", {
+          status: 500,
+        });
+      }
+
+      throw error;
+    }
+  }
+
+  if (authMode === "local_noauth") {
+    return null;
+  }
+
   try {
-    await resolveHostedContext(request.headers);
+    const gate = await resolveCloudflareAccessMcpGate(request.headers);
+    if (gate.kind !== "user") {
+      return unauthorized();
+    }
     return null;
   } catch (error) {
     const appError = asAppError(error);
-    if (appError?.code === "UNAUTHENTICATED") {
-      return redirectToSignIn(request);
+    if (
+      appError?.code === "UNAUTHENTICATED" ||
+      appError?.code === "AUTH_CONFIG_MISSING"
+    ) {
+      return unauthorized();
     }
-
-    if (appError?.code === "AUTH_CONFIG_MISSING") {
-      return new Response("Missing Better Auth hosted configuration", {
-        status: 500,
-      });
-    }
-
     throw error;
   }
 }
 
-async function resolveContextForConsent(request: Request) {
+async function resolveContextForConsent(
+  request: Request,
+  env: OpenSeoOAuthEnv,
+) {
+  const authMode = getAuthMode(env.AUTH_MODE);
+
+  if (isHostedAuthMode(authMode)) {
+    try {
+      return await resolveHostedContext(request.headers);
+    } catch (error) {
+      const appError = asAppError(error);
+      if (appError?.code === "UNAUTHENTICATED") {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  if (authMode === "local_noauth") {
+    return resolveLocalNoAuthContext();
+  }
+
   try {
-    return await resolveHostedContext(request.headers);
+    const gate = await resolveCloudflareAccessMcpGate(request.headers);
+    if (gate.kind !== "user") {
+      return null;
+    }
+    // JWKS already finished in the gate. Workspace rows need their own
+    // short Postgres client — never hold the request-wide pool across JWKS.
+    return withPgClient(() =>
+      resolveSharedWorkspaceContext(gate.userId, gate.userEmail),
+    );
   } catch (error) {
     const appError = asAppError(error);
-    if (appError?.code === "UNAUTHENTICATED") {
+    if (
+      appError?.code === "UNAUTHENTICATED" ||
+      appError?.code === "AUTH_CONFIG_MISSING"
+    ) {
       return null;
     }
     throw error;
@@ -263,7 +334,7 @@ async function handleOAuthAuthorizeRequest(
     throw error;
   }
 
-  const sessionBlocker = await getAuthorizeSessionBlocker(request);
+  const sessionBlocker = await getAuthorizeSessionBlocker(request, env);
   if (sessionBlocker) return sessionBlocker;
 
   return Response.redirect(buildConsentUrl(request).toString(), 302);
@@ -316,7 +387,7 @@ async function handleOAuthConsentResponse(
     return jsonResponse({ redirectTo: deniedRedirect(authRequest) });
   }
 
-  const context = await resolveContextForConsent(request);
+  const context = await resolveContextForConsent(request, env);
   if (!context) {
     return jsonResponse({ error: "Sign in required" }, { status: 401 });
   }

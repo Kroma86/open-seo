@@ -175,7 +175,7 @@ describe("self-hosted Google OAuth providers", () => {
       vi.setSystemTime(new Date("2026-08-07T12:00:00Z"));
       let state = await authorizationState(GA4_INTEGRATION);
       if (kind === "tampered") state = `${state.slice(0, -1)}x`;
-      else vi.setSystemTime(new Date("2026-08-07T12:11:00Z"));
+      else vi.setSystemTime(new Date("2026-08-07T12:31:00Z"));
 
       await expect(
         handleSelfHostedGoogleOAuthCallback({

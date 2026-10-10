@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import { z } from "zod";
+import { assertSubscriptionOnly, formatNanpPhone } from "@/shared/phone";
 import {
   createDataforseoClient,
   fetchBusinessDataTaskResult,
@@ -196,7 +197,12 @@ function formatProfileText(profile: Record<string, unknown>): string {
     ],
     ["rating breakdown", formatRatingDistribution(profile)],
     ["address", formatMcpCell(readPath(profile, "address"))],
-    ["phone", formatMcpCell(readPath(profile, "phone"))],
+    [
+      "phone",
+      formatMcpCell(
+        readPath(profile, "phoneDisplay") ?? readPath(profile, "phone"),
+      ),
+    ],
     ["website", formatMcpCell(readPath(profile, "url"))],
     ["domain", formatMcpCell(readPath(profile, "domain"))],
     ["claimed", formatMcpCell(readPath(profile, "is_claimed"))],
@@ -234,12 +240,20 @@ export const getBusinessProfileTool = {
     },
   },
   handler: withMcpProjectAuth(async (args: GetBusinessProfileArgs, context) => {
+    assertSubscriptionOnly();
     const identifier = resolveBusinessIdentifier(args);
     const client = createDataforseoClient(context.billing);
-    const profile = await client.business.myBusinessInfo({
+    const rawProfile = await client.business.myBusinessInfo({
       keyword: businessIdentifierKeyword(identifier),
       ...resolveBusinessLocation(args, context.project),
     });
+
+    // Keep provider phone/contact fields intact for machine consumers; expose
+    // an explicit display value for agents and use it in the text response.
+    const profile =
+      rawProfile && typeof rawProfile.phone === "string"
+        ? { ...rawProfile, phoneDisplay: formatNanpPhone(rawProfile.phone) }
+        : rawProfile;
 
     // A name lookup can return a different business with the same name; the
     // listing's website is the only proof it is this project's business.

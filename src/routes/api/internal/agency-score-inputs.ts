@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "cloudflare:workers";
+import { AppError } from "@/server/lib/errors";
 import { getAgencyScoreInputsGlobal } from "@/server/features/agency/AgencyScoreInputsService";
 
 function timingSafeEqual(left: string, right: string): boolean {
@@ -43,7 +44,19 @@ async function handleGet(request: Request): Promise<Response> {
     );
   }
 
-  const data = await getAgencyScoreInputsGlobal(domain);
+  let data: Awaited<ReturnType<typeof getAgencyScoreInputsGlobal>>;
+  try {
+    data = await getAgencyScoreInputsGlobal(domain);
+  } catch (error) {
+    // Two projects share this domain: say so instead of answering with a 500.
+    if (error instanceof AppError && error.code === "CONFLICT") {
+      return Response.json(
+        { error: "ambiguous_project_domain", detail: error.message },
+        { status: 409 },
+      );
+    }
+    throw error;
+  }
   return Response.json(data, {
     headers: {
       "cache-control": "no-store",

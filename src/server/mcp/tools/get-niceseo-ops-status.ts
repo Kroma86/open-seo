@@ -29,7 +29,27 @@ export const getNiceseoOpsStatusTool = {
         .describe("Hostname or URL (www/protocol stripped)."),
     },
     outputSchema: {
+      // schema must match what the handler returns, or MCP rejects the whole
+      // response (additionalProperties:false) and the tool is unusable.
       domain: z.string(),
+      otto: z.object({
+        pending: z.number(),
+        pulled: z.number(),
+        rejected: z.number(),
+        total: z.number(),
+        latest: z.array(
+          z.object({
+            id: z.string(),
+            status: z.string(),
+            path: z.string(),
+            proposedAt: z.string(),
+            fixes: z.array(z.string()),
+          }),
+        ),
+        note: z.string(),
+      }),
+      // fetchAgencyPixelStatus spreads its own payload in here, so keep it open.
+      pixel: z.record(z.string(), z.unknown()),
       ...optionalMetaOutputSchema,
     },
     annotations: {

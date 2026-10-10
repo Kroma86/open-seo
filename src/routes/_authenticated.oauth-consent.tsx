@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Check, Database, KeyRound, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSession } from "@/lib/auth-client";
+import { isHostedClientAuthMode } from "@/lib/auth-mode";
 import { captureClientEvent } from "@/client/lib/posthog";
 
 export const Route = createFileRoute("/_authenticated/oauth-consent")({
@@ -91,6 +92,16 @@ function OAuthConsentPage() {
           <div className="flex-1">
             <div className="text-xs text-base-content/60">Signed in as</div>
             <div className="font-medium">{userEmail}</div>
+          </div>
+        </div>
+      ) : !isHostedClientAuthMode() ? (
+        <div className="mt-6 flex items-center gap-3 rounded-lg border border-base-300 bg-base-200/50 px-3 py-2 text-sm">
+          <div className="flex size-7 items-center justify-center rounded-full bg-base-300">
+            <User className="size-4" />
+          </div>
+          <div className="flex-1">
+            <div className="text-xs text-base-content/60">Signed in via</div>
+            <div className="font-medium">Cloudflare Access</div>
           </div>
         </div>
       ) : null}

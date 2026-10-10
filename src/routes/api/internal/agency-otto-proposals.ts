@@ -94,11 +94,12 @@ export async function handlePost(request: Request): Promise<Response> {
   // domain with NO project is stored unowned.
   // A caller-supplied projectId is ignored: the project is whatever the
   // domain resolves to, and an unowned row never carries a guessed id.
+  const domain = typeof record.domain === "string" ? record.domain : "";
   let organizationId: string | null = null;
   let projectId: string | null = null;
   try {
     const project = await ProjectRepository.resolveProjectByDomain({
-      domain: String(record.domain ?? ""),
+      domain,
       organizationId: null,
     });
     if (project) {
@@ -117,7 +118,7 @@ export async function handlePost(request: Request): Promise<Response> {
 
   try {
     const proposal = await enqueueHomegrownOttoProposal({
-      domain: String(record.domain ?? ""),
+      domain,
       organizationId,
       projectId,
       path: typeof record.path === "string" ? record.path : "/",

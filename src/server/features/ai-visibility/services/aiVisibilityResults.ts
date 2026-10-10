@@ -1,6 +1,10 @@
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import { AppError } from "@/server/lib/errors";
 import {
+  extractPromptResults,
+  type PromptResults,
+} from "@/server/features/ai-visibility/services/aiVisibilityPromptResults";
+import {
   parseCompetitorsJson,
   parsePlatformsJson,
 } from "@/shared/ai-visibility";
@@ -200,6 +204,48 @@ export async function getTrend(
     promptSetVersion: runs[0]?.promptSetVersion ?? config.promptSetVersion,
     runs: points,
   };
+}
+
+async function resolveCompletedRun(
+  projectId: string,
+  configId: string | undefined,
+  runId: string | undefined,
+) {
+  if (!runId) {
+    const config = await resolveConfig(projectId, configId);
+    return config
+      ? AiVisibilityRepository.getLatestCompletedRunForConfig(config.id)
+      : null;
+  }
+  const run = await AiVisibilityRepository.getRunById(runId);
+  // Same miss for another project's run as for no run: never confirm it exists.
+  if (
+    !run ||
+    run.projectId !== projectId ||
+    (configId && run.configId !== configId) ||
+    run.status !== "completed"
+  ) {
+    throw new AppError("NOT_FOUND", "AI visibility run not found");
+  }
+  return run;
+}
+
+/**
+ * Per-question results of one completed run, read from stored detail only.
+ * Null when the project has no completed run yet.
+ */
+export async function getPromptResults(
+  projectId: string,
+  configId?: string,
+  runId?: string,
+): Promise<PromptResults | null> {
+  const run = await resolveCompletedRun(projectId, configId, runId);
+  if (!run) return null;
+  return extractPromptResults(run.detail, {
+    runId: run.id,
+    completedAt: run.finishedAt,
+    promptSetVersion: run.promptSetVersion,
+  });
 }
 
 /** Latest completed-run summary for agency score export. */

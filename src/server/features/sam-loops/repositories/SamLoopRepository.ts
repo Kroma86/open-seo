@@ -158,6 +158,49 @@ async function updateRun(
   await db.update(samLoopRuns).set(data).where(eq(samLoopRuns.id, runId));
 }
 
+/** A late checkpoint cannot replace a terminal result or revive a stopped run. */
+async function checkpointRun(
+  runId: string,
+  data: Pick<InferInsertModel<typeof samLoopRuns>, "report" | "stepsUsed" | "proposalsQueued" | "costNote">,
+) {
+  await db.update(samLoopRuns).set(data).where(and(eq(samLoopRuns.id, runId), eq(samLoopRuns.status, "running")));
+}
+
+/** Only the first terminal writer may finish a running box lease. */
+async function finishRunIfRunning(
+  runId: string,
+  data: Pick<
+    InferInsertModel<typeof samLoopRuns>,
+    "status" | "error" | "report" | "finishedAt" | "proposalsQueued" | "stepsUsed" | "costNote"
+  >,
+): Promise<boolean> {
+  const finished = await db
+    .update(samLoopRuns)
+    .set(data)
+    .where(and(eq(samLoopRuns.id, runId), eq(samLoopRuns.status, "running")))
+    .returning({ id: samLoopRuns.id });
+  return finished.length > 0;
+}
+
+async function getExpiredBoxRuns(nowIso: string, leaseSeconds: number) {
+  const cutoff = new Date(Date.parse(nowIso) - leaseSeconds * 1000).toISOString();
+  return db
+    .select({
+      id: samLoopRuns.id,
+      loopId: samLoopRuns.loopId,
+      projectId: samLoopRuns.projectId,
+      startedAt: samLoopRuns.startedAt,
+    })
+    .from(samLoopRuns)
+    .where(and(
+      eq(samLoopRuns.status, "running"),
+      sql`${samLoopRuns.costNote} like 'box:grok-sub%'`,
+      or(isNull(samLoopRuns.startedAt), lte(samLoopRuns.startedAt, cutoff)),
+    ))
+    .orderBy(samLoopRuns.startedAt)
+    .limit(50);
+}
+
 async function getRunById(runId: string) {
   const rows = await db
     .select()
@@ -266,6 +309,15 @@ async function getContentVelocityForProject(
   })));
 }
 
+/** Bounded candidate history; the service verifies each article marker/hash. */
+async function getCompletedMonthlyReports(projectId: string) {
+  return db.select({ report: samLoopRuns.report }).from(samLoopRuns).where(and(
+    eq(samLoopRuns.projectId, projectId),
+    eq(samLoopRuns.status, "completed"),
+    sql`${samLoopRuns.report} like 'DRAFT —%'`,
+  )).orderBy(desc(samLoopRuns.createdAt)).limit(501);
+}
+
 /**
  * createdAt is a text column defaulting to sqlite current_timestamp, which
  * stores YYYY-MM-DD HH:MM:SS (space separator, no Z). A full ISO bound
@@ -347,11 +399,15 @@ export const SamLoopRepository = {
   claimDueLoop,
   tryCreateRun,
   updateRun,
+  checkpointRun,
+  finishRunIfRunning,
+  getExpiredBoxRuns,
   getRunById,
   getActiveRunForLoop,
   getRunsForLoop,
   getRecentRunsForProject,
   getContentVelocityForProject,
+  getCompletedMonthlyReports,
   countRunsCreatedSince,
   ensureDefaultLoops,
   seedDefaultsForAllProjects,

@@ -20,6 +20,12 @@ const invalidTimestamps = { ready: false, reason: "The site audit has invalid ti
 const insufficientPages = { ready: false, reason: "The site audit needs at least 2 usable own-site pages." };
 
 describe("checkAuditReadiness", () => {
+  it("allows old evidence only with the explicit flag and records its age", () => {
+    const old = { ...audit, startedAt: "2026-09-01T12:00:00Z", completedAt: "2026-09-01T13:00:00Z" };
+    expect(checkAuditReadiness(old, pages, "example.com", now, { allowStale: true })).toMatchObject({ ready: true, stale: { ageDays: 11 } });
+    expect(checkAuditReadiness(old, [page], "example.com", now, { allowStale: true })).toEqual(insufficientPages);
+    expect(checkAuditReadiness({ ...old, status: "failed" }, pages, "example.com", now, { allowStale: true }).ready).toBe(false);
+  });
   it("accepts a recent completed audit with two usable own-site URLs", () => {
     expect(checkAuditReadiness(audit, pages, "example.com", now)).toEqual({
       ready: true,
