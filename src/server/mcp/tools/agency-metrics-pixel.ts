@@ -144,9 +144,9 @@ export async function fetchAgencyPixelStatus(
   }
 
   const url = new URL(metricsUrl);
-  if (!url.searchParams.has("t")) {
-    url.searchParams.set("t", token);
-  }
+  // The agency board rejects any request carrying ?t= or ?token= (since 2026-09-29); the token goes in the header only.
+  url.searchParams.delete("t");
+  url.searchParams.delete("token");
   const fetchImpl = options?.fetchImpl ?? fetch;
   try {
     const res = await fetchImpl(url.toString(), {

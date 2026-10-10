@@ -47,7 +47,9 @@ export async function fetchExternalAgencyMetrics(domain: string | null, options?
   try {
     const url = new URL(metricsUrl);
     if (url.protocol !== "https:" || url.username || url.password) return empty("External observations unavailable: invalid feed configuration.");
-    if (!url.searchParams.has("t")) url.searchParams.set("t", token);
+    // The agency board rejects any request carrying ?t= or ?token=; the token goes in the header only.
+    url.searchParams.delete("t");
+    url.searchParams.delete("token");
     const response = await (options?.fetchImpl ?? fetch)(url.toString(), {
       method: "GET", redirect: "error", signal: AbortSignal.timeout(5000),
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "User-Agent": "OpenSEO-SAM/1.0 (+stored-observations)" },
