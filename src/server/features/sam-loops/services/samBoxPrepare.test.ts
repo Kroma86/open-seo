@@ -309,6 +309,13 @@ describe("prepare gates", () => {
       expect(calls).toEqual([]);
     },
   );
+  it("completes a thin site without a model instead of failing", async () => {
+    mocks.pages.mockResolvedValue([{ url: `https://${domain}/`, statusCode: 200, fetchClass: "ok", wordCount: 500 }]);
+    const { result, calls } = await prepare("on_page_priorities");
+    expect(result).toMatchObject({ kind: "final", status: "completed", error: null });
+    expect(JSON.stringify(result)).toContain("Skipped: thin site");
+    expect(calls).toEqual([]);
+  });
   it("carries explicitly allowed historical audit evidence", async () => {
     mocks.env.mockResolvedValue("true");
     mocks.audit.mockResolvedValue({

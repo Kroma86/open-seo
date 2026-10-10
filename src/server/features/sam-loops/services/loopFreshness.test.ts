@@ -23,7 +23,7 @@ describe("checkAuditReadiness", () => {
   it("allows old evidence only with the explicit flag and records its age", () => {
     const old = { ...audit, startedAt: "2026-09-01T12:00:00Z", completedAt: "2026-09-01T13:00:00Z" };
     expect(checkAuditReadiness(old, pages, "example.com", now, { allowStale: true })).toMatchObject({ ready: true, stale: { ageDays: 11 } });
-    expect(checkAuditReadiness(old, [page], "example.com", now, { allowStale: true })).toEqual(insufficientPages);
+    expect(checkAuditReadiness(old, [page], "example.com", now, { allowStale: true })).toMatchObject(insufficientPages);
     expect(checkAuditReadiness({ ...old, status: "failed" }, pages, "example.com", now, { allowStale: true }).ready).toBe(false);
   });
   it("accepts a recent completed audit with two usable own-site URLs", () => {
@@ -32,6 +32,20 @@ describe("checkAuditReadiness", () => {
       measuredAt: audit.startedAt,
       usablePages: 2,
     });
+  });
+
+  it.each([
+    ["one readable page", [page], true],
+    ["one readable page and a 404 own-site page", [page, { ...page, url: "https://example.com/gone", statusCode: 404, wordCount: 0 }], true],
+    ["no pages", [], false],
+    ["only blank pages", [{ ...page, wordCount: 0 }], false],
+    ["one readable page and a blocked own-site page", [page, { ...page, url: "https://example.com/a", fetchClass: "blocked" }], false],
+    ["one readable page and an errored own-site page", [page, { ...page, url: "https://example.com/a", fetchClass: "error" }], false],
+    ["readable pages only on another host", pages.map((p) => ({ ...p, url: p.url.replace("example.com", "example.ca") })), false],
+  ])("flags a thin site only when the crawl read exactly one usable page and nothing failed: %s", (_name, candidate, thin) => {
+    const result = checkAuditReadiness(audit, candidate, "example.com", now);
+    expect(result).toMatchObject(insufficientPages);
+    expect("thinSite" in result).toBe(thin);
   });
 
   it.each([null, undefined])("rejects a missing audit", (missing) => {
@@ -122,7 +136,7 @@ describe("checkAuditReadiness", () => {
   });
 
   it.each([{ pages: [] }, { pages: [page] }, { pages: [{ ...page, wordCount: 0 }] }])("rejects empty, single-page or blank completed audits", (candidate) => {
-    expect(checkAuditReadiness(audit, candidate.pages, "example.com", now)).toEqual(insufficientPages);
+    expect(checkAuditReadiness(audit, candidate.pages, "example.com", now)).toMatchObject(insufficientPages);
   });
 
   it.each([
@@ -146,12 +160,12 @@ describe("checkAuditReadiness", () => {
     { ...pages[1]!, wordCount: NaN },
     { ...pages[1]!, wordCount: Infinity },
   ])("does not count an unusable second page", (unusable) => {
-    expect(checkAuditReadiness(audit, [page, unusable], "example.com", now)).toEqual(insufficientPages);
+    expect(checkAuditReadiness(audit, [page, unusable], "example.com", now)).toMatchObject(insufficientPages);
   });
 
   it("deduplicates repeated URL rows and fragment variants", () => {
     const duplicates = [page, { ...page }, { ...page, url: "https://example.com/#contact" }];
-    expect(checkAuditReadiness(audit, duplicates, "example.com", now)).toEqual(insufficientPages);
+    expect(checkAuditReadiness(audit, duplicates, "example.com", now)).toMatchObject(insufficientPages);
   });
 
   it("counts only the unique usable own-site URLs", () => {
@@ -164,13 +178,13 @@ describe("checkAuditReadiness", () => {
 
   it("does not count homepage scheme, www or tracking variants as separate pages", () => {
     const ownPages = ["http://example.com/", "https://www.example.com/", "https://example.com/?utm_source=example"].map(url => ({ ...page, url }));
-    expect(checkAuditReadiness(audit, ownPages, "WWW.EXAMPLE.COM", now)).toEqual(insufficientPages);
+    expect(checkAuditReadiness(audit, ownPages, "WWW.EXAMPLE.COM", now)).toMatchObject(insufficientPages);
   });
 
   it("does not expose the audit ID or invalid page URL in rejection reasons", () => {
     const candidate = { ...audit, id: "private-audit-marker" };
     const result = checkAuditReadiness(candidate, [{ ...page, url: "https://secret-user:secret-password@example.com/private-path" }], "example.com", now);
-    expect(result).toEqual(insufficientPages);
+    expect(result).toMatchObject(insufficientPages);
     expect(JSON.stringify(result)).not.toMatch(/private|secret|example\.com/);
   });
 

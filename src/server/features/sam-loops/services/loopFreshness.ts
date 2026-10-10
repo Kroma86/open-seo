@@ -16,7 +16,7 @@ export type AuditReadinessPage = {
 
 export type AuditReadinessResult =
   | { ready: true; measuredAt: string; usablePages: number; stale?: { ageDays: number } }
-  | { ready: false; reason: string };
+  | { ready: false; reason: string; thinSite?: true };
 
 const MAX_AUDIT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const isoTimestamp = z.iso.datetime({ offset: true });
@@ -88,16 +88,24 @@ export function checkAuditReadiness(
   }
   const expectedHost = ownHost(projectUrl);
   const usableUrls = new Set<string>();
+  let ownHostFailures = 0;
   for (const page of pages) {
-    if (page.statusCode !== 200 || page.fetchClass !== "ok" || !Number.isFinite(page.wordCount) || page.wordCount < 80) continue;
     const url = httpUrl(page.url);
+    if (url && ownHost(url) === expectedHost && page.fetchClass !== "ok") ownHostFailures += 1;
+    if (page.statusCode !== 200 || page.fetchClass !== "ok" || !Number.isFinite(page.wordCount) || page.wordCount < 80) continue;
     if (!url || ownHost(url) !== expectedHost) continue;
     // Require distinct paths: scheme, www, query and fragment variants of one
     // page must not make a one-page crawl look like broader site evidence.
     usableUrls.add(url.pathname.replace(/\/+$/, "") || "/");
   }
   if (usableUrls.size < 2) {
-    return { ready: false, reason: "The site audit needs at least 2 usable own-site pages." };
+    // Exactly one readable own-site page and no blocked or errored own-site
+    // fetch means the site itself is small, not that the crawl failed.
+    return {
+      ready: false,
+      reason: "The site audit needs at least 2 usable own-site pages.",
+      ...(usableUrls.size === 1 && ownHostFailures === 0 ? { thinSite: true as const } : {}),
+    };
   }
   return {
     ready: true,

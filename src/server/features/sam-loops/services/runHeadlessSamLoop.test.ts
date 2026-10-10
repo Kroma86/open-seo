@@ -1143,6 +1143,19 @@ describe("runHeadlessSamLoop", () => {
     expect(mocks.getProjectContext).not.toHaveBeenCalled();
   });
 
+  it("skips a thin site at no cost instead of failing", async () => {
+    mocks.getProjectById.mockResolvedValue({ domain: "example.com", loopsEnabled: true, archivedAt: null });
+    mocks.getPagesForAudit.mockResolvedValue([{ url: "https://example.com/", statusCode: 200, fetchClass: "ok", wordCount: 500 }]);
+    const result = await runHeadlessSamLoop(input("example.com", true));
+    expect(result.status).toBe("completed");
+    expect(result.error).toBeNull();
+    expect(result.report).toContain("Skipped: thin site");
+    expect(result.costNote).toBe("no model call");
+    expect(mocks.getChatAgentModel).not.toHaveBeenCalled();
+    expect(mocks.buildSamMcpTools).not.toHaveBeenCalled();
+    expect(mocks.getProjectContext).not.toHaveBeenCalled();
+  });
+
   it("binds tools and crawl evidence to the saved project domain", async () => {
     mocks.getProjectById.mockResolvedValue({ domain: "example.com", loopsEnabled: true, archivedAt: null });
     await runHeadlessSamLoop(input("stale-caller.example", true));

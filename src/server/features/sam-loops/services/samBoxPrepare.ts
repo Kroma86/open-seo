@@ -246,6 +246,14 @@ async function prepare(
         reason: "The saved crawl could not be read.",
       };
     }
+    if (!readiness.ready && readiness.thinSite) {
+      return {
+        kind: "final",
+        status: "completed",
+        error: null,
+        report: `Skipped: thin site. ${readiness.reason} The crawl read one usable page, so this loop has too little evidence to run. No model or research tools were called.`,
+      };
+    }
     if (!readiness.ready) {
       return boxFailed(
         `Current crawl input unavailable: ${readiness.reason}`,
