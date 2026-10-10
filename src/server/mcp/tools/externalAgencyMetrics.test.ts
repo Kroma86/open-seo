@@ -18,6 +18,15 @@ describe("project-scoped stored observation feed", () => {
     expect(url.searchParams.has("t")).toBe(false);
     expect(fetchImpl.mock.calls[0]![1].headers.Authorization).toBe("Bearer synthetic");
   });
+  it("strips t/token from a configured URL and keeps the token out of it", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ clients: [{ domain: "example.com" }] })));
+    await fetchExternalAgencyMetrics("example.com", { ...config, metricsUrl: "https://metrics.example.com/api?t=stale&token=stale", fetchImpl });
+    const called = String(fetchImpl.mock.calls[0]![0]);
+    const url = new URL(called);
+    expect(url.searchParams.has("t")).toBe(false);
+    expect(url.searchParams.has("token")).toBe(false);
+    expect(called).not.toContain("synthetic");
+  });
   it.each([null, "", "https://example.com", "user@example.com", "example.com/path"])("does not fetch for invalid project domain: %s", async (domain) => {
     const fetchImpl = vi.fn();
     const result = await fetchExternalAgencyMetrics(domain, { ...config, fetchImpl });
