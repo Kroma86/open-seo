@@ -54,16 +54,15 @@ beforeEach(() => {
 
 describe("resolveServiceTokenWorkspaceContext", () => {
   it("puts the machine in the SAME shared workspace people use, under its own identity", async () => {
-    const context = await resolveServiceTokenWorkspaceContext("grok-bot.access");
+    const context =
+      await resolveServiceTokenWorkspaceContext("grok-bot.access");
 
     // The shared org is the point: a scheduled job and the person reading its
     // output must see one set of projects, not two.
     expect(mocks.ensureSharedOrg).toHaveBeenCalledTimes(1);
     expect(context.organizationId).toBe("shared-org");
     expect(context.userId).toBe("cf-service-token:grok-bot.access");
-    expect(context.userEmail).toMatch(
-      /^[0-9a-f]{40}@service-token\.invalid$/,
-    );
+    expect(context.userEmail).toMatch(/^[0-9a-f]{40}@service-token\.invalid$/);
   });
 
   it("creates the machine's row with the unroutable address, never a real one", async () => {
@@ -77,9 +76,12 @@ describe("resolveServiceTokenWorkspaceContext", () => {
   });
 
   it("reuses an existing row instead of inserting a second one for the same token", async () => {
-    mocks.findFirst.mockResolvedValue({ email: "already@service-token.invalid" });
+    mocks.findFirst.mockResolvedValue({
+      email: "already@service-token.invalid",
+    });
 
-    const context = await resolveServiceTokenWorkspaceContext("grok-bot.access");
+    const context =
+      await resolveServiceTokenWorkspaceContext("grok-bot.access");
 
     // Read the LOOKUP's own where clause. Asserting that eq() was called with
     // the id somewhere would also pass if the row were fetched by email and

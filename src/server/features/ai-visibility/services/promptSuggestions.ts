@@ -174,7 +174,10 @@ export function buildAiVisibilityPrompts(
     return true;
   });
 
-  const limit = Math.min(input.limit ?? MAX_TRACKED_PROMPTS, MAX_TRACKED_PROMPTS);
+  const limit = Math.min(
+    input.limit ?? MAX_TRACKED_PROMPTS,
+    MAX_TRACKED_PROMPTS,
+  );
   if (limit < 1) throw new Error("A prompt set needs at least one prompt.");
 
   return unique.slice(0, limit);

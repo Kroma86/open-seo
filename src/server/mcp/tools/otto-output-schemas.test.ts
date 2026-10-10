@@ -109,8 +109,19 @@ describe("HomeGrown OTTO tool output schemas", () => {
       getNiceseoOpsStatusTool.config.outputSchema,
       {
         domain: "example.com",
-        otto: { pending: 0, pulled: 0, rejected: 0, total: 0, latest: [], note: "n" },
-        pixel: { configured: false, error: "not configured", addedUpstreamLater: 42 },
+        otto: {
+          pending: 0,
+          pulled: 0,
+          rejected: 0,
+          total: 0,
+          latest: [],
+          note: "n",
+        },
+        pixel: {
+          configured: false,
+          error: "not configured",
+          addedUpstreamLater: 42,
+        },
       },
     );
     expect(result).toMatchObject({ valid: true });
@@ -171,7 +182,9 @@ describe("the check above is not vacuous", () => {
       { count: 1, proposals: [proposal], undeclaredKey: "boom" },
     );
     expect(result).toMatchObject({ valid: false });
-    expect(JSON.stringify(result)).toContain("must NOT have additional properties");
+    expect(JSON.stringify(result)).toContain(
+      "must NOT have additional properties",
+    );
   });
 
   it("rejects an undeclared key nested inside a proposal", () => {

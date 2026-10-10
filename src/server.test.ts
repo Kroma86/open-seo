@@ -214,7 +214,10 @@ describe("server /mcp gate failures become responses, not exceptions", () => {
   it("names a deployment misconfiguration without putting the operator's message in the body", async () => {
     // /mcp answers anonymous callers, so the guidance stays in the Worker log.
     mocks.gate.mockRejectedValue(
-      new AppError("AUTH_CONFIG_MISSING", "TEAM_DOMAIN must be https://acme.cloudflareaccess.com"),
+      new AppError(
+        "AUTH_CONFIG_MISSING",
+        "TEAM_DOMAIN must be https://acme.cloudflareaccess.com",
+      ),
     );
 
     const response = await handler.fetch(mcpRequest(), env, ctx);
@@ -241,7 +244,11 @@ describe("server /mcp gate failures become responses, not exceptions", () => {
     // not escape either: an uncaught rejection here is the 1101 this whole
     // change removes. The error is UNAUTHENTICATED on purpose, so only the
     // narrower catch keeps it out of the 401 branch.
-    mocks.gate.mockResolvedValue({ kind: "user", userId: "u1", userEmail: "p@example.com" });
+    mocks.gate.mockResolvedValue({
+      kind: "user",
+      userId: "u1",
+      userEmail: "p@example.com",
+    });
     mocks.resolveContext.mockResolvedValue(userContext);
     mocks.transport.mockRejectedValue(new AppError("UNAUTHENTICATED"));
 
@@ -270,7 +277,11 @@ describe("server /mcp gate failures become responses, not exceptions", () => {
   });
 
   it("still reaches the MCP handler when the gate succeeds", async () => {
-    mocks.gate.mockResolvedValue({ kind: "user", userId: "u1", userEmail: "p@example.com" });
+    mocks.gate.mockResolvedValue({
+      kind: "user",
+      userId: "u1",
+      userEmail: "p@example.com",
+    });
     mocks.resolveContext.mockResolvedValue(userContext);
 
     const response = await handler.fetch(mcpRequest(), env, ctx);
@@ -280,7 +291,9 @@ describe("server /mcp gate failures become responses, not exceptions", () => {
   });
 
   it("answers an unrecognised error with a bare 500 and leaks nothing", async () => {
-    mocks.gate.mockRejectedValue(new Error("connect ECONNREFUSED 10.0.0.1:5432"));
+    mocks.gate.mockRejectedValue(
+      new Error("connect ECONNREFUSED 10.0.0.1:5432"),
+    );
 
     const response = await handler.fetch(mcpRequest(), env, ctx);
 
@@ -293,7 +306,11 @@ describe("server /mcp gate failures become responses, not exceptions", () => {
   it("answers a workspace lookup failure with a 500, not an Access challenge", async () => {
     // The gate already proved identity, so a failure here is ours, not the
     // caller's — even when it arrives wearing an UNAUTHENTICATED code.
-    mocks.gate.mockResolvedValue({ kind: "user", userId: "u1", userEmail: "p@example.com" });
+    mocks.gate.mockResolvedValue({
+      kind: "user",
+      userId: "u1",
+      userEmail: "p@example.com",
+    });
     mocks.resolveContext.mockRejectedValue(new Error("db down"));
 
     const response = await handler.fetch(mcpRequest(), env, ctx);
@@ -369,21 +386,24 @@ describe("server MCP OAuth protocol routing under cloudflare_access", () => {
     "/api/auth/oauth2/token",
     "/api/auth/oauth2/register",
     "/api/oauth/consent",
-  ])("routes %s to the OAuth provider, never the app 404 handler", async (path) => {
-    mocks.providerFetch.mockResolvedValue(
-      new Response("oauth-protocol", { status: 200 }),
-    );
+  ])(
+    "routes %s to the OAuth provider, never the app 404 handler",
+    async (path) => {
+      mocks.providerFetch.mockResolvedValue(
+        new Response("oauth-protocol", { status: 200 }),
+      );
 
-    const response = await handler.fetch(mcpRequest("GET", path), env, ctx);
+      const response = await handler.fetch(mcpRequest("GET", path), env, ctx);
 
-    expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
-    const [routedRequest] = mocks.providerFetch.mock.calls[0] as [Request];
-    expect(new URL(routedRequest.url).pathname).toBe(path);
-    expect(await response.text()).toBe("oauth-protocol");
-    expect(mocks.appFetch).not.toHaveBeenCalled();
-    expect(mocks.gate).not.toHaveBeenCalled();
-    expect(mocks.transport).not.toHaveBeenCalled();
-  });
+      expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
+      const [routedRequest] = mocks.providerFetch.mock.calls[0] as [Request];
+      expect(new URL(routedRequest.url).pathname).toBe(path);
+      expect(await response.text()).toBe("oauth-protocol");
+      expect(mocks.appFetch).not.toHaveBeenCalled();
+      expect(mocks.gate).not.toHaveBeenCalled();
+      expect(mocks.transport).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("server fallthrough", () => {

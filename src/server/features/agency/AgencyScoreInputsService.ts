@@ -204,7 +204,8 @@ function classifyGscError(error: unknown): {
     return { status: "token_expired", error: message };
   }
   if (error instanceof GscApiError) {
-    if (error.status === 401) return { status: "token_expired", error: message };
+    if (error.status === 401)
+      return { status: "token_expired", error: message };
     if (error.status === 403) {
       return { status: "permission_denied", error: message };
     }

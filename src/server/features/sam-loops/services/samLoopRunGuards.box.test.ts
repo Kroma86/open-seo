@@ -3,19 +3,30 @@ import { computeNextSamLoopRunAt } from "@/shared/sam-loops";
 import type { SamLoopRepository } from "../repositories/SamLoopRepository";
 import { beginSamLoopRun, failSamLoopRunIfActive } from "./samLoopRunGuards";
 
-type RunRow = NonNullable<Awaited<ReturnType<typeof SamLoopRepository.getRunById>>>;
+type RunRow = NonNullable<
+  Awaited<ReturnType<typeof SamLoopRepository.getRunById>>
+>;
 
 const mocks = vi.hoisted(() => ({
-  countRunsCreatedSince: vi.fn<typeof SamLoopRepository.countRunsCreatedSince>(),
+  countRunsCreatedSince:
+    vi.fn<typeof SamLoopRepository.countRunsCreatedSince>(),
   tryCreateRun: vi.fn<typeof SamLoopRepository.tryCreateRun>(),
   getActiveRunForLoop: vi.fn<typeof SamLoopRepository.getActiveRunForLoop>(),
   getRunById: vi.fn<typeof SamLoopRepository.getRunById>(),
   updateRun: vi.fn<typeof SamLoopRepository.updateRun>(),
   finishRunIfRunning: vi.fn<typeof SamLoopRepository.finishRunIfRunning>(),
   updateLoop:
-    vi.fn<(loopId: string, projectId: string, data: { lastRunAt: string }) => Promise<void>>(),
+    vi.fn<
+      (
+        loopId: string,
+        projectId: string,
+        data: { lastRunAt: string },
+      ) => Promise<void>
+    >(),
   getLoopById:
-    vi.fn<() => Promise<{ name: string; cadence: "monthly"; nextRunAt: string }>>(),
+    vi.fn<
+      () => Promise<{ name: string; cadence: "monthly"; nextRunAt: string }>
+    >(),
   claimDueLoop: vi.fn<typeof SamLoopRepository.claimDueLoop>(),
   getWorkflow: vi.fn(),
   createWorkflow: vi.fn(),
@@ -30,7 +41,9 @@ vi.mock("@/server/features/sam-loops/repositories/SamLoopRepository", () => ({
 
 const now = new Date("2026-10-07T13:20:00.123Z");
 const input = {
-  workflow: { create: mocks.createWorkflow } as unknown as Env["SAM_LOOP_WORKFLOW"],
+  workflow: {
+    create: mocks.createWorkflow,
+  } as unknown as Env["SAM_LOOP_WORKFLOW"],
   loopId: "loop-1",
   projectId: "project-1",
   organizationId: "org-1",
@@ -114,16 +127,27 @@ describe("beginSamLoopRun with a box lease", () => {
     mocks.tryCreateRun.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
 
     expect(await beginSamLoopRun(input)).toMatchObject({ ok: true });
-    expect(mocks.finishRunIfRunning).toHaveBeenCalledExactlyOnceWith("box-run", expiredData);
+    expect(mocks.finishRunIfRunning).toHaveBeenCalledExactlyOnceWith(
+      "box-run",
+      expiredData,
+    );
     expect(mocks.updateRun).not.toHaveBeenCalled();
-    expect(mocks.updateLoop).toHaveBeenCalledExactlyOnceWith(input.loopId, input.projectId, {
-      lastRunAt: now.toISOString(),
-    });
+    expect(mocks.updateLoop).toHaveBeenCalledExactlyOnceWith(
+      input.loopId,
+      input.projectId,
+      {
+        lastRunAt: now.toISOString(),
+      },
+    );
     expect(mocks.claimDueLoop).toHaveBeenCalledExactlyOnceWith({
       loopId: input.loopId,
       projectId: input.projectId,
       observedNextRunAt: loop.nextRunAt,
-      nextRunAt: computeNextSamLoopRunAt(loop.cadence, loop.nextRunAt, `${input.projectId}:${loop.name}`),
+      nextRunAt: computeNextSamLoopRunAt(
+        loop.cadence,
+        loop.nextRunAt,
+        `${input.projectId}:${loop.name}`,
+      ),
     });
     expect(mocks.getWorkflow).not.toHaveBeenCalled();
     expect(mocks.createWorkflow).toHaveBeenCalledTimes(1);
@@ -133,14 +157,23 @@ describe("beginSamLoopRun with a box lease", () => {
     "expires a lease with corrupt startedAt %j through the same CAS payload",
     async (startedAt) => {
       mocks.getActiveRunForLoop.mockResolvedValue(boxRun(startedAt));
-      mocks.tryCreateRun.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+      mocks.tryCreateRun
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true);
       expect(await beginSamLoopRun(input)).toMatchObject({
         ok: true,
       });
-      expect(mocks.finishRunIfRunning).toHaveBeenCalledExactlyOnceWith("box-run", expiredData);
-      expect(mocks.updateLoop).toHaveBeenCalledExactlyOnceWith(input.loopId, input.projectId, {
-        lastRunAt: now.toISOString(),
-      });
+      expect(mocks.finishRunIfRunning).toHaveBeenCalledExactlyOnceWith(
+        "box-run",
+        expiredData,
+      );
+      expect(mocks.updateLoop).toHaveBeenCalledExactlyOnceWith(
+        input.loopId,
+        input.projectId,
+        {
+          lastRunAt: now.toISOString(),
+        },
+      );
       expect(mocks.claimDueLoop).toHaveBeenCalledTimes(1);
       expect(mocks.updateRun).not.toHaveBeenCalled();
       expect(mocks.createWorkflow).toHaveBeenCalledTimes(1);
@@ -152,7 +185,10 @@ describe("beginSamLoopRun with a box lease", () => {
     mocks.finishRunIfRunning.mockResolvedValueOnce(false);
     await failSamLoopRunIfActive("box-run", expiredData.error, boxRun(null));
 
-    expect(mocks.finishRunIfRunning).toHaveBeenCalledExactlyOnceWith("box-run", expiredData);
+    expect(mocks.finishRunIfRunning).toHaveBeenCalledExactlyOnceWith(
+      "box-run",
+      expiredData,
+    );
     expect(mocks.updateRun).not.toHaveBeenCalled();
     expect(mocks.updateLoop).not.toHaveBeenCalled();
     expect(mocks.claimDueLoop).not.toHaveBeenCalled();
@@ -163,7 +199,10 @@ describe("beginSamLoopRun with a box lease", () => {
     await failSamLoopRunIfActive("box-run", expiredData.error);
 
     expect(mocks.getRunById).toHaveBeenCalledExactlyOnceWith("box-run");
-    expect(mocks.finishRunIfRunning).toHaveBeenCalledExactlyOnceWith("box-run", expiredData);
+    expect(mocks.finishRunIfRunning).toHaveBeenCalledExactlyOnceWith(
+      "box-run",
+      expiredData,
+    );
     expect(mocks.updateRun).not.toHaveBeenCalled();
     expect(mocks.updateLoop).toHaveBeenCalledTimes(1);
     expect(mocks.claimDueLoop).toHaveBeenCalledTimes(1);

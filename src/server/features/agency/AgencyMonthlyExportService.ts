@@ -32,9 +32,7 @@ export type MonthlyExportIndexInvalidResult = {
   error: "content_invalid";
 };
 
-type ParseJsonResult =
-  | { ok: true; value: unknown }
-  | { ok: false };
+type ParseJsonResult = { ok: true; value: unknown } | { ok: false };
 
 /** Mirror ingest storage: trim, lower-case, strip trailing dots. Ingest keeps www. */
 function normalizeExportDomain(raw: string): string {
@@ -56,7 +54,9 @@ function parseJsonContent(content: string): ParseJsonResult {
 export async function getAgencyMonthlyExportByDomain(
   domain: string,
   month: string,
-): Promise<MonthlyExportByDomainResult | MonthlyExportByDomainInvalidResult | null> {
+): Promise<
+  MonthlyExportByDomainResult | MonthlyExportByDomainInvalidResult | null
+> {
   const normalizedDomain = normalizeExportDomain(domain);
   const artifact = await AgencyOpsArtifactsRepository.latestByKindDomainDate(
     "monthly-export",

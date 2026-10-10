@@ -59,7 +59,12 @@ describe("serviceTokenIdentity", () => {
   });
 
   it("never emits an address that could reach a real mailbox, whatever the name contains", async () => {
-    for (const name of [...COLLIDING_UNDER_A_SLUG, "x@y", "a".repeat(300), ""]) {
+    for (const name of [
+      ...COLLIDING_UNDER_A_SLUG,
+      "x@y",
+      "a".repeat(300),
+      "",
+    ]) {
       const { userEmail } = await serviceTokenIdentity(name);
       // .invalid is reserved by RFC 2606 and can never resolve.
       expect(userEmail.endsWith("@service-token.invalid")).toBe(true);

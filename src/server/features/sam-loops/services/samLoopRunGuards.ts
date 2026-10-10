@@ -103,8 +103,11 @@ async function getStaleRunReason(input: {
     input.run?.costNote?.startsWith(SAM_BOX_COST_PREFIX) &&
     input.run.status === "running"
   ) {
-    const startedMs = input.run.startedAt ? Date.parse(input.run.startedAt) : NaN;
-    return Number.isFinite(startedMs) && Date.now() <= startedMs + SAM_BOX_LEASE_SECONDS * 1000
+    const startedMs = input.run.startedAt
+      ? Date.parse(input.run.startedAt)
+      : NaN;
+    return Number.isFinite(startedMs) &&
+      Date.now() <= startedMs + SAM_BOX_LEASE_SECONDS * 1000
       ? null
       : "Box lease expired before a result was posted.";
   }
@@ -148,7 +151,11 @@ export async function failSamLoopRunIfActive(
   }
   if (current.costNote?.startsWith(SAM_BOX_COST_PREFIX)) {
     await finishSamBoxRun({
-      run: { id: current.id, loopId: current.loopId, projectId: current.projectId },
+      run: {
+        id: current.id,
+        loopId: current.loopId,
+        projectId: current.projectId,
+      },
       data: samBoxExpiredFinish(),
       touchLastRun: true,
       advance: true,
@@ -173,17 +180,19 @@ export async function beginSamLoopRun(input: {
   for (let attempt = 0; attempt < 2; attempt++) {
     const runId = crypto.randomUUID();
     // Cheap early rejection; the repository repeats admission atomically at insert.
-    const runsToday = await SamLoopRepository.countRunsCreatedSince(
-      startOfUtcDay(),
-    );
+    const runsToday =
+      await SamLoopRepository.countRunsCreatedSince(startOfUtcDay());
     if (runsToday >= getSamLoopDailyRunCap(env)) {
       return { ok: false, reason: "daily_cap" };
     }
-    const created = await SamLoopRepository.tryCreateRun({
-      id: runId,
-      loopId: input.loopId,
-      projectId: input.projectId,
-    }, { sinceDate: startOfUtcDay(), cap: getSamLoopDailyRunCap(env) });
+    const created = await SamLoopRepository.tryCreateRun(
+      {
+        id: runId,
+        loopId: input.loopId,
+        projectId: input.projectId,
+      },
+      { sinceDate: startOfUtcDay(), cap: getSamLoopDailyRunCap(env) },
+    );
 
     if (created) {
       try {
@@ -212,7 +221,10 @@ export async function beginSamLoopRun(input: {
 
     const blocker = await SamLoopRepository.getActiveRunForLoop(input.loopId);
     if (!blocker) {
-      if (await SamLoopRepository.countRunsCreatedSince(startOfUtcDay()) >= getSamLoopDailyRunCap(env)) {
+      if (
+        (await SamLoopRepository.countRunsCreatedSince(startOfUtcDay())) >=
+        getSamLoopDailyRunCap(env)
+      ) {
         return { ok: false, reason: "daily_cap" };
       }
       continue;

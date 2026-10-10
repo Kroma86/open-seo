@@ -45,7 +45,8 @@ vi.mock("@/server/features/rank-tracking/services/RankTrackingService", () => ({
     getTracker: (...args: unknown[]) => getTracker(...args),
     addKeywords: (...args: unknown[]) => addKeywords(...args),
     triggerCheck: (...args: unknown[]) => triggerCheck(...args),
-    refreshKeywordMetrics: (...args: unknown[]) => refreshKeywordMetrics(...args),
+    refreshKeywordMetrics: (...args: unknown[]) =>
+      refreshKeywordMetrics(...args),
   },
 }));
 

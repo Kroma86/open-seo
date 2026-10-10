@@ -8,7 +8,9 @@ export {
 
 const warnedInvalidSamBoxModes = new Set<string>();
 
-export function getSamBoxMode(env: { SAM_LOOP_GROK_BOX?: string }): "on" | "off" {
+export function getSamBoxMode(env: {
+  SAM_LOOP_GROK_BOX?: string;
+}): "on" | "off" {
   const raw = env.SAM_LOOP_GROK_BOX?.trim();
   if (!raw || raw === "off") return "off";
   if (raw === "on") return "on";
@@ -23,7 +25,8 @@ export function getSamBoxMode(env: { SAM_LOOP_GROK_BOX?: string }): "on" | "off"
 
 export function leaseIdFor(runId: string, startedAt: string): string {
   const startedMs = new Date(startedAt).getTime();
-  if (!Number.isFinite(startedMs)) throw new Error("Box lease startedAt is invalid.");
+  if (!Number.isFinite(startedMs))
+    throw new Error("Box lease startedAt is invalid.");
   return `${runId}.${startedMs}`;
 }
 

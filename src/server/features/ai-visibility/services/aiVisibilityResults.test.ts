@@ -171,7 +171,9 @@ describe("aiVisibilityResults", () => {
         completedAt: "2026-02-03T00:00:00.000Z",
         promptSetVersion: 2,
       });
-      expect(mocks.getLatestCompletedRunForConfig).toHaveBeenCalledWith("config_1");
+      expect(mocks.getLatestCompletedRunForConfig).toHaveBeenCalledWith(
+        "config_1",
+      );
     });
 
     it("loads a runId that belongs to the project", async () => {
@@ -186,12 +188,15 @@ describe("aiVisibilityResults", () => {
       ["another project", { projectId: "project_2" }, undefined],
       ["another config", { configId: "config_2" }, "config_1"],
       ["an unfinished run", { status: "running" }, undefined],
-    ])("refuses a runId from %s as not found", async (_label, override, configId) => {
-      mocks.getRunById.mockResolvedValue({ ...storedRun, ...override });
+    ])(
+      "refuses a runId from %s as not found",
+      async (_label, override, configId) => {
+        mocks.getRunById.mockResolvedValue({ ...storedRun, ...override });
 
-      await expect(
-        getPromptResults("project_1", configId, "run_9"),
-      ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    });
+        await expect(
+          getPromptResults("project_1", configId, "run_9"),
+        ).rejects.toMatchObject({ code: "NOT_FOUND" });
+      },
+    );
   });
 });

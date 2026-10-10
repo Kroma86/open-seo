@@ -66,7 +66,9 @@ describe("buildAiVisibilityPrompts", () => {
     // hardcoded string — a mutation test showed the narrow version passed
     // while the original bug was reintroduced as "best electrician services".
     for (const p of prompts) {
-      expect(p, p).not.toMatch(/\b(?:best|top[- ]rated)\s+[\w-]+\s+services\b/i);
+      expect(p, p).not.toMatch(
+        /\b(?:best|top[- ]rated)\s+[\w-]+\s+services\b/i,
+      );
     }
   });
 
@@ -78,7 +80,9 @@ describe("buildAiVisibilityPrompts", () => {
 
   it("drops the retail templates that made no sense for a trade", () => {
     for (const p of prompts) {
-      expect(p, p).not.toMatch(/worth the drive|open on weekends|typical prices/i);
+      expect(p, p).not.toMatch(
+        /worth the drive|open on weekends|typical prices/i,
+      );
     }
   });
 
@@ -198,12 +202,17 @@ describe("buildAiVisibilityPrompts", () => {
     // them on the services, not on the advice line.
     const many = buildAiVisibilityPrompts({
       ...BLINE,
-      services: ["EV charger installation", "panel upgrades", "generator installation", "knob and tube rewiring"],
+      services: [
+        "EV charger installation",
+        "panel upgrades",
+        "generator installation",
+        "knob and tube rewiring",
+      ],
     });
     expect(many.some((p) => /knob and tube/i.test(p))).toBe(true);
-    expect(many.indexOf(many.find((p) => /what should I look for/i.test(p))!)).toBe(
-      many.length - 1,
-    );
+    expect(
+      many.indexOf(many.find((p) => /what should I look for/i.test(p))!),
+    ).toBe(many.length - 1);
   });
 
   it("emits no duplicates", () => {

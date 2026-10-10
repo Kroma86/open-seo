@@ -176,17 +176,22 @@ describe("fetchAgencyPixelStatus", () => {
     expect(calledUrl).not.toContain("test-token");
     expect(new URL(calledUrl).searchParams.has("t")).toBe(false);
     const init = calls[0]?.[1] as RequestInit;
-    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-token");
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer test-token",
+    );
   });
 
   it("never puts the token in the URL, even when the configured URL carries one", async () => {
     const fetchImpl = vi.fn(async () => new Response("{}", { status: 200 }));
     await fetchAgencyPixelStatus("niceseo.ai", {
-      metricsUrl: "https://webhook.niceseo.ai/api/v1/agency-metrics?t=stale&token=stale",
+      metricsUrl:
+        "https://webhook.niceseo.ai/api/v1/agency-metrics?t=stale&token=stale",
       token: "test-token",
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
-    const calls = fetchImpl.mock.calls as unknown as ReadonlyArray<ReadonlyArray<unknown>>;
+    const calls = fetchImpl.mock.calls as unknown as ReadonlyArray<
+      ReadonlyArray<unknown>
+    >;
     const url = new URL(String(calls[0]?.[0] ?? ""));
     expect(url.searchParams.has("t")).toBe(false);
     expect(url.searchParams.has("token")).toBe(false);
@@ -285,7 +290,9 @@ describe("getNiceseoOpsStatusTool handler", () => {
     );
     expect(result.structuredContent.pixel.applicationVerified).toBe(false);
     expect(text).not.toContain("already applied");
-    expect(text).toContain("Browser application of the current served values is not verified");
+    expect(text).toContain(
+      "Browser application of the current served values is not verified",
+    );
     expect(result.structuredContent.pixel.served_fix_keys).toEqual([
       "description",
       "h1",

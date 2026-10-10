@@ -19,9 +19,7 @@ const mocks = vi.hoisted(() => ({
   claimDueLoop: vi.fn<typeof SamLoopRepository.claimDueLoop>(),
   tryCreateRun: vi.fn<typeof SamLoopRepository.tryCreateRun>(),
   updateRun: vi.fn<typeof SamLoopRepository.updateRun>(),
-  getRunById: vi.fn<
-    (runId: string) => Promise<{ status: string } | null>
-  >(),
+  getRunById: vi.fn<(runId: string) => Promise<{ status: string } | null>>(),
   getActiveRunForLoop:
     vi.fn<(loopId: string) => Promise<{ id: string } | null>>(),
   finishRunIfRunning:
@@ -589,9 +587,9 @@ describe("handleSamBoxClaim", () => {
       expect(mocks.updateRun).toHaveBeenCalledTimes(committed ? 1 : 2);
       if (!committed) {
         expect(mocks.updateRun).toHaveBeenLastCalledWith(runId, failure);
-        expect(mocks.finishRunIfRunning.mock.invocationCallOrder[0]).toBeLessThan(
-          mocks.updateRun.mock.invocationCallOrder[1] ?? 0,
-        );
+        expect(
+          mocks.finishRunIfRunning.mock.invocationCallOrder[0],
+        ).toBeLessThan(mocks.updateRun.mock.invocationCallOrder[1] ?? 0);
       }
       expect(mocks.updateLoop).toHaveBeenCalledExactlyOnceWith(
         "loop-1",

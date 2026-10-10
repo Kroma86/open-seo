@@ -5,7 +5,10 @@ import type { SamBoxHttpResult } from "@/server/features/sam-loops/services/samB
 export const NO_STORE = { "cache-control": "no-store" } as const;
 
 export function samBoxJson(result: SamBoxHttpResult): Response {
-  return Response.json(result.body, { status: result.status, headers: NO_STORE });
+  return Response.json(result.body, {
+    status: result.status,
+    headers: NO_STORE,
+  });
 }
 
 function timingSafeEqual(left: string, right: string): boolean {
@@ -25,7 +28,9 @@ function extractBearer(request: Request): string | null {
   return match?.[1]?.trim() || null;
 }
 
-export async function runSamBoxGates(request: Request): Promise<
+export async function runSamBoxGates(
+  request: Request,
+): Promise<
   | { ok: true; body: Record<string, unknown> }
   | { ok: false; response: Response }
 > {
@@ -33,7 +38,10 @@ export async function runSamBoxGates(request: Request): Promise<
   if (!expected) {
     return {
       ok: false,
-      response: samBoxJson({ status: 503, body: { error: "sam_box_disabled" } }),
+      response: samBoxJson({
+        status: 503,
+        body: { error: "sam_box_disabled" },
+      }),
     };
   }
   const token = extractBearer(request);

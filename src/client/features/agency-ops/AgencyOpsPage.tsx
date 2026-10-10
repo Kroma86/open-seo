@@ -7,10 +7,7 @@ import {
 } from "@/client/features/agency-ops/opsArtifactKinds";
 import { Markdown } from "@/client/components/Markdown";
 import { formatRelativeFinishedAt } from "@/client/features/agency-home/agencyHomeUtils";
-import {
-  getOpsArtifact,
-  listOpsArtifacts,
-} from "@/serverFunctions/agency-ops";
+import { getOpsArtifact, listOpsArtifacts } from "@/serverFunctions/agency-ops";
 
 function kindPill(kind: string) {
   const { label, tone } = kindPillMeta(kind);
@@ -55,9 +52,7 @@ function AlertCycleDetail({ content }: { content: string }) {
 
     if (bySeverity.size === 0) {
       return (
-        <p className="text-sm text-base-content/55">
-          No alerts in this cycle.
-        </p>
+        <p className="text-sm text-base-content/55">No alerts in this cycle.</p>
       );
     }
 

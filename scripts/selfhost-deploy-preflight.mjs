@@ -111,7 +111,9 @@ if (!process.env.CLOUDFLARE_API_TOKEN) {
   const hasFile = existsSync(identityFile);
   const wired =
     existsSync(serverTs) &&
-    readFileSync(serverTs, "utf8").includes("resolveServiceTokenWorkspaceContext");
+    readFileSync(serverTs, "utf8").includes(
+      "resolveServiceTokenWorkspaceContext",
+    );
   if (!hasFile || !wired) {
     fail(
       `This tree does not carry the /mcp service-token identity fix (open-seo c5271d6 / a0665ec).`,

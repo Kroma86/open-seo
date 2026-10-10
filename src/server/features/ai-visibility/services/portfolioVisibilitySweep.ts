@@ -60,9 +60,7 @@ export type PortfolioTrackingConfig = {
  */
 export interface PortfolioVisibilitySource {
   listProjects(): Promise<PortfolioSweepProject[]>;
-  listTrackingConfigs(
-    projectId: string,
-  ): Promise<PortfolioTrackingConfig[]>;
+  listTrackingConfigs(projectId: string): Promise<PortfolioTrackingConfig[]>;
   /**
    * The `latest` block of get_ai_visibility_trend's structured content
    * (native OpenSEO runs only — externalObservations are not part of this

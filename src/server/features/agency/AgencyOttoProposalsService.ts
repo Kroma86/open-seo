@@ -121,7 +121,8 @@ export async function enqueueHomegrownOttoProposal(input: {
  */
 function toProposal(raw: unknown): HomegrownOttoProposal | null {
   const r = raw as Partial<HomegrownOttoProposal> | null;
-  if (!r || typeof r.id !== "string" || typeof r.domain !== "string") return null;
+  if (!r || typeof r.id !== "string" || typeof r.domain !== "string")
+    return null;
   return {
     id: r.id,
     domain: r.domain,
@@ -164,7 +165,9 @@ export async function listHomegrownOttoProposals(input?: {
   // filters run after the read). Read in parallel batches; rows keep index order.
   for (let at = 0; at < index.length && out.length < limit; at += READ_BATCH) {
     const batch = index.slice(at, at + READ_BATCH);
-    const raws = await Promise.all(batch.map((id) => kv().get(proposalKey(id))));
+    const raws = await Promise.all(
+      batch.map((id) => kv().get(proposalKey(id))),
+    );
     for (const raw of raws) {
       if (out.length >= limit) break;
       if (!raw) continue;

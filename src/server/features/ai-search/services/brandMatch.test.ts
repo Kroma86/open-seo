@@ -24,7 +24,10 @@ describe("textMentionsBrand", () => {
   it("matches across the other unicode dashes models emit", () => {
     for (const dash of ["‐", "‒", "–", "—", "−"]) {
       expect(
-        textMentionsBrand(`We recommend B${dash}Line Electrical Services.`, "B-Line Electrical Services"),
+        textMentionsBrand(
+          `We recommend B${dash}Line Electrical Services.`,
+          "B-Line Electrical Services",
+        ),
         `dash U+${dash.codePointAt(0)!.toString(16)}`,
       ).toBe(true);
     }
@@ -40,9 +43,9 @@ describe("textMentionsBrand", () => {
   });
 
   it("matches a curly apostrophe against a straight one", () => {
-    expect(textMentionsBrand("Call Lloyd’s Electric.", "Lloyd's Electric")).toBe(
-      true,
-    );
+    expect(
+      textMentionsBrand("Call Lloyd’s Electric.", "Lloyd's Electric"),
+    ).toBe(true);
   });
 
   it("matches across a non-breaking space", () => {

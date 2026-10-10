@@ -130,14 +130,22 @@ describe("HomeGrown OTTO proposals — batched reads", () => {
 
   // 60 rows in the index, newest first, statuses cycling; row 7 is missing, row 9 is corrupt.
   function seed() {
-    const ids = Array.from({ length: 60 }, (_, i) => `id-${String(i).padStart(2, "0")}`);
+    const ids = Array.from(
+      { length: 60 },
+      (_, i) => `id-${String(i).padStart(2, "0")}`,
+    );
     ids.forEach((id, i) => {
       if (i === 7) return;
       store.set(
         `homegrown-otto:proposal:${id}`,
         i === 9
           ? "{not json"
-          : JSON.stringify({ id, domain: "client.com", status: statuses[i % 3], fixes: { title: id } }),
+          : JSON.stringify({
+              id,
+              domain: "client.com",
+              status: statuses[i % 3],
+              fixes: { title: id },
+            }),
       );
     });
     store.set("homegrown-otto:proposal-index", JSON.stringify(ids));
@@ -152,7 +160,9 @@ describe("HomeGrown OTTO proposals — batched reads", () => {
   it("keeps index order and status filtering across batches", async () => {
     const ids = seed();
     for (const status of statuses) {
-      const expected = ids.filter((_, i) => i !== 7 && i !== 9 && statuses[i % 3] === status);
+      const expected = ids.filter(
+        (_, i) => i !== 7 && i !== 9 && statuses[i % 3] === status,
+      );
       const got = await listHomegrownOttoProposals({ status, limit: 200 });
       expect(got.map((p) => p.id)).toEqual(expected);
     }
@@ -168,7 +178,10 @@ describe("HomeGrown OTTO proposals — batched reads", () => {
 
   it("stops reading once the limit is met", async () => {
     seed();
-    const got = await listHomegrownOttoProposals({ status: "pending", limit: 2 });
+    const got = await listHomegrownOttoProposals({
+      status: "pending",
+      limit: 2,
+    });
     expect(got.map((p) => p.id)).toEqual(["id-00", "id-03"]);
     expect(reads.calls).toBe(1 + 25); // index + one batch
   });

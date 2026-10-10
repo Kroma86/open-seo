@@ -158,10 +158,7 @@ export const emailAccessGate = (options: {
   };
 }) =>
   Effect.gen(function* () {
-    const hostnames = [
-      options.domain,
-      ...(options.extraDomains ?? []),
-    ].filter(
+    const hostnames = [options.domain, ...(options.extraDomains ?? [])].filter(
       (hostname, index, all) => hostname && all.indexOf(hostname) === index,
     );
 
@@ -270,7 +267,6 @@ export const emailAccessGate = (options: {
         policies: [allow.policyId],
       },
     );
-
 
     if (options.internalApiBypass) {
       const bypass = yield* Cloudflare.Access.Policy(

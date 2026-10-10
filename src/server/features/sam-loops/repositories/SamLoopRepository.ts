@@ -1,4 +1,16 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
 import { getDatabaseProvider } from "@/db/provider";
@@ -120,11 +132,14 @@ async function claimDueLoop(input: {
   return claimed.length > 0;
 }
 
-async function tryCreateRun(data: {
-  id: string;
-  loopId: string;
-  projectId: string;
-}, admission?: { sinceDate: string; cap: number }): Promise<boolean> {
+async function tryCreateRun(
+  data: {
+    id: string;
+    loopId: string;
+    projectId: string;
+  },
+  admission?: { sinceDate: string; cap: number },
+): Promise<boolean> {
   // Count and insert are one SQLite statement, so parallel D1 invocations
   // cannot both claim the last slot. Postgres needs a transaction lock because
   // its concurrent statement snapshots do not serialize the count by itself.
@@ -161,9 +176,15 @@ async function updateRun(
 /** A late checkpoint cannot replace a terminal result or revive a stopped run. */
 async function checkpointRun(
   runId: string,
-  data: Pick<InferInsertModel<typeof samLoopRuns>, "report" | "stepsUsed" | "proposalsQueued" | "costNote">,
+  data: Pick<
+    InferInsertModel<typeof samLoopRuns>,
+    "report" | "stepsUsed" | "proposalsQueued" | "costNote"
+  >,
 ) {
-  await db.update(samLoopRuns).set(data).where(and(eq(samLoopRuns.id, runId), eq(samLoopRuns.status, "running")));
+  await db
+    .update(samLoopRuns)
+    .set(data)
+    .where(and(eq(samLoopRuns.id, runId), eq(samLoopRuns.status, "running")));
 }
 
 /** Only the first terminal writer may finish a running box lease. */
@@ -171,7 +192,13 @@ async function finishRunIfRunning(
   runId: string,
   data: Pick<
     InferInsertModel<typeof samLoopRuns>,
-    "status" | "error" | "report" | "finishedAt" | "proposalsQueued" | "stepsUsed" | "costNote"
+    | "status"
+    | "error"
+    | "report"
+    | "finishedAt"
+    | "proposalsQueued"
+    | "stepsUsed"
+    | "costNote"
   >,
 ): Promise<boolean> {
   const finished = await db
@@ -183,7 +210,9 @@ async function finishRunIfRunning(
 }
 
 async function getExpiredBoxRuns(nowIso: string, leaseSeconds: number) {
-  const cutoff = new Date(Date.parse(nowIso) - leaseSeconds * 1000).toISOString();
+  const cutoff = new Date(
+    Date.parse(nowIso) - leaseSeconds * 1000,
+  ).toISOString();
   return db
     .select({
       id: samLoopRuns.id,
@@ -192,11 +221,13 @@ async function getExpiredBoxRuns(nowIso: string, leaseSeconds: number) {
       startedAt: samLoopRuns.startedAt,
     })
     .from(samLoopRuns)
-    .where(and(
-      eq(samLoopRuns.status, "running"),
-      sql`${samLoopRuns.costNote} like 'box:grok-sub%'`,
-      or(isNull(samLoopRuns.startedAt), lte(samLoopRuns.startedAt, cutoff)),
-    ))
+    .where(
+      and(
+        eq(samLoopRuns.status, "running"),
+        sql`${samLoopRuns.costNote} like 'box:grok-sub%'`,
+        or(isNull(samLoopRuns.startedAt), lte(samLoopRuns.startedAt, cutoff)),
+      ),
+    )
     .orderBy(samLoopRuns.startedAt)
     .limit(50);
 }
@@ -291,7 +322,12 @@ async function getContentVelocityForProject(
         or(
           and(
             eq(samLoops.sourceType, "custom"),
-            eq(samLoops.customPrompt, DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content")!.customPrompt!),
+            eq(
+              samLoops.customPrompt,
+              DEFAULT_SAM_LOOP_TEMPLATES.find(
+                (template) => template.name === "Monthly content",
+              )!.customPrompt!,
+            ),
           ),
           eq(samLoops.name, "Monthly content"),
           inArray(samLoops.skillName, [...CONTENT_LOOP_SKILL_NAMES]),
@@ -299,23 +335,32 @@ async function getContentVelocityForProject(
       ),
     );
 
-  return Promise.all(rows.map(async (row) => ({
-    loopId: row.loopId,
-    loopName: row.loopName,
-    cadence: row.cadence,
-    isEnabled: row.isEnabled,
-    finishedAt: row.finishedAt!,
-    hasDraft: await hasVerifiedMonthlyDraft(row.report),
-  })));
+  return Promise.all(
+    rows.map(async (row) => ({
+      loopId: row.loopId,
+      loopName: row.loopName,
+      cadence: row.cadence,
+      isEnabled: row.isEnabled,
+      finishedAt: row.finishedAt!,
+      hasDraft: await hasVerifiedMonthlyDraft(row.report),
+    })),
+  );
 }
 
 /** Bounded candidate history; the service verifies each article marker/hash. */
 async function getCompletedMonthlyReports(projectId: string) {
-  return db.select({ report: samLoopRuns.report }).from(samLoopRuns).where(and(
-    eq(samLoopRuns.projectId, projectId),
-    eq(samLoopRuns.status, "completed"),
-    sql`${samLoopRuns.report} like 'DRAFT —%'`,
-  )).orderBy(desc(samLoopRuns.createdAt)).limit(501);
+  return db
+    .select({ report: samLoopRuns.report })
+    .from(samLoopRuns)
+    .where(
+      and(
+        eq(samLoopRuns.projectId, projectId),
+        eq(samLoopRuns.status, "completed"),
+        sql`${samLoopRuns.report} like 'DRAFT —%'`,
+      ),
+    )
+    .orderBy(desc(samLoopRuns.createdAt))
+    .limit(501);
 }
 
 /**
@@ -352,8 +397,7 @@ async function ensureDefaultLoops(projectId: string) {
         projectId,
         name: template.name,
         sourceType: template.sourceType,
-        skillName:
-          template.sourceType === "skill" ? template.skillName : null,
+        skillName: template.sourceType === "skill" ? template.skillName : null,
         customPrompt:
           template.sourceType === "custom" ? template.customPrompt : null,
         cadence: template.cadence,

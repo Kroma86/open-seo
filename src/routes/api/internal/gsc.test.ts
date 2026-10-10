@@ -540,10 +540,7 @@ describe("internal gsc handlePost", () => {
   });
 
   it("picks the earliest member who holds a grant, not the first row from the db", async () => {
-    listGrants.mockResolvedValue([
-      LATE_GRANT,
-      EARLY_GRANT,
-    ]);
+    listGrants.mockResolvedValue([LATE_GRANT, EARLY_GRANT]);
     listSitesForUserWithGrantStatus.mockResolvedValue(
       listedAccounts([
         {
@@ -566,27 +563,29 @@ describe("internal gsc handlePost", () => {
 
   it("falls through to the next grant holder when the earliest sees no matching property", async () => {
     listGrants.mockResolvedValue([EARLY_GRANT, LATE_GRANT]);
-    listSitesForUserWithGrantStatus.mockImplementation(async (userId: string) => {
-      if (userId === "user_early") {
+    listSitesForUserWithGrantStatus.mockImplementation(
+      async (userId: string) => {
+        if (userId === "user_early") {
+          return listedAccounts([
+            {
+              accountId: "gsc_acct_early",
+              sites: [
+                {
+                  siteUrl: "https://other.com/",
+                  permissionLevel: "siteFullUser",
+                },
+              ],
+            },
+          ]);
+        }
         return listedAccounts([
           {
-            accountId: "gsc_acct_early",
-            sites: [
-              {
-                siteUrl: "https://other.com/",
-                permissionLevel: "siteFullUser",
-              },
-            ],
+            accountId: "gsc_acct_late",
+            sites: [{ siteUrl: SITE_URL, permissionLevel: "siteFullUser" }],
           },
         ]);
-      }
-      return listedAccounts([
-        {
-          accountId: "gsc_acct_late",
-          sites: [{ siteUrl: SITE_URL, permissionLevel: "siteFullUser" }],
-        },
-      ]);
-    });
+      },
+    );
     setSite.mockResolvedValue({
       ...CONNECTION,
       connectedByUserId: "user_late",
@@ -606,40 +605,42 @@ describe("internal gsc handlePost", () => {
 
   it("returns the union of candidates across grant holders when none match", async () => {
     listGrants.mockResolvedValue([EARLY_GRANT, LATE_GRANT]);
-    listSitesForUserWithGrantStatus.mockImplementation(async (userId: string) => {
-      if (userId === "user_early") {
+    listSitesForUserWithGrantStatus.mockImplementation(
+      async (userId: string) => {
+        if (userId === "user_early") {
+          return listedAccounts([
+            {
+              accountId: "gsc_acct_early",
+              sites: [
+                {
+                  siteUrl: "https://example.com/path",
+                  permissionLevel: "siteFullUser",
+                },
+                {
+                  siteUrl: "https://other.com/",
+                  permissionLevel: "siteFullUser",
+                },
+              ],
+            },
+          ]);
+        }
         return listedAccounts([
           {
-            accountId: "gsc_acct_early",
+            accountId: "gsc_acct_late",
             sites: [
               {
-                siteUrl: "https://example.com/path",
+                siteUrl: "https://www.example.com/blog",
                 permissionLevel: "siteFullUser",
               },
               {
-                siteUrl: "https://other.com/",
+                siteUrl: "sc-domain:unrelated.net",
                 permissionLevel: "siteFullUser",
               },
             ],
           },
         ]);
-      }
-      return listedAccounts([
-        {
-          accountId: "gsc_acct_late",
-          sites: [
-            {
-              siteUrl: "https://www.example.com/blog",
-              permissionLevel: "siteFullUser",
-            },
-            {
-              siteUrl: "sc-domain:unrelated.net",
-              permissionLevel: "siteFullUser",
-            },
-          ],
-        },
-      ]);
-    });
+      },
+    );
 
     const res = await handlePost(post({ projectId: PROJECT_ID }, auth));
     expect(res.status).toBe(404);
@@ -657,8 +658,14 @@ describe("internal gsc handlePost", () => {
         {
           accountId: "gsc_acct_url",
           sites: [
-            { siteUrl: "https://example.com/", permissionLevel: "siteFullUser" },
-            { siteUrl: "http://www.example.com/", permissionLevel: "siteFullUser" },
+            {
+              siteUrl: "https://example.com/",
+              permissionLevel: "siteFullUser",
+            },
+            {
+              siteUrl: "http://www.example.com/",
+              permissionLevel: "siteFullUser",
+            },
           ],
         },
         {
@@ -667,7 +674,10 @@ describe("internal gsc handlePost", () => {
         },
       ]),
     );
-    setSite.mockResolvedValue({ ...CONNECTION, gscAccountId: "gsc_acct_domain" });
+    setSite.mockResolvedValue({
+      ...CONNECTION,
+      gscAccountId: "gsc_acct_domain",
+    });
 
     const res = await handlePost(post({ projectId: PROJECT_ID }, auth));
     expect(res.status).toBe(200);

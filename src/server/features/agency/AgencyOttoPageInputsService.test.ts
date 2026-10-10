@@ -56,16 +56,24 @@ vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
   },
 }));
 
-const audit: { id: string; startUrl: string | null; completedAt: string | null; startedAt: string | null } =
-  { id: "a1", startUrl: null, completedAt: "2026-09-17T04:26:06Z", startedAt: null };
+const audit: {
+  id: string;
+  startUrl: string | null;
+  completedAt: string | null;
+  startedAt: string | null;
+} = {
+  id: "a1",
+  startUrl: null,
+  completedAt: "2026-09-17T04:26:06Z",
+  startedAt: null,
+};
 
 vi.mock("@/server/features/audit/repositories/AuditRepository", () => ({
   AuditRepository: { getLatestAuditForProject: async () => audit },
 }));
 
-const { getAgencyOttoPageInputs } = await import(
-  "./AgencyOttoPageInputsService"
-);
+const { getAgencyOttoPageInputs } =
+  await import("./AgencyOttoPageInputsService");
 
 const page = (url: string) => ({
   url,
@@ -127,14 +135,20 @@ describe("homepage selection", () => {
       "https://millcreekbakery.ca/about",
       "https://millcreekbakery.ca/",
     ]);
-    const out = await getAgencyOttoPageInputs({ domain: "millcreekbakery.ca", organizationId: null });
+    const out = await getAgencyOttoPageInputs({
+      domain: "millcreekbakery.ca",
+      organizationId: null,
+    });
     expect(out.homepage?.path).toBe("/");
     expect(out.homepageReason).toBe("ok");
   });
 
   it("treats www as the same domain", async () => {
     seed("millcreekbakery.ca", ["https://www.millcreekbakery.ca/"]);
-    const out = await getAgencyOttoPageInputs({ domain: "millcreekbakery.ca", organizationId: null });
+    const out = await getAgencyOttoPageInputs({
+      domain: "millcreekbakery.ca",
+      organizationId: null,
+    });
     expect(out.homepage?.path).toBe("/");
     expect(out.homepageReason).toBe("ok");
   });
@@ -202,7 +216,10 @@ describe("homepage selection", () => {
       ["https://example.ca/en/", "https://example.ca/about"],
       "https://example.ca/en/",
     );
-    const out = await getAgencyOttoPageInputs({ domain: "example.ca", organizationId: null });
+    const out = await getAgencyOttoPageInputs({
+      domain: "example.ca",
+      organizationId: null,
+    });
     expect(out.homepage?.path).toBe("/en/");
     expect(out.homepageReason).toBe("ok");
   });
@@ -234,7 +251,10 @@ describe("homepage selection", () => {
 
   it("reports when nothing was crawled at all", async () => {
     seed("example.ca", []);
-    const out = await getAgencyOttoPageInputs({ domain: "example.ca", organizationId: null });
+    const out = await getAgencyOttoPageInputs({
+      domain: "example.ca",
+      organizationId: null,
+    });
     expect(out.homepage).toBeNull();
     expect(out.homepageReason).toBe("no_pages_crawled");
   });

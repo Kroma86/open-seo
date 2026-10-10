@@ -39,10 +39,7 @@ export function brandMentionRegex(brand: string): RegExp | null {
   return new RegExp(`(?<![${ALNUM}])${body}(?![${ALNUM}])`, "iu");
 }
 
-export function textMentionsBrand(
-  text: string,
-  brand: string | null,
-): boolean {
+export function textMentionsBrand(text: string, brand: string | null): boolean {
   if (!brand) return false;
   const pattern = brandMentionRegex(brand);
   if (!pattern) return false;

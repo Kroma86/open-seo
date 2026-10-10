@@ -20,7 +20,11 @@ vi.mock("@/db", () => ({ db: { select: () => ({}) } }));
 const { loadGscTotals } = await import("./AgencyScoreInputsService");
 
 const rows = (n: number) =>
-  Array.from({ length: n }, () => ({ clicks: 3, impressions: 100, position: 8 }));
+  Array.from({ length: n }, () => ({
+    clicks: 3,
+    impressions: 100,
+    position: 8,
+  }));
 
 describe("loadGscTotals reports why it has no data", () => {
   it("returns totals and ok when rows come back", async () => {
@@ -82,7 +86,9 @@ describe("loadGscTotals reports why it has no data", () => {
 
 describe("the provider's own words survive", () => {
   it("unwraps a nested cause so a revoked grant is distinguishable", async () => {
-    const google = new Error("invalid_grant: Token has been expired or revoked.");
+    const google = new Error(
+      "invalid_grant: Token has been expired or revoked.",
+    );
     const wrapped = new GscTokenError(
       "Could not mint a Search Console access token (grant revoked or expired).",
       google,
@@ -99,4 +105,3 @@ describe("the provider's own words survive", () => {
     expect(out.error).toBe("plain failure");
   });
 });
-

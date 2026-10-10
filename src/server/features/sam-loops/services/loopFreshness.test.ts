@@ -16,16 +16,40 @@ const page = {
 };
 const pages = [page, { ...page, url: "https://example.com/services" }];
 const unavailable = { ready: false, reason: "No site audit is available." };
-const invalidTimestamps = { ready: false, reason: "The site audit has invalid timestamps." };
-const insufficientPages = { ready: false, reason: "The site audit needs at least 2 usable own-site pages." };
+const invalidTimestamps = {
+  ready: false,
+  reason: "The site audit has invalid timestamps.",
+};
+const insufficientPages = {
+  ready: false,
+  reason: "The site audit needs at least 2 usable own-site pages.",
+};
 const thinPages = { ...insufficientPages, thinSite: true };
 
 describe("checkAuditReadiness", () => {
   it("allows old evidence only with the explicit flag and records its age", () => {
-    const old = { ...audit, startedAt: "2026-09-01T12:00:00Z", completedAt: "2026-09-01T13:00:00Z" };
-    expect(checkAuditReadiness(old, pages, "example.com", now, { allowStale: true })).toMatchObject({ ready: true, stale: { ageDays: 11 } });
-    expect(checkAuditReadiness(old, [page], "example.com", now, { allowStale: true })).toEqual(insufficientPages);
-    expect(checkAuditReadiness({ ...old, status: "failed" }, pages, "example.com", now, { allowStale: true }).ready).toBe(false);
+    const old = {
+      ...audit,
+      startedAt: "2026-09-01T12:00:00Z",
+      completedAt: "2026-09-01T13:00:00Z",
+    };
+    expect(
+      checkAuditReadiness(old, pages, "example.com", now, { allowStale: true }),
+    ).toMatchObject({ ready: true, stale: { ageDays: 11 } });
+    expect(
+      checkAuditReadiness(old, [page], "example.com", now, {
+        allowStale: true,
+      }),
+    ).toEqual(insufficientPages);
+    expect(
+      checkAuditReadiness(
+        { ...old, status: "failed" },
+        pages,
+        "example.com",
+        now,
+        { allowStale: true },
+      ).ready,
+    ).toBe(false);
   });
   it("accepts a recent completed audit with two usable own-site URLs", () => {
     expect(checkAuditReadiness(audit, pages, "example.com", now)).toEqual({
@@ -37,31 +61,97 @@ describe("checkAuditReadiness", () => {
 
   it.each([
     ["one readable page", [page], true],
-    ["one readable page and a 404 own-site page", [page, { ...page, url: "https://example.com/gone", statusCode: 404, wordCount: 0 }], true],
-    ["one readable page and a 500 own-site page", [page, { ...page, url: "https://example.com/a", statusCode: 500, wordCount: 0 }], false],
-    ["one readable page and an own-site page with no status", [page, { ...page, url: "https://example.com/a", statusCode: null }], false],
-    ["one readable page and an empty 200 own-site page", [page, { ...page, url: "https://example.com/a", wordCount: 0 }], false],
-    ["one readable page and a blocked row whose URL does not parse", [page, { ...page, url: "not-a-url", fetchClass: "blocked" }], false],
+    [
+      "one readable page and a 404 own-site page",
+      [
+        page,
+        {
+          ...page,
+          url: "https://example.com/gone",
+          statusCode: 404,
+          wordCount: 0,
+        },
+      ],
+      true,
+    ],
+    [
+      "one readable page and a 500 own-site page",
+      [
+        page,
+        {
+          ...page,
+          url: "https://example.com/a",
+          statusCode: 500,
+          wordCount: 0,
+        },
+      ],
+      false,
+    ],
+    [
+      "one readable page and an own-site page with no status",
+      [page, { ...page, url: "https://example.com/a", statusCode: null }],
+      false,
+    ],
+    [
+      "one readable page and an empty 200 own-site page",
+      [page, { ...page, url: "https://example.com/a", wordCount: 0 }],
+      false,
+    ],
+    [
+      "one readable page and a blocked row whose URL does not parse",
+      [page, { ...page, url: "not-a-url", fetchClass: "blocked" }],
+      false,
+    ],
     ["no pages", [], false],
     ["only blank pages", [{ ...page, wordCount: 0 }], false],
-    ["one readable page and a blocked own-site page", [page, { ...page, url: "https://example.com/a", fetchClass: "blocked" }], false],
-    ["one readable page and an errored own-site page", [page, { ...page, url: "https://example.com/a", fetchClass: "error" }], false],
-    ["readable pages only on another host", pages.map((p) => ({ ...p, url: p.url.replace("example.com", "example.ca") })), false],
-  ])("flags a thin site only when the crawl read exactly one usable page and nothing failed: %s", (_name, candidate, thin) => {
-    const result = checkAuditReadiness(audit, candidate, "example.com", now);
-    expect(result).toEqual(thin ? thinPages : insufficientPages);
-  });
+    [
+      "one readable page and a blocked own-site page",
+      [page, { ...page, url: "https://example.com/a", fetchClass: "blocked" }],
+      false,
+    ],
+    [
+      "one readable page and an errored own-site page",
+      [page, { ...page, url: "https://example.com/a", fetchClass: "error" }],
+      false,
+    ],
+    [
+      "readable pages only on another host",
+      pages.map((p) => ({
+        ...p,
+        url: p.url.replace("example.com", "example.ca"),
+      })),
+      false,
+    ],
+  ])(
+    "flags a thin site only when the crawl read exactly one usable page and nothing failed: %s",
+    (_name, candidate, thin) => {
+      const result = checkAuditReadiness(audit, candidate, "example.com", now);
+      expect(result).toEqual(thin ? thinPages : insufficientPages);
+    },
+  );
 
   it.each([null, undefined])("rejects a missing audit", (missing) => {
-    expect(checkAuditReadiness(missing, pages, "example.com", now)).toEqual(unavailable);
+    expect(checkAuditReadiness(missing, pages, "example.com", now)).toEqual(
+      unavailable,
+    );
   });
 
-  it.each(["running", "failed", "pending"])("rejects audit status %s", (status) => {
-    expect(checkAuditReadiness({ ...audit, status }, pages, "example.com", now)).toEqual({ready:false,reason:"The latest site audit has not completed successfully."});
-  });
+  it.each(["running", "failed", "pending"])(
+    "rejects audit status %s",
+    (status) => {
+      expect(
+        checkAuditReadiness({ ...audit, status }, pages, "example.com", now),
+      ).toEqual({
+        ready: false,
+        reason: "The latest site audit has not completed successfully.",
+      });
+    },
+  );
 
   it("rejects an invalid current time", () => {
-    expect(checkAuditReadiness(audit, pages, "example.com", new Date(NaN))).toEqual({
+    expect(
+      checkAuditReadiness(audit, pages, "example.com", new Date(NaN)),
+    ).toEqual({
       ready: false,
       reason: "The current time is invalid.",
     });
@@ -80,12 +170,37 @@ describe("checkAuditReadiness", () => {
     "2026-09-10T10:60:00Z",
     "2026-09-10T10:00:00+25:00",
   ])("rejects invalid start or completion timestamp %s", (timestamp) => {
-    expect(checkAuditReadiness({ ...audit, startedAt: timestamp }, pages, "example.com", now)).toEqual(invalidTimestamps);
-    expect(checkAuditReadiness({ ...audit, completedAt: timestamp }, pages, "example.com", now)).toEqual(invalidTimestamps);
+    expect(
+      checkAuditReadiness(
+        { ...audit, startedAt: timestamp },
+        pages,
+        "example.com",
+        now,
+      ),
+    ).toEqual(invalidTimestamps);
+    expect(
+      checkAuditReadiness(
+        { ...audit, completedAt: timestamp },
+        pages,
+        "example.com",
+        now,
+      ),
+    ).toEqual(invalidTimestamps);
   });
 
   it("reads SQLite timestamps as UTC and accepts exactly seven days", () => {
-    expect(checkAuditReadiness({ ...audit, startedAt: "2026-09-05 12:00:00", completedAt: "2026-09-05 13:00:00" }, pages, "example.com", now)).toEqual({
+    expect(
+      checkAuditReadiness(
+        {
+          ...audit,
+          startedAt: "2026-09-05 12:00:00",
+          completedAt: "2026-09-05 13:00:00",
+        },
+        pages,
+        "example.com",
+        now,
+      ),
+    ).toEqual({
       ready: true,
       measuredAt: "2026-09-05T12:00:00.000Z",
       usablePages: 2,
@@ -93,7 +208,18 @@ describe("checkAuditReadiness", () => {
   });
 
   it("accepts ISO offsets at the seven-day boundary", () => {
-    expect(checkAuditReadiness({ ...audit, startedAt: "2026-09-05T17:30:00+05:30", completedAt: "2026-09-05T08:00:00-05:00" }, pages, "example.com", now)).toEqual({
+    expect(
+      checkAuditReadiness(
+        {
+          ...audit,
+          startedAt: "2026-09-05T17:30:00+05:30",
+          completedAt: "2026-09-05T08:00:00-05:00",
+        },
+        pages,
+        "example.com",
+        now,
+      ),
+    ).toEqual({
       ready: true,
       measuredAt: "2026-09-05T12:00:00.000Z",
       usablePages: 2,
@@ -101,47 +227,93 @@ describe("checkAuditReadiness", () => {
   });
 
   it("rejects an audit started one millisecond beyond seven days even if it just completed", () => {
-    expect(checkAuditReadiness({ ...audit, startedAt: "2026-09-05T11:59:59.999Z", completedAt: now.toISOString() }, pages, "example.com", now)).toEqual({
+    expect(
+      checkAuditReadiness(
+        {
+          ...audit,
+          startedAt: "2026-09-05T11:59:59.999Z",
+          completedAt: now.toISOString(),
+        },
+        pages,
+        "example.com",
+        now,
+      ),
+    ).toEqual({
       ready: false,
       reason: "The site audit is older than 7 days.",
     });
   });
 
   it.each([
-    { ...audit, startedAt: "2026-09-12T12:00:00.001Z", completedAt: "2026-09-12T12:00:00.002Z" },
+    {
+      ...audit,
+      startedAt: "2026-09-12T12:00:00.001Z",
+      completedAt: "2026-09-12T12:00:00.002Z",
+    },
     { ...audit, completedAt: "2026-09-12T12:00:00.001Z" },
   ])("rejects future audit timestamps", (futureAudit) => {
-    expect(checkAuditReadiness(futureAudit, pages, "example.com", now)).toEqual({
-      ready: false,
-      reason: "The site audit has timestamps in the future.",
-    });
+    expect(checkAuditReadiness(futureAudit, pages, "example.com", now)).toEqual(
+      {
+        ready: false,
+        reason: "The site audit has timestamps in the future.",
+      },
+    );
   });
 
   it("rejects completion before start", () => {
-    expect(checkAuditReadiness({ ...audit, completedAt: "2026-09-10T09:59:59.999Z" }, pages, "example.com", now)).toEqual({
+    expect(
+      checkAuditReadiness(
+        { ...audit, completedAt: "2026-09-10T09:59:59.999Z" },
+        pages,
+        "example.com",
+        now,
+      ),
+    ).toEqual({
       ready: false,
       reason: "The site audit completed before it started.",
     });
   });
 
   it("accepts equal timestamps at the current time", () => {
-    expect(checkAuditReadiness({ ...audit, startedAt: now.toISOString(), completedAt: now.toISOString() }, pages, "example.com", now)).toEqual({
+    expect(
+      checkAuditReadiness(
+        {
+          ...audit,
+          startedAt: now.toISOString(),
+          completedAt: now.toISOString(),
+        },
+        pages,
+        "example.com",
+        now,
+      ),
+    ).toEqual({
       ready: true,
       measuredAt: now.toISOString(),
       usablePages: 2,
     });
   });
 
-  it.each([null, "", "not a domain", "https://user:password@example.com", "ftp://example.com"])("rejects invalid project domain %s", (domain) => {
+  it.each([
+    null,
+    "",
+    "not a domain",
+    "https://user:password@example.com",
+    "ftp://example.com",
+  ])("rejects invalid project domain %s", (domain) => {
     expect(checkAuditReadiness(audit, pages, domain, now)).toEqual({
       ready: false,
       reason: "The project domain is missing or invalid.",
     });
   });
 
-  it.each([{ pages: [] }, { pages: [{ ...page, wordCount: 0 }] }])("rejects empty or blank completed audits", (candidate) => {
-    expect(checkAuditReadiness(audit, candidate.pages, "example.com", now)).toEqual(insufficientPages);
-  });
+  it.each([{ pages: [] }, { pages: [{ ...page, wordCount: 0 }] }])(
+    "rejects empty or blank completed audits",
+    (candidate) => {
+      expect(
+        checkAuditReadiness(audit, candidate.pages, "example.com", now),
+      ).toEqual(insufficientPages);
+    },
+  );
 
   it.each([
     [{ ...pages[1]!, url: "https://elsewhere.example/services" }, true],
@@ -163,17 +335,40 @@ describe("checkAuditReadiness", () => {
     [{ ...pages[1]!, wordCount: 79 }, true],
     [{ ...pages[1]!, wordCount: NaN }, false],
     [{ ...pages[1]!, wordCount: Infinity }, false],
-  ])("does not count an unusable second page (and flags a thin site only when nothing points to a crawl fault)", (unusable, thin) => {
-    expect(checkAuditReadiness(audit, [page, unusable], "example.com", now)).toEqual(thin ? thinPages : insufficientPages);
-  });
+  ])(
+    "does not count an unusable second page (and flags a thin site only when nothing points to a crawl fault)",
+    (unusable, thin) => {
+      expect(
+        checkAuditReadiness(audit, [page, unusable], "example.com", now),
+      ).toEqual(thin ? thinPages : insufficientPages);
+    },
+  );
 
   it("deduplicates repeated URL rows and fragment variants", () => {
-    const duplicates = [page, { ...page }, { ...page, url: "https://example.com/#contact" }];
-    expect(checkAuditReadiness(audit, duplicates, "example.com", now)).toEqual(thinPages);
+    const duplicates = [
+      page,
+      { ...page },
+      { ...page, url: "https://example.com/#contact" },
+    ];
+    expect(checkAuditReadiness(audit, duplicates, "example.com", now)).toEqual(
+      thinPages,
+    );
   });
 
   it("counts only the unique usable own-site URLs", () => {
-    expect(checkAuditReadiness(audit, [...pages, page, { ...page, url: "https://elsewhere.example/" }, { ...page, url: "https://example.com/blank", wordCount: 0 }], "example.com", now)).toEqual({
+    expect(
+      checkAuditReadiness(
+        audit,
+        [
+          ...pages,
+          page,
+          { ...page, url: "https://elsewhere.example/" },
+          { ...page, url: "https://example.com/blank", wordCount: 0 },
+        ],
+        "example.com",
+        now,
+      ),
+    ).toEqual({
       ready: true,
       measuredAt: audit.startedAt,
       usablePages: 2,
@@ -181,22 +376,42 @@ describe("checkAuditReadiness", () => {
   });
 
   it("does not count homepage scheme, www or tracking variants as separate pages", () => {
-    const ownPages = ["http://example.com/", "https://www.example.com/", "https://example.com/?utm_source=example"].map(url => ({ ...page, url }));
-    expect(checkAuditReadiness(audit, ownPages, "WWW.EXAMPLE.COM", now)).toEqual(thinPages);
+    const ownPages = [
+      "http://example.com/",
+      "https://www.example.com/",
+      "https://example.com/?utm_source=example",
+    ].map((url) => ({ ...page, url }));
+    expect(
+      checkAuditReadiness(audit, ownPages, "WWW.EXAMPLE.COM", now),
+    ).toEqual(thinPages);
   });
 
   it("does not expose the audit ID or invalid page URL in rejection reasons", () => {
     const candidate = { ...audit, id: "private-audit-marker" };
-    const result = checkAuditReadiness(candidate, [{ ...page, url: "https://secret-user:secret-password@example.com/private-path" }], "example.com", now);
+    const result = checkAuditReadiness(
+      candidate,
+      [
+        {
+          ...page,
+          url: "https://secret-user:secret-password@example.com/private-path",
+        },
+      ],
+      "example.com",
+      now,
+    );
     expect(result).toEqual(insufficientPages);
     expect(JSON.stringify(result)).not.toMatch(/private|secret|example\.com/);
   });
 
   it("does not mutate the supplied audit, pages or clock", () => {
     const frozenAudit = Object.freeze({ ...audit });
-    const frozenPages = Object.freeze(pages.map((row) => Object.freeze({ ...row })));
+    const frozenPages = Object.freeze(
+      pages.map((row) => Object.freeze({ ...row })),
+    );
     const before = now.getTime();
-    expect(checkAuditReadiness(frozenAudit, frozenPages, "example.com", now).ready).toBe(true);
+    expect(
+      checkAuditReadiness(frozenAudit, frozenPages, "example.com", now).ready,
+    ).toBe(true);
     expect(now.getTime()).toBe(before);
   });
 });

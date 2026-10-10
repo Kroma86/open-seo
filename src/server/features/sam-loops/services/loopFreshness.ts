@@ -15,7 +15,12 @@ export type AuditReadinessPage = {
 };
 
 export type AuditReadinessResult =
-  | { ready: true; measuredAt: string; usablePages: number; stale?: { ageDays: number } }
+  | {
+      ready: true;
+      measuredAt: string;
+      usablePages: number;
+      stale?: { ageDays: number };
+    }
   | { ready: false; reason: string; thinSite?: true };
 
 const MAX_AUDIT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -35,7 +40,12 @@ function timestampMs(value: string | null): number | null {
 function httpUrl(value: string): URL | null {
   try {
     const url = new URL(value);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password
+    )
+      return null;
     return url;
   } catch {
     return null;
@@ -52,7 +62,8 @@ function crawlFailed(page: AuditReadinessPage): boolean {
     page.fetchClass !== "ok" ||
     page.statusCode === null ||
     page.statusCode >= 500 ||
-    (page.statusCode === 200 && !(page.wordCount > 0 && Number.isFinite(page.wordCount)))
+    (page.statusCode === 200 &&
+      !(page.wordCount > 0 && Number.isFinite(page.wordCount)))
   );
 }
 
@@ -68,7 +79,10 @@ export function checkAuditReadiness(
     return { ready: false, reason: "No site audit is available." };
   }
   if (audit.status !== "completed") {
-    return { ready: false, reason: "The latest site audit has not completed successfully." };
+    return {
+      ready: false,
+      reason: "The latest site audit has not completed successfully.",
+    };
   }
   const nowMs = now.getTime();
   if (!Number.isFinite(nowMs)) {
@@ -80,10 +94,16 @@ export function checkAuditReadiness(
     return { ready: false, reason: "The site audit has invalid timestamps." };
   }
   if (startedAt > nowMs || completedAt > nowMs) {
-    return { ready: false, reason: "The site audit has timestamps in the future." };
+    return {
+      ready: false,
+      reason: "The site audit has timestamps in the future.",
+    };
   }
   if (completedAt < startedAt) {
-    return { ready: false, reason: "The site audit completed before it started." };
+    return {
+      ready: false,
+      reason: "The site audit completed before it started.",
+    };
   }
   const stale = nowMs - startedAt > MAX_AUDIT_AGE_MS;
   if (stale && options.allowStale !== true) {
@@ -94,7 +114,10 @@ export function checkAuditReadiness(
     ? httpUrl(domain.includes("://") ? domain : `https://${domain}`)
     : null;
   if (!projectUrl) {
-    return { ready: false, reason: "The project domain is missing or invalid." };
+    return {
+      ready: false,
+      reason: "The project domain is missing or invalid.",
+    };
   }
   const expectedHost = ownHost(projectUrl);
   const usableUrls = new Set<string>();
@@ -102,8 +125,15 @@ export function checkAuditReadiness(
   for (const page of pages) {
     const url = httpUrl(page.url);
     // Fail closed: an unparseable URL could be the site's own row.
-    if ((!url || ownHost(url) === expectedHost) && crawlFailed(page)) ownHostFailures += 1;
-    if (page.statusCode !== 200 || page.fetchClass !== "ok" || !Number.isFinite(page.wordCount) || page.wordCount < 80) continue;
+    if ((!url || ownHost(url) === expectedHost) && crawlFailed(page))
+      ownHostFailures += 1;
+    if (
+      page.statusCode !== 200 ||
+      page.fetchClass !== "ok" ||
+      !Number.isFinite(page.wordCount) ||
+      page.wordCount < 80
+    )
+      continue;
     if (!url || ownHost(url) !== expectedHost) continue;
     // Require distinct paths: scheme, www, query and fragment variants of one
     // page must not make a one-page crawl look like broader site evidence.
@@ -115,7 +145,9 @@ export function checkAuditReadiness(
     return {
       ready: false,
       reason: "The site audit needs at least 2 usable own-site pages.",
-      ...(usableUrls.size === 1 && ownHostFailures === 0 && !stale ? { thinSite: true as const } : {}),
+      ...(usableUrls.size === 1 && ownHostFailures === 0 && !stale
+        ? { thinSite: true as const }
+        : {}),
     };
   }
   return {

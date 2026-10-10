@@ -108,7 +108,8 @@ export class SamLoopWorkflow extends WorkflowEntrypoint<Env, SamLoopParams> {
             skillName: prepared.loop.skillName,
             customPrompt: prepared.loop.customPrompt,
             loopName: prepared.loop.name,
-            onProgress: (progress) => SamLoopRepository.checkpointRun(runId, progress),
+            onProgress: (progress) =>
+              SamLoopRepository.checkpointRun(runId, progress),
           });
         },
       );
@@ -142,14 +143,19 @@ export class SamLoopWorkflow extends WorkflowEntrypoint<Env, SamLoopParams> {
       });
     } catch (error) {
       console.error(`[sam-loop] ${runId} failed:`, error);
-      await pgStep(step, "mark-failed", SINGLE_ATTEMPT_STEP_CONFIG, async () => {
-        const message =
-          error instanceof Error ? error.message : "Unknown error";
-        await failSamLoopRunIfActive(runId, message);
-        await SamLoopRepository.updateLoop(loopId, projectId, {
-          lastRunAt: new Date().toISOString(),
-        });
-      });
+      await pgStep(
+        step,
+        "mark-failed",
+        SINGLE_ATTEMPT_STEP_CONFIG,
+        async () => {
+          const message =
+            error instanceof Error ? error.message : "Unknown error";
+          await failSamLoopRunIfActive(runId, message);
+          await SamLoopRepository.updateLoop(loopId, projectId, {
+            lastRunAt: new Date().toISOString(),
+          });
+        },
+      );
       throw error;
     }
   }

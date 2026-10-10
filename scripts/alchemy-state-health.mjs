@@ -18,7 +18,11 @@
 // others (creating, updating, deleting, replacing) mean a reconcile started and
 // never finished.
 
-export const SETTLED_STATUSES = Object.freeze(["created", "updated", "replaced"]);
+export const SETTLED_STATUSES = Object.freeze([
+  "created",
+  "updated",
+  "replaced",
+]);
 
 const settled = new Set(SETTLED_STATUSES);
 
@@ -45,7 +49,7 @@ export function formatUnsettledFailure(unsettled, { stack, stage } = {}) {
     "longer exist while the real one is still live.",
     "",
     "Before deploying, reconcile the state document with what is actually live —",
-    "see \"Alchemy state drift\" in docs/SELF_HOSTING_CLOUDFLARE_OPERATIONS.md.",
+    'see "Alchemy state drift" in docs/SELF_HOSTING_CLOUDFLARE_OPERATIONS.md.',
   );
   return lines.join("\n");
 }
@@ -93,10 +97,12 @@ export async function fetchResourceStates(
     return text ? JSON.parse(text) : undefined;
   };
   try {
-    const listed = await get(`/state/stacks/${stack}/stages/${stage}/resources`);
-    const fqns = (Array.isArray(listed) ? listed : (listed?.resources ?? [])).map(
-      (r) => (typeof r === "string" ? r : r?.fqn),
+    const listed = await get(
+      `/state/stacks/${stack}/stages/${stage}/resources`,
     );
+    const fqns = (
+      Array.isArray(listed) ? listed : (listed?.resources ?? [])
+    ).map((r) => (typeof r === "string" ? r : r?.fqn));
     const docs = await Promise.all(
       fqns.filter(Boolean).map(async (fqn) => {
         const doc = await get(
