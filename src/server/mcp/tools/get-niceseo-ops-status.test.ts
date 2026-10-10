@@ -173,7 +173,23 @@ describe("fetchAgencyPixelStatus", () => {
       ReadonlyArray<unknown>
     >;
     const calledUrl = String(calls[0]?.[0] ?? "");
-    expect(calledUrl).toContain("t=test-token");
+    expect(calledUrl).not.toContain("test-token");
+    expect(new URL(calledUrl).searchParams.has("t")).toBe(false);
+    const init = calls[0]?.[1] as RequestInit;
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-token");
+  });
+
+  it("never puts the token in the URL, even when the configured URL carries one", async () => {
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 200 }));
+    await fetchAgencyPixelStatus("niceseo.ai", {
+      metricsUrl: "https://webhook.niceseo.ai/api/v1/agency-metrics?t=stale&token=stale",
+      token: "test-token",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const calls = fetchImpl.mock.calls as unknown as ReadonlyArray<ReadonlyArray<unknown>>;
+    const url = new URL(String(calls[0]?.[0] ?? ""));
+    expect(url.searchParams.has("t")).toBe(false);
+    expect(url.searchParams.has("token")).toBe(false);
   });
 });
 
