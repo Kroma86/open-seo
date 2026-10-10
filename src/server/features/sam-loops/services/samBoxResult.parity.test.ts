@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   getRunById: vi.fn<(runId: string) => Promise<ParityRun | null>>(),
   getLoopById: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   getProjectById: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  resolveProjectByDomain: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   finishRunIfRunning: vi.fn<(...args: unknown[]) => Promise<boolean>>(),
   updateLoop: vi.fn<(...args: unknown[]) => Promise<void>>(),
   claimDueLoop: vi.fn<(...args: unknown[]) => Promise<boolean>>(),
@@ -57,7 +58,10 @@ vi.mock("@/server/features/sam-loops/repositories/SamLoopRepository", () => ({
   SamLoopRepository: mocks,
 }));
 vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
-  ProjectRepository: { getProjectById: mocks.getProjectById },
+  ProjectRepository: {
+    getProjectById: mocks.getProjectById,
+    resolveProjectByDomain: mocks.resolveProjectByDomain,
+  },
 }));
 // This suite checks the successful proposal mapping. The error redactor's
 // implementation and failure handling are covered by the result unit suite.
@@ -149,10 +153,14 @@ beforeEach(() => {
     cadence: "weekly",
     nextRunAt: "2026-10-01T13:00:00.000Z",
   });
-  mocks.getProjectById.mockResolvedValue({
+  const project = {
     id: run.projectId,
+    name: "NiceSEO",
     domain: projectDomain,
-  });
+    organizationId: "org-1",
+  };
+  mocks.getProjectById.mockResolvedValue(project);
+  mocks.resolveProjectByDomain.mockResolvedValue(project);
   mocks.finishRunIfRunning.mockResolvedValue(true);
   mocks.updateLoop.mockResolvedValue(undefined);
   mocks.claimDueLoop.mockResolvedValue(true);
@@ -234,7 +242,8 @@ describe("Sam box proposal KV parity", () => {
     );
     expect(boxRecord).toMatchObject({
       domain: "niceseo.ai",
-      projectId: null,
+      organizationId: "org-1",
+      projectId: "project-1",
       status: "pending",
       proposedBy: "sam",
       before: { title: "Pricing", description: null },

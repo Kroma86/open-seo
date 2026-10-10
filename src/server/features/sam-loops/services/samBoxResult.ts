@@ -181,7 +181,7 @@ function sameFixes(
 }
 
 async function queueProposals(
-  domain: string,
+  project: { id: string; domain: string; organizationId: string },
   proposals: SamBoxProposal[],
 ): Promise<{
   count: number;
@@ -192,12 +192,14 @@ async function queueProposals(
   let failed = 0;
   let error: string | null = null;
   if (!proposals.length) return { count, failed, error };
+  const domain = project.domain;
   let pending: Awaited<ReturnType<typeof listHomegrownOttoProposals>>;
   try {
     pending = await listHomegrownOttoProposals({
       domain,
       status: "pending",
       limit: 200,
+      visibleToOrganizationId: project.organizationId,
     });
   } catch (cause) {
     return {
@@ -219,6 +221,8 @@ async function queueProposals(
     try {
       await enqueueHomegrownOttoProposal({
         domain,
+        organizationId: project.organizationId,
+        projectId: project.id,
         path: proposal.path,
         fixes,
         before: {
@@ -317,7 +321,11 @@ export async function handleSamBoxResult(input: {
         error = "Project has no domain for proposal queuing.";
       } else {
         const queued = await queueProposals(
-          project.domain,
+          {
+            id: project.id,
+            domain: project.domain,
+            organizationId: project.organizationId,
+          },
           validated.proposals,
         );
         proposalsQueued = queued.count;

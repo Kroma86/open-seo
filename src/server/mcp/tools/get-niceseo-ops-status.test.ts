@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchAgencyPixelStatus,
   normalizeOpsDomain,
@@ -6,9 +6,32 @@ import {
 } from "./agency-metrics-pixel";
 import { getNiceseoOpsStatusTool } from "./get-niceseo-ops-status";
 
-vi.mock("@/server/features/agency/AgencyOttoProposalsService", () => ({
-  listHomegrownOttoProposals: vi.fn(async () => []),
+const mocks = vi.hoisted(() => ({
+  listHomegrownOttoProposals: vi.fn(async (_input: unknown) => []),
+  resolveProjectByDomain: vi.fn(),
 }));
+
+vi.mock("@/server/features/agency/AgencyOttoProposalsService", () => ({
+  listHomegrownOttoProposals: (input: unknown) =>
+    mocks.listHomegrownOttoProposals(input),
+}));
+vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
+  ProjectRepository: {
+    resolveProjectByDomain: (...args: unknown[]) =>
+      mocks.resolveProjectByDomain(...args),
+  },
+}));
+
+const TOOL_CONTEXT = {
+  auth: {
+    userId: "u1",
+    userEmail: "u1@example.com",
+    organizationId: "org_a",
+    scopes: [],
+    clientId: null,
+    baseUrl: "https://seo.example",
+  },
+};
 
 describe("normalizeOpsDomain", () => {
   it("strips protocol www path and query", () => {
@@ -155,6 +178,41 @@ describe("fetchAgencyPixelStatus", () => {
 });
 
 describe("getNiceseoOpsStatusTool handler", () => {
+  beforeEach(() => {
+    mocks.resolveProjectByDomain.mockReset();
+    mocks.resolveProjectByDomain.mockResolvedValue({
+      id: "proj_twa",
+      name: "TWA",
+      domain: "twa.studio",
+      organizationId: "org_a",
+    });
+    mocks.listHomegrownOttoProposals.mockClear();
+  });
+
+  it("refuses a domain that is not one of the caller's projects and reads no queue", async () => {
+    mocks.resolveProjectByDomain.mockResolvedValue(null);
+    await expect(
+      getNiceseoOpsStatusTool.handler(
+        { domain: "someone-else.com" },
+        TOOL_CONTEXT,
+      ),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(mocks.listHomegrownOttoProposals).not.toHaveBeenCalled();
+  });
+
+  it("scopes the queue read to the caller's organization", async () => {
+    await runHandlerWithPixel({ status: "live" });
+    expect(mocks.resolveProjectByDomain).toHaveBeenCalledWith({
+      domain: "twa.studio",
+      organizationId: "org_a",
+    });
+    expect(mocks.listHomegrownOttoProposals).toHaveBeenCalledWith({
+      domain: "twa.studio",
+      limit: 200,
+      visibleToOrganizationId: "org_a",
+    });
+  });
+
   async function runHandlerWithPixel(pixel: Record<string, unknown>) {
     const prevMetricsUrl = process.env.AGENCY_METRICS_URL;
     const prevDashToken = process.env.AGENCY_DASH_TOKEN;
@@ -174,7 +232,7 @@ describe("getNiceseoOpsStatusTool handler", () => {
     try {
       return await getNiceseoOpsStatusTool.handler(
         { domain: "twa.studio" },
-        {} as never,
+        TOOL_CONTEXT,
       );
     } finally {
       if (prevMetricsUrl === undefined) {

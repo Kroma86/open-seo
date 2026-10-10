@@ -160,6 +160,7 @@ beforeEach(() => {
   mocks.getProjectById.mockResolvedValue({
     id: "project-1",
     domain: "project.example",
+    organizationId: "org-1",
   });
   mocks.listProposals.mockResolvedValue([]);
   mocks.enqueueProposal.mockResolvedValue({ id: "proposal-1" });
@@ -188,9 +189,12 @@ describe("box result", () => {
       domain: "project.example",
       status: "pending",
       limit: 200,
+      visibleToOrganizationId: "org-1",
     });
     expect(mocks.enqueueProposal).toHaveBeenCalledWith({
       domain: "project.example",
+      organizationId: "org-1",
+      projectId: "project-1",
       path: "/pricing",
       fixes: {
         title: "Pricing",

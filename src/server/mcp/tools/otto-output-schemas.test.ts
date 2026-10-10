@@ -19,6 +19,10 @@ vi.mock("@/server/features/agency/AgencyOttoProposalsService", () => ({
   markHomegrownOttoProposalsPulled: vi.fn(async () => []),
 }));
 
+vi.mock("@/server/mcp/tools/domain-project-auth", () => ({
+  requireProjectForDomain: vi.fn(),
+}));
+
 /**
  * These three tools returned structuredContent carrying keys their outputSchema
  * never declared, so every call failed with "data must NOT have additional

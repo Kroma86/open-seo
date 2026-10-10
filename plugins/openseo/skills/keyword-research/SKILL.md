@@ -1,6 +1,6 @@
 ---
 name: keyword-research
-description: "Discover keyword opportunities, evaluate metrics and SERPs, and save/tag promising terms."
+description: "Discover keyword opportunities, evaluate metrics and SERPs, and save/tag promising terms. Search Atlas: SEO Research — Analyze Keyword Portfolio."
 ---
 
 # OpenSEO Keyword Research
@@ -22,9 +22,9 @@ If `projectId` is missing, use `list_projects` first. If the target market/locat
 The project-context tools are free and shared with the app and other agents.
 
 1. Call `get_project_context` first and ground the research in it — the business, the goal, the markets, and the competitors and key pages already saved.
-2. This skill needs `business_overview` and `current_goal`. If either is empty, run a minimal inline setup: ask the user, or infer from the site and confirm, just enough to fill them, write them back with `update_project_context`, then continue the research. Never front-load the full interview; suggest `seo-project-setup` at the end for the rest.
+2. This skill needs `business_overview` and `current_goal`. If either is empty, run a minimal inline setup: ask the user, or infer from the site and confirm, just enough to fill them, write them back with `update_project_context`, then continue the research. Business facts from a lookup (`get_business_profile`, `search_local_businesses`) may be written to `business_overview` only from a result whose `verified_domain_match` is `true` (its website is the project website); for `false` or `null` list the candidates and ask the user which is theirs — a same-name business elsewhere has been imported as the client's before. Never front-load the full interview; suggest `seo-project-setup` at the end for the rest.
 3. Before spending credits, check the research log. If the same research ran within the last 30 days, reuse that result and say so instead of re-buying it.
-4. On finish, write back what is durable — a sharpened `business_overview` or `current_goal`, competitors that kept appearing in the SERPs via `addCompetitors`, pages the keywords should land on via `addKeyPages` — and append a research log entry: `{ appendResearchLog: { summary: "Keyword research: <seeds/market>. Verdict: <conclusion>" } }`.
+4. On finish, write back what is durable — a sharpened `business_overview` or `current_goal` (business facts only from listings with `verified_domain_match: true`), competitors that kept appearing in the SERPs via `addCompetitors`, pages the keywords should land on via `addKeyPages` — and append a research log entry: `{ appendResearchLog: { summary: "Keyword research: <seeds/market>. Verdict: <conclusion>" } }`.
 
 ## OpenSEO MCP tools
 

@@ -13,6 +13,9 @@ const READ_BATCH = 25;
 export type HomegrownOttoProposal = {
   id: string;
   domain: string;
+  // Owner of the proposal. Null only on rows written before 2026-09-09 or by
+  // the Hermes bearer route when the domain did not resolve to one project.
+  organizationId: string | null;
   projectId: string | null;
   status: "pending" | "pulled" | "rejected";
   proposedAt: string;
@@ -24,12 +27,6 @@ export type HomegrownOttoProposal = {
   flags: string[];
   rationale: string | null;
   pulledAt: string | null;
-  /**
-   * Present on records written by the agency API path. Older and
-   * MCP-written records do not carry it, so it is optional — the KV
-   * store has more than one producer and they do not agree on shape.
-   */
-  organizationId?: string | null;
 };
 
 function kv(): KVNamespace {
@@ -59,6 +56,9 @@ async function writeIndex(ids: string[]): Promise<void> {
 
 export async function enqueueHomegrownOttoProposal(input: {
   domain: string;
+  // Owner. Required: pass `null` only on the explicit unowned path (Hermes
+  // bearer route, domain with no project), never by omission.
+  organizationId: string | null;
   projectId?: string | null;
   path?: string;
   fixes: Record<string, string>;
@@ -89,6 +89,7 @@ export async function enqueueHomegrownOttoProposal(input: {
   const proposal: HomegrownOttoProposal = {
     id: crypto.randomUUID(),
     domain,
+    organizationId: input.organizationId,
     projectId: input.projectId ?? null,
     status: "pending",
     proposedAt: new Date().toISOString(),
@@ -112,15 +113,11 @@ export async function enqueueHomegrownOttoProposal(input: {
  * Project a stored record onto the declared shape.
  *
  * These rows are JSON in KV written by several producers over time, so a row
- * can carry keys this module never declared. That is not a theory: on
- * 2026-09-18 four of eighteen pending rows carried `organizationId`, and
- * because the MCP tool publishes its output schema with
- * `additionalProperties: false`, every `list_homegrown_otto_proposals` call
- * failed client-side validation. Returning the parsed row unchanged makes the
- * published contract only as stable as the oldest writer.
- *
- * Read normalizes; the pull path below still round-trips the whole record, so
- * nothing is dropped from storage.
+ * can carry keys this module never declared (2026-09-18: rows with an extra key
+ * made every `list_homegrown_otto_proposals` call fail output validation,
+ * because the tool publishes `additionalProperties: false`). Read normalizes;
+ * the pull path below still round-trips the whole record, so nothing is
+ * dropped from storage.
  */
 function toProposal(raw: unknown): HomegrownOttoProposal | null {
   const r = raw as Partial<HomegrownOttoProposal> | null;
@@ -128,6 +125,7 @@ function toProposal(raw: unknown): HomegrownOttoProposal | null {
   return {
     id: r.id,
     domain: r.domain,
+    organizationId: r.organizationId ?? null,
     projectId: r.projectId ?? null,
     status: r.status ?? "pending",
     proposedAt: r.proposedAt ?? "",
@@ -139,9 +137,6 @@ function toProposal(raw: unknown): HomegrownOttoProposal | null {
     flags: r.flags ?? [],
     rationale: r.rationale ?? null,
     pulledAt: r.pulledAt ?? null,
-    ...(r.organizationId === undefined
-      ? {}
-      : { organizationId: r.organizationId }),
   };
 }
 
@@ -149,7 +144,19 @@ export async function listHomegrownOttoProposals(input?: {
   status?: HomegrownOttoProposal["status"];
   domain?: string;
   limit?: number;
+  // Org-scoped callers (MCP / Sam) see only their own rows. Legacy rows with
+  // no organizationId stay visible ONLY because the caller has already proven
+  // (resolveProjectByDomain in its org) that `domain` is its project, so pass
+  // this together with `domain`, never alone. Omitted = unscoped (Hermes).
+  visibleToOrganizationId?: string;
 }): Promise<HomegrownOttoProposal[]> {
+  const scoped = input?.visibleToOrganizationId !== undefined;
+  if (scoped && !input.visibleToOrganizationId?.trim()) {
+    throw new Error("visibleToOrganizationId must be a non-empty id");
+  }
+  if (scoped && !input.domain) {
+    throw new Error("visibleToOrganizationId requires domain");
+  }
   const limit = Math.min(Math.max(input?.limit ?? 50, 1), 200);
   const index = await readIndex();
   const out: HomegrownOttoProposal[] = [];
@@ -165,6 +172,13 @@ export async function listHomegrownOttoProposals(input?: {
         const proposal = toProposal(JSON.parse(raw));
         if (!proposal) continue;
         if (input?.status && proposal.status !== input.status) continue;
+        if (
+          scoped &&
+          proposal.organizationId != null &&
+          proposal.organizationId !== input.visibleToOrganizationId
+        ) {
+          continue;
+        }
         if (
           input?.domain &&
           proposal.domain !==

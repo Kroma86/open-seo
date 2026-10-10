@@ -2,10 +2,11 @@
  * DB-only page SEO fields for HomeGrown OTTO (scan → fixgen).
  * Never calls DataForSEO — reads the latest completed site-audit pages only.
  */
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { auditPages, projects } from "@/db/schema";
+import { auditPages } from "@/db/schema";
 import { AuditRepository } from "@/server/features/audit/repositories/AuditRepository";
+import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 
 export type AgencyOttoPage = {
   url: string;
@@ -126,26 +127,8 @@ function toOttoPage(row: {
   };
 }
 
-async function findProject(
-  organizationId: string | null,
-  domain: string,
-): Promise<typeof projects.$inferSelect | null> {
-  const needle = normalizeDomain(domain);
-  const rows = organizationId
-    ? await db
-        .select()
-        .from(projects)
-        .where(
-          and(
-            eq(projects.organizationId, organizationId),
-            isNull(projects.archivedAt),
-          ),
-        )
-    : await db.select().from(projects).where(isNull(projects.archivedAt));
-
-  const exact = rows.find((project) => domainsMatch(project.domain, needle));
-  if (exact) return exact;
-  return rows.find((project) => domainsMatch(project.name, needle)) ?? null;
+async function findProject(organizationId: string | null, domain: string) {
+  return ProjectRepository.resolveProjectByDomain({ domain, organizationId });
 }
 
 /**
@@ -226,7 +209,9 @@ function pickHomepage(
 
 export async function getAgencyOttoPageInputs(input: {
   domain: string;
-  organizationId?: string | null;
+  // The caller's organization. `null` is the unscoped Hermes export and is
+  // only reachable through getAgencyOttoPageInputsGlobal; "" is refused.
+  organizationId: string | null;
   limit?: number;
 }): Promise<AgencyOttoPageInputs> {
   const domain = normalizeDomain(input.domain);
@@ -243,7 +228,7 @@ export async function getAgencyOttoPageInputs(input: {
     pages: [],
   };
 
-  const project = await findProject(input.organizationId ?? null, domain);
+  const project = await findProject(input.organizationId, domain);
   if (!project) return empty;
 
   const audit = await AuditRepository.getLatestAuditForProject(project.id);
