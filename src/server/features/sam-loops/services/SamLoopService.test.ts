@@ -58,6 +58,7 @@ vi.mock("@/server/features/agency/AgencyScoreInputsService", () => ({
   getAgencyScoreInputsGlobal: mocks.getAgencyScoreInputsGlobal,
 }));
 
+import { AppError } from "@/server/lib/errors";
 import * as rankTracking from "@/shared/rank-tracking";
 import {
   DEFAULT_SAM_LOOP_TEMPLATES,
@@ -591,6 +592,37 @@ describe("triggerSamLoopsForDomain", () => {
       count: 2,
     });
     expect(mocks.getAgencyScoreInputsGlobal).not.toHaveBeenCalled();
+    expect(mocks.getProjectById).not.toHaveBeenCalled();
+    expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
+  });
+
+  it("returns ambiguous_project_domain when two allowed projects share the domain (resolver CONFLICT)", async () => {
+    mocks.getProjectsByDomain.mockResolvedValue([
+      {
+        id: "project_a",
+        name: "A",
+        domain: "example.com",
+        organizationId: "org_1",
+        loopsEnabled: true,
+      },
+      {
+        id: "project_b",
+        name: "B",
+        domain: "example.com",
+        organizationId: "org_2",
+        loopsEnabled: true,
+      },
+    ]);
+    mocks.getAgencyScoreInputsGlobal.mockRejectedValue(
+      new AppError("CONFLICT", "ambiguous_project_domain: 2 projects share example.com"),
+    );
+    await expect(
+      triggerSamLoopsForDomain({ domain: "example.com" }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "ambiguous_project_domain",
+      count: 2,
+    });
     expect(mocks.getProjectById).not.toHaveBeenCalled();
     expect(mocks.beginSamLoopRun).not.toHaveBeenCalled();
   });

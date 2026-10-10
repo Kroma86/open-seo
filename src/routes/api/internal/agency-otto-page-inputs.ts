@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "cloudflare:workers";
+import { AppError } from "@/server/lib/errors";
 import { getAgencyOttoPageInputsGlobal } from "@/server/features/agency/AgencyOttoPageInputsService";
 
 function timingSafeEqual(left: string, right: string): boolean {
@@ -50,7 +51,19 @@ async function handleGet(request: Request): Promise<Response> {
   const limitRaw = url.searchParams.get("limit");
   const limit = limitRaw ? Number(limitRaw) : undefined;
 
-  const data = await getAgencyOttoPageInputsGlobal(domain);
+  let data: Awaited<ReturnType<typeof getAgencyOttoPageInputsGlobal>>;
+  try {
+    data = await getAgencyOttoPageInputsGlobal(domain);
+  } catch (error) {
+    // Two projects share this domain: say so instead of answering with a 500.
+    if (error instanceof AppError && error.code === "CONFLICT") {
+      return Response.json(
+        { error: "ambiguous_project_domain", detail: error.message },
+        { status: 409 },
+      );
+    }
+    throw error;
+  }
   if (limit && Number.isFinite(limit)) {
     data.pages = data.pages.slice(0, Math.min(Math.max(limit, 1), 100));
   }
