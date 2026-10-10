@@ -12,6 +12,9 @@ export default defineConfig({
     ],
     restoreMocks: true,
     clearMocks: true,
+    // Default is 5 s. samBoxPrepare's 28 KB truncation test takes ~2.7 s alone and
+    // timed out on loaded CI runners; its quadratic truncation is tracked separately.
+    testTimeout: 15_000,
     server: {
       deps: {
         // Processed by vitest (instead of loaded natively by node) so the

@@ -110,12 +110,14 @@ describe("agency home smoke", () => {
   });
 
   it("stores Ask-Sam drafts under the shared sessionStorage key", () => {
-    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    // Node 22 (CI) has no global Storage; stub sessionStorage itself.
+    const setItem = vi.fn();
+    vi.stubGlobal("sessionStorage", { setItem });
     storeSamAskDraft("proj_1", "  Run a site health check  ");
     expect(setItem).toHaveBeenCalledWith(
       "sam-loops-ask:proj_1",
       "Run a site health check",
     );
-    setItem.mockRestore();
+    vi.unstubAllGlobals();
   });
 });
