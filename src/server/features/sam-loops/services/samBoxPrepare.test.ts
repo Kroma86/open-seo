@@ -617,8 +617,7 @@ describe("prompt and tools", () => {
     expect(result.toolResults.some((block) => block.truncated)).toBe(true);
     expect(blocks(result.prompt)).toHaveLength(7);
     expect(result.prompt).toContain("[context truncated]");
-    // ~2.7 s alone on a fast machine: over the 5 s default on a loaded CI runner.
-  }, 30_000);
+  });
   it("refuses when fixed parts alone exceed the caller limit", async () => {
     const built = tools();
     const result = await prepareSamBoxClaim(
