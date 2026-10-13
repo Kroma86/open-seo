@@ -34,6 +34,8 @@ export const getAgencyScoreInputsTool = {
           connected: z.boolean(),
           siteUrl: z.string().nullable(),
           connectedAt: z.string().nullable(),
+          accountEmail: z.string().nullable(),
+          accountId: z.string().nullable(),
         }),
         ga4: z.object({
           connected: z.boolean(),
@@ -48,9 +50,30 @@ export const getAgencyScoreInputsTool = {
           impressions: z.number().nullable(),
           ctr: z.number().nullable(),
           position: z.number().nullable(),
+          windowStart: z.string().nullable(),
+          windowEnd: z.string().nullable(),
           capturedAt: z.string().nullable(),
           source: z.literal("google_search_console"),
         })
+        .nullable(),
+      gscStatus: z.enum([
+        "ok",
+        "not_connected",
+        "no_rows",
+        "token_expired",
+        "permission_denied",
+        "api_error",
+      ]),
+      gscError: z.string().nullable(),
+      gscTopQueries: z
+        .array(
+          z.object({
+            query: z.string(),
+            clicks: z.number(),
+            impressions: z.number(),
+            position: z.number().nullable(),
+          }),
+        )
         .nullable(),
       gbp: z.object({
         status: z.enum(["not_connected_native", "dfs_local"]),
@@ -61,6 +84,15 @@ export const getAgencyScoreInputsTool = {
         .object({
           capturedAt: z.string().nullable(),
           keywords: z.array(keywordSchema),
+          source: z.literal("openseo_rank_tracker"),
+        })
+        .nullable(),
+      rankSummary: z
+        .object({
+          trackedKeywords: z.number().nullable(),
+          top3: z.number().nullable(),
+          top10: z.number().nullable(),
+          capturedAt: z.string().nullable(),
           source: z.literal("openseo_rank_tracker"),
         })
         .nullable(),
@@ -81,6 +113,18 @@ export const getAgencyScoreInputsTool = {
           issueCount: z.number().nullable(),
           lighthouseSeoAvg: z.number().nullable(),
           source: z.literal("openseo_audit"),
+        })
+        .nullable(),
+      aiVisibility: z
+        .object({
+          capturedAt: z.string().nullable(),
+          totalMentions: z.number().nullable(),
+          partialMentions: z.boolean(),
+          shareOfVoicePct: z.number().nullable(),
+          promptsWithBrand: z.number().nullable(),
+          promptsChecked: z.number().nullable(),
+          promptSetVersion: z.number().nullable(),
+          source: z.literal("dataforseo_llm_mentions"),
         })
         .nullable(),
       ...optionalMetaOutputSchema,
