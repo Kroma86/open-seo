@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
-import { normalizeObjectSchema } from "@modelcontextprotocol/sdk/server/zod-compat.js";
-import { toJsonSchemaCompat } from "@modelcontextprotocol/sdk/server/zod-json-schema-compat.js";
 import { getNiceseoOpsStatusTool } from "./get-niceseo-ops-status";
+import { validateAsClientWould } from "./tool-test-support";
 import {
   listHomegrownOttoProposalsTool,
   proposeHomegrownOttoFixesTool,
@@ -33,19 +31,11 @@ vi.mock("@/server/mcp/tools/domain-project-auth", () => ({
  * so a naive schema test passes against the broken code. What actually runs is
  * the server publishing the schema through toJsonSchemaCompat (which emits
  * additionalProperties:false) and the client validating structuredContent
- * against that JSON Schema. This helper reproduces exactly that path, so a
+ * against that JSON Schema. validateAsClientWould (tool-test-support.ts)
+ * reproduces exactly that path, so a
  * handler that grows a field without declaring it fails here, not in
  * production.
  */
-function validateAsClientWould(outputSchema: unknown, payload: unknown) {
-  const normalized = normalizeObjectSchema(outputSchema as never);
-  const published = toJsonSchemaCompat(normalized as never, {
-    strictUnions: true,
-    pipeStrategy: "output",
-  });
-  return new AjvJsonSchemaValidator().getValidator(published as never)(payload);
-}
-
 const proposal = {
   id: "11111111-2222-4333-8444-555555555555",
   domain: "coachingwithkym.com",
@@ -109,8 +99,19 @@ describe("HomeGrown OTTO tool output schemas", () => {
       getNiceseoOpsStatusTool.config.outputSchema,
       {
         domain: "example.com",
-        otto: { pending: 0, pulled: 0, rejected: 0, total: 0, latest: [], note: "n" },
-        pixel: { configured: false, error: "not configured", addedUpstreamLater: 42 },
+        otto: {
+          pending: 0,
+          pulled: 0,
+          rejected: 0,
+          total: 0,
+          latest: [],
+          note: "n",
+        },
+        pixel: {
+          configured: false,
+          error: "not configured",
+          addedUpstreamLater: 42,
+        },
       },
     );
     expect(result).toMatchObject({ valid: true });
@@ -171,7 +172,9 @@ describe("the check above is not vacuous", () => {
       { count: 1, proposals: [proposal], undeclaredKey: "boom" },
     );
     expect(result).toMatchObject({ valid: false });
-    expect(JSON.stringify(result)).toContain("must NOT have additional properties");
+    expect(JSON.stringify(result)).toContain(
+      "must NOT have additional properties",
+    );
   });
 
   it("rejects an undeclared key nested inside a proposal", () => {
