@@ -88,7 +88,9 @@ describe("rank check task queue", () => {
     ).toMatchObject([stopCrawl, stopCrawl, stopCrawl]);
     // Only desktop checks pay the async AI Overview fee, which is what
     // returns the overview's cited references.
-    expect(parseDataforseoRequestBody(fetchMock.mock.calls[0]?.[1])).toMatchObject([
+    expect(
+      parseDataforseoRequestBody(fetchMock.mock.calls[0]?.[1]),
+    ).toMatchObject([
       { load_async_ai_overview: true },
       { load_async_ai_overview: false },
       { load_async_ai_overview: true },
@@ -265,7 +267,12 @@ describe("buildRankCheckResult AI Overview citation", () => {
 
   it("does not add the flag when no overview is present", () => {
     const result = buildRankCheckResult(input, [
-      { type: "organic", rank_group: 1, domain: "example.com", url: "https://example.com" },
+      {
+        type: "organic",
+        rank_group: 1,
+        domain: "example.com",
+        url: "https://example.com",
+      },
     ]);
     expect(result.serpFeatures).toEqual(["organic"]);
     expect(result.position).toBe(1);

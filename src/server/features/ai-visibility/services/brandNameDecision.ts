@@ -15,7 +15,7 @@ export const JEV_DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
  * about 4x more clients before answers fall back to the matcher.
  * Four-engine monthly sweeps roughly double weekly answers at ~100 clients.
  */
-export const WEEKLY_JEV_CAP_USD = 0.10;
+export const WEEKLY_JEV_CAP_USD = 0.1;
 /** Published Jev input price. Output tokens are not billed. */
 export const JEV_USD_PER_INPUT_TOKEN = 0.042 / 1_000_000;
 
@@ -205,7 +205,7 @@ export function withoutContactDetails(
   });
   const core = (i: number) =>
     (parts[i] ?? "").replace(EDGE_START, "").replace(EDGE_END, "");
-  const coreAt = (n: number) => core(words[n] as number);
+  const coreAt = (n: number) => core(words[n]);
   // the word is some consecutive brand pieces glued together: "Smith's"
   // (smith + s), "Walk-In", "O'Brien's", "St.Jerome" (r10)
   const pieceRun = (a: string) => {
@@ -270,7 +270,7 @@ export function withoutContactDetails(
   };
   const spelledDot = (k: number) =>
     DOT_WORD.test(coreAt(k)) ||
-    DOT_WORD.test(parts[words[k] as number] ?? "") ||
+    DOT_WORD.test(parts[words[k]] ?? "") ||
     DOT_TLD_WORD.test(coreAt(k)) ||
     /^\.[a-z]/i.test(coreAt(k));
   const cut = new Set<number>();
@@ -279,8 +279,8 @@ export function withoutContactDetails(
     if (EMAIL_TOKEN.test(token)) {
       cut.add(i);
       if (token === "@") {
-        if (n > 0) cut.add(words[n - 1] as number);
-        if (n + 1 < words.length) cut.add(words[n + 1] as number);
+        if (n > 0) cut.add(words[n - 1]);
+        if (n + 1 < words.length) cut.add(words[n + 1]);
       }
     }
     if (isDomain(core(i))) cut.add(i);
@@ -301,10 +301,7 @@ export function withoutContactDetails(
           last = k;
           break;
         }
-        if (
-          DOT_WORD.test(w) ||
-          DOT_WORD.test(parts[words[k] as number] ?? "")
-        ) {
+        if (DOT_WORD.test(w) || DOT_WORD.test(parts[words[k]] ?? "")) {
           last = Math.min(k + 1, words.length - 1);
         }
       }
@@ -317,7 +314,7 @@ export function withoutContactDetails(
       if (last > n)
         for (let k = first; k <= last; k += 1) {
           const label = k + 1 <= last && spelledDot(k + 1);
-          if (label || !ownNameAt(k)) cut.add(words[k] as number);
+          if (label || !ownNameAt(k)) cut.add(words[k]);
         }
     }
   });

@@ -34,7 +34,11 @@ const config = {
   createdAt: "2026-01-01T00:00:00.000Z",
 };
 
-const exportRun = (id: string, sweep: string | null, totalMentions: number) => ({
+const exportRun = (
+  id: string,
+  sweep: string | null,
+  totalMentions: number,
+) => ({
   id,
   finishedAt: `2026-03-0${totalMentions}T00:00:00.000Z`,
   promptSetVersion: 2,
@@ -60,6 +64,7 @@ describe("aiVisibilityResults", () => {
     ]);
     await expect(getLatestResults("project_1")).rejects.toMatchObject({
       code: "VALIDATION_ERROR",
+      // oxlint-disable-next-line typescript/no-unsafe-assignment -- vitest asymmetric matcher
       message: expect.stringContaining("pass configId"),
     });
     await expect(getTrend("project_1")).rejects.toMatchObject({
@@ -99,6 +104,7 @@ describe("aiVisibilityResults", () => {
       measured: false,
       source: "dataforseo_llm_mentions",
       fetchedAt: null,
+      // oxlint-disable-next-line typescript/no-unsafe-assignment -- vitest asymmetric matcher
       config: expect.objectContaining({ id: "config_1" }),
       latestRun: null,
     });
@@ -190,8 +196,16 @@ describe("aiVisibilityResults", () => {
       latestRun: { sweep: "full" },
     });
 
-    for (const detail of [null, "not-json", JSON.stringify({ sweep: "other" }), "{}"]) {
-      mocks.getLatestCompletedRunForConfig.mockResolvedValue({ ...run, detail });
+    for (const detail of [
+      null,
+      "not-json",
+      JSON.stringify({ sweep: "other" }),
+      "{}",
+    ]) {
+      mocks.getLatestCompletedRunForConfig.mockResolvedValue({
+        ...run,
+        detail,
+      });
       await expect(getLatestResults("project_1")).resolves.toMatchObject({
         latestRun: { sweep: "legacy" },
       });
@@ -349,7 +363,9 @@ describe("aiVisibilityResults", () => {
         completedAt: "2026-02-03T00:00:00.000Z",
         promptSetVersion: 2,
       });
-      expect(mocks.getLatestCompletedRunForConfig).toHaveBeenCalledWith("config_1");
+      expect(mocks.getLatestCompletedRunForConfig).toHaveBeenCalledWith(
+        "config_1",
+      );
     });
 
     it("loads a runId that belongs to the project", async () => {
@@ -364,12 +380,15 @@ describe("aiVisibilityResults", () => {
       ["another project", { projectId: "project_2" }, undefined],
       ["another config", { configId: "config_2" }, "config_1"],
       ["an unfinished run", { status: "running" }, undefined],
-    ])("refuses a runId from %s as not found", async (_label, override, configId) => {
-      mocks.getRunById.mockResolvedValue({ ...storedRun, ...override });
+    ])(
+      "refuses a runId from %s as not found",
+      async (_label, override, configId) => {
+        mocks.getRunById.mockResolvedValue({ ...storedRun, ...override });
 
-      await expect(
-        getPromptResults("project_1", configId, "run_9"),
-      ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    });
+        await expect(
+          getPromptResults("project_1", configId, "run_9"),
+        ).rejects.toMatchObject({ code: "NOT_FOUND" });
+      },
+    );
   });
 });

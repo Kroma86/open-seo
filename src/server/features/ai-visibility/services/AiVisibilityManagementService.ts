@@ -169,10 +169,7 @@ async function removePrompt(
   promptId: string,
 ) {
   await getValidatedConfig(configId, projectId);
-  const removed = await AiVisibilityRepository.removePrompt(
-    promptId,
-    configId,
-  );
+  const removed = await AiVisibilityRepository.removePrompt(promptId, configId);
   if (!removed) {
     throw new AppError("NOT_FOUND", "Prompt not found");
   }

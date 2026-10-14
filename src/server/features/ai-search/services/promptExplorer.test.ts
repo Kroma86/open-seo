@@ -155,6 +155,7 @@ describe("explorePrompt model name override", () => {
     );
 
     const keys = buildCacheKey.mock.results.map(
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- buildCacheKey mock resolves to the key string
       (result) => result.value as Promise<string>,
     );
     const [first, second, third] = await Promise.all(keys);

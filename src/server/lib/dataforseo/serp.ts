@@ -151,15 +151,16 @@ function unknownArray(value: unknown): unknown[] {
 function aiOverviewCitesTarget(items: SerpLiveItem[], target: string): boolean {
   for (const item of items) {
     if (item.type !== "ai_overview") continue;
-    const record = item as { references?: unknown; items?: unknown };
     const references = [
-      ...unknownArray(record.references),
-      ...unknownArray(record.items).flatMap((element) => {
+      ...unknownArray(item.references),
+      ...unknownArray(item.items).flatMap((element) => {
         if (!element || typeof element !== "object") return [];
         return unknownArray((element as { references?: unknown }).references);
       }),
     ];
-    if (references.some((reference) => referenceCitesTarget(reference, target))) {
+    if (
+      references.some((reference) => referenceCitesTarget(reference, target))
+    ) {
       return true;
     }
   }

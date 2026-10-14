@@ -17,7 +17,7 @@ import type {
 
 const SOURCE = "dataforseo_llm_mentions" as const;
 
-export function sweepFromRunDetail(
+function sweepFromRunDetail(
   detail: string | null | undefined,
 ): AiVisibilityRunSweep {
   if (!detail) return "legacy";
@@ -74,8 +74,14 @@ function computeDelta(
 
   return {
     totalMentions: diffCount(current.totalMentions, previous.totalMentions),
-    shareOfVoicePct: diffCount(current.shareOfVoicePct, previous.shareOfVoicePct),
-    promptsWithBrand: diffCount(current.promptsWithBrand, previous.promptsWithBrand),
+    shareOfVoicePct: diffCount(
+      current.shareOfVoicePct,
+      previous.shareOfVoicePct,
+    ),
+    promptsWithBrand: diffCount(
+      current.promptsWithBrand,
+      previous.promptsWithBrand,
+    ),
     promptsChecked: diffCount(current.promptsChecked, previous.promptsChecked),
   };
 }

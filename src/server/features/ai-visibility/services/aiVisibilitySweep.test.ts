@@ -55,8 +55,14 @@ describe("isFullSweepWeek", () => {
     expect(fullSweepSlot("config-a")).toBe(1);
     // Epoch weeks 2930..2934; 2933 % 4 === 1 is the only full week.
     expect(
-      ["2026-03-01", "2026-03-08", "2026-03-15", "2026-03-22", "2026-03-29"].map(
-        (day) => isFullSweepWeek("config-a", new Date(`${day}T12:00:00.000Z`)),
+      [
+        "2026-03-01",
+        "2026-03-08",
+        "2026-03-15",
+        "2026-03-22",
+        "2026-03-29",
+      ].map((day) =>
+        isFullSweepWeek("config-a", new Date(`${day}T12:00:00.000Z`)),
       ),
     ).toEqual([false, false, false, true, false]);
   });
@@ -146,7 +152,10 @@ describe("findReusableLookup", () => {
       {
         id: "older",
         detail: JSON.stringify({
-          brandLookup: { ...freshLookup, fetchedAt: "2025-01-01T00:00:00.000Z" },
+          brandLookup: {
+            ...freshLookup,
+            fetchedAt: "2025-01-01T00:00:00.000Z",
+          },
         }),
       },
     ]);
@@ -170,7 +179,10 @@ describe("findReusableLookup", () => {
     const { perPlatform: _dropped, ...withoutPlatforms } = freshLookup;
     expect(
       findReusableLookup([
-        { id: "broken", detail: JSON.stringify({ brandLookup: withoutPlatforms }) },
+        {
+          id: "broken",
+          detail: JSON.stringify({ brandLookup: withoutPlatforms }),
+        },
         {
           id: "bad_mentions",
           detail: JSON.stringify({

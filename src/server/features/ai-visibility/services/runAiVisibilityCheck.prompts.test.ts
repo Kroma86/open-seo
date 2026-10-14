@@ -1,4 +1,6 @@
+/* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-member-access -- tests read stored run detail back with JSON.parse */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import { runAiVisibilityCheck } from "./runAiVisibilityCheck";
 
 const mocks = vi.hoisted(() => ({
@@ -8,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   getActivePromptsForConfig: vi.fn(),
   getCompletedRunsForConfig: vi.fn(),
   updateRun: vi.fn(),
-  updateRunIfInFlight: vi.fn(),
+  updateRunIfInFlight:
+    vi.fn<typeof AiVisibilityRepository.updateRunIfInFlight>(),
   updateConfig: vi.fn(),
   beginAiVisibilityRun: vi.fn(),
   failRunIfActive: vi.fn(),

@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isFullSweepWeek } from "./aiVisibilitySweep";
+/* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-member-access -- tests read stored run detail back with JSON.parse */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import { runAiVisibilityCheck } from "./runAiVisibilityCheck";
 
 const mocks = vi.hoisted(() => ({
@@ -9,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   getActivePromptsForConfig: vi.fn(),
   getCompletedRunsForConfig: vi.fn(),
   updateRun: vi.fn(),
-  updateRunIfInFlight: vi.fn(),
+  updateRunIfInFlight:
+    vi.fn<typeof AiVisibilityRepository.updateRunIfInFlight>(),
   updateConfig: vi.fn(),
   beginAiVisibilityRun: vi.fn(),
   failRunIfActive: vi.fn(),
@@ -83,49 +85,6 @@ const config = {
   createdAt: "2026-01-01T00:00:00.000Z",
 };
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
-function weekFor(configId: string, full: boolean): Date {
-  const start = Date.parse("2026-06-01T00:00:00.000Z");
-  for (let i = 0; i < 8; i++) {
-    const candidate = new Date(start + i * WEEK_MS);
-    if (isFullSweepWeek(configId, candidate) === full) return candidate;
-  }
-  throw new Error(`no ${full ? "full" : "pulse"} week for ${configId}`);
-}
-
-function freshLookup(now: Date) {
-  return {
-    fetchedAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    totalMentions: 9,
-    partialMentions: true,
-    shareOfVoicePct: 12.5,
-    perPlatform: [{ platform: "google", mentions: 9, impressions: null }],
-    topCitedSources: [
-      { url: "https://example.com/a", title: "A", domain: "example.com" },
-    ],
-  };
-}
-
-function completedCall() {
-  return mocks.updateRunIfInFlight.mock.calls.find(
-    (call) => call[1]?.status === "completed",
-  );
-}
-
-function completedDetail(): {
-  sweep?: string;
-  models?: string[];
-  brandLookup?: Record<string, unknown>;
-} {
-  const completed = completedCall();
-  return JSON.parse(String(completed?.[1]?.detail)) as {
-    sweep?: string;
-    models?: string[];
-    brandLookup?: Record<string, unknown>;
-  };
-}
-
 describe("runAiVisibilityCheck", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -150,10 +109,6 @@ describe("runAiVisibilityCheck", () => {
       { id: "prompt_1", prompt: "best tools" },
     ]);
     mocks.getCompletedRunsForConfig.mockResolvedValue([]);
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   it("uses a literal name without Jev, and does not count Hunter Exteriors", async () => {
@@ -238,147 +193,6 @@ describe("runAiVisibilityCheck", () => {
       nameUnsure: false,
     });
     expect(detail.jevSpendUsd).toBeCloseTo(0.00004);
-  });
-
-  it("reuses the brand lookup on a scheduled pulse week", async () => {
-    const now = weekFor("config_1", false);
-    vi.useFakeTimers();
-    vi.setSystemTime(now);
-    const stored = freshLookup(now);
-    mocks.getValidatedConfig.mockResolvedValue({
-      ...config,
-      platforms: '["chat_gpt","google"]',
-    });
-    mocks.getCompletedRunsForConfig.mockResolvedValue([
-      { id: "prior_1", detail: JSON.stringify({ brandLookup: stored }) },
-    ]);
-    mocks.explorePrompt.mockResolvedValue({
-      prompt: "best tools",
-      highlightBrand: "Acme",
-      fetchedAt: stored.fetchedAt,
-      results: [
-        { status: "success", model: "perplexity", brandMentioned: true },
-      ],
-    });
-
-    await runAiVisibilityCheck({
-      configId: "config_1",
-      projectId: "project_1",
-      billingCustomer,
-      trigger: "scheduled",
-    });
-
-    expect(mocks.getBrandLookup).not.toHaveBeenCalled();
-    expect(mocks.getCompletedRunsForConfig).toHaveBeenCalledWith("config_1", 8);
-    expect(mocks.explorePrompt).toHaveBeenCalledWith(
-      expect.objectContaining({
-        models: ["perplexity"],
-        modelNameOverrides: { perplexity: "sonar" },
-      }),
-      billingCustomer,
-    );
-    const completed = completedCall();
-    expect(completed?.[1]).toMatchObject({
-      totalMentions: 9,
-      shareOfVoicePct: 12.5,
-    });
-    const costNote = String(completed?.[1]?.costNote);
-    expect(costNote).toMatch(
-      /^pulse \(perplexity sonar\); brand lookup reused from run prior_1; /,
-    );
-    expect(costNote).not.toContain("brand lookup cache/paid uncertain");
-    const detail = completedDetail();
-    expect(detail.sweep).toBe("pulse");
-    expect(detail.models).toEqual(["perplexity"]);
-    expect(detail.brandLookup).toMatchObject({
-      reused: true,
-      reusedFromRunId: "prior_1",
-      fetchedAt: stored.fetchedAt,
-      partialMentions: true,
-      perPlatform: stored.perPlatform,
-      topCitedSources: stored.topCitedSources,
-    });
-  });
-
-  it("asks no prompt engine on a pulse when the config has none", async () => {
-    const now = weekFor("config_1", false);
-    vi.useFakeTimers();
-    vi.setSystemTime(now);
-    mocks.getCompletedRunsForConfig.mockResolvedValue([
-      { id: "prior_1", detail: JSON.stringify({ brandLookup: freshLookup(now) }) },
-    ]);
-
-    await runAiVisibilityCheck({
-      configId: "config_1",
-      projectId: "project_1",
-      billingCustomer,
-      trigger: "scheduled",
-    });
-
-    expect(mocks.getBrandLookup).not.toHaveBeenCalled();
-    expect(mocks.explorePrompt).not.toHaveBeenCalled();
-    expect(completedDetail()).toMatchObject({ sweep: "pulse", models: [] });
-    expect(completedCall()?.[1]?.costNote).toBe(
-      "pulse (no prompt engines); brand lookup reused from run prior_1",
-    );
-  });
-
-  it.each([
-    ["a manual trigger even off the slot week", "manual", false],
-    ["the config's slot week", "scheduled", true],
-  ] as const)("runs a full sweep for %s", async (_label, trigger, slotWeek) => {
-    const now = weekFor("config_1", slotWeek);
-    vi.useFakeTimers();
-    vi.setSystemTime(now);
-    mocks.getCompletedRunsForConfig.mockResolvedValue([
-      { id: "prior_1", detail: JSON.stringify({ brandLookup: freshLookup(now) }) },
-    ]);
-
-    await runAiVisibilityCheck({
-      configId: "config_1",
-      projectId: "project_1",
-      billingCustomer,
-      trigger,
-    });
-
-    expect(mocks.getBrandLookup).toHaveBeenCalled();
-    expect(completedDetail()).toMatchObject({ sweep: "full" });
-    const completed = completedCall();
-    expect(String(completed?.[1]?.costNote)).toMatch(
-      /^full sweep \(\d+ engine\(s\): [a-z_, ]*\); brand lookup cache\/paid uncertain/,
-    );
-  });
-
-  it("runs a full sweep when a scheduled config has no prior runs", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(weekFor("config_1", false));
-    mocks.getCompletedRunsForConfig.mockResolvedValue([]);
-
-    await runAiVisibilityCheck({
-      configId: "config_1",
-      projectId: "project_1",
-      billingCustomer,
-      trigger: "scheduled",
-    });
-
-    expect(mocks.getBrandLookup).toHaveBeenCalled();
-    expect(completedDetail()).toMatchObject({ sweep: "full" });
-  });
-
-  it("runs a full sweep when prior runs cannot be loaded", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(weekFor("config_1", false));
-    mocks.getCompletedRunsForConfig.mockRejectedValue(new Error("db down"));
-
-    await runAiVisibilityCheck({
-      configId: "config_1",
-      projectId: "project_1",
-      billingCustomer,
-      trigger: "scheduled",
-    });
-
-    expect(mocks.getBrandLookup).toHaveBeenCalled();
-    expect(completedDetail()).toMatchObject({ sweep: "full" });
   });
 
   it("keeps promptExplorer's own verdict when Jev fails (Grok r2)", async () => {

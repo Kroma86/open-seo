@@ -72,7 +72,9 @@ function numberOrNull(value: unknown): boolean {
   return value === null || typeof value === "number";
 }
 
-function freshLookupFromDetail(detail: string | null): StoredBrandLookup | null {
+function freshLookupFromDetail(
+  detail: string | null,
+): StoredBrandLookup | null {
   if (!detail) return null;
   let parsed: unknown;
   try {
@@ -89,6 +91,7 @@ function freshLookupFromDetail(detail: string | null): StoredBrandLookup | null 
   ) {
     return null;
   }
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- non-array object checked above; each field is checked below
   const record = brandLookup as Record<string, unknown>;
   if (typeof record.fetchedAt !== "string") return null;
   // A pulse copies these into run columns, so require what a full sweep writes.
@@ -103,6 +106,7 @@ function freshLookupFromDetail(detail: string | null): StoredBrandLookup | null 
   }
   // A reused block points at an older fetch. Only a fresh lookup can be reused.
   if (typeof record.reusedFromRunId === "string") return null;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every StoredBrandLookup field is checked above
   return brandLookup as StoredBrandLookup;
 }
 
