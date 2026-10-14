@@ -5,8 +5,11 @@ vi.mock("@/server/lib/runtime-env", () => ({
 }));
 
 import {
+  buildRankCheckResult,
+  fetchRankCheckSerp,
   fetchRankCheckTaskResult,
   postRankCheckTasks,
+  type SerpLiveItem,
 } from "@/server/lib/dataforseo/serp";
 
 function parseDataforseoRequestBody(init: RequestInit | undefined): unknown {
@@ -83,6 +86,13 @@ describe("rank check task queue", () => {
     expect(
       parseDataforseoRequestBody(fetchMock.mock.calls[0]?.[1]),
     ).toMatchObject([stopCrawl, stopCrawl, stopCrawl]);
+    // Only desktop checks pay the async AI Overview fee, which is what
+    // returns the overview's cited references.
+    expect(parseDataforseoRequestBody(fetchMock.mock.calls[0]?.[1])).toMatchObject([
+      { load_async_ai_overview: true },
+      { load_async_ai_overview: false },
+      { load_async_ai_overview: true },
+    ]);
     expect(result.data).toEqual([
       {
         keyword: "alpha",
@@ -173,5 +183,130 @@ describe("rank check task queue", () => {
         serpFeatures: ["organic"],
       },
     });
+  });
+});
+
+function overview(extra: Record<string, unknown>): SerpLiveItem {
+  return { type: "ai_overview", ...extra } as SerpLiveItem;
+}
+
+describe("buildRankCheckResult AI Overview citation", () => {
+  const input = {
+    keywordId: "kw-1",
+    keyword: "alpha",
+    targetDomain: "example.com",
+  };
+
+  it("flags a citation in the overview's top-level references, once", () => {
+    const result = buildRankCheckResult(input, [
+      { type: "organic", rank_group: 4, domain: "other.com" },
+      overview({
+        references: [
+          { domain: "Example.com", url: "https://example.com/a" },
+          { domain: "example.com" },
+        ],
+      }),
+    ]);
+    expect(result.serpFeatures).toEqual([
+      "organic",
+      "ai_overview",
+      "ai_overview_cited",
+    ]);
+
+    const wwwTarget = buildRankCheckResult(
+      { ...input, targetDomain: "www.example.com" },
+      [overview({ references: [{ domain: "example.com" }] })],
+    );
+    expect(wwwTarget.serpFeatures).toContain("ai_overview_cited");
+  });
+
+  it("flags a citation on a nested overview element", () => {
+    const result = buildRankCheckResult(input, [
+      overview({
+        items: [{ references: [{ domain: "example.com" }] }],
+      }),
+    ]);
+    expect(result.serpFeatures).toEqual(["ai_overview", "ai_overview_cited"]);
+  });
+
+  it("matches a url-only reference by hostname", () => {
+    const result = buildRankCheckResult(input, [
+      overview({
+        references: [{ url: "https://www.example.com/page" }],
+      }),
+    ]);
+    expect(result.serpFeatures).toContain("ai_overview_cited");
+  });
+
+  it("checks the url when the reference domain is someone else", () => {
+    const result = buildRankCheckResult(input, [
+      overview({
+        references: [{ domain: "rival.com", url: "https://example.com/page" }],
+      }),
+    ]);
+    expect(result.serpFeatures).toContain("ai_overview_cited");
+  });
+
+  it("matches a subdomain of the target", () => {
+    const result = buildRankCheckResult(input, [
+      overview({ references: [{ domain: "blog.example.com" }] }),
+    ]);
+    expect(result.serpFeatures).toContain("ai_overview_cited");
+  });
+
+  it("does not flag an overview that cites someone else", () => {
+    const result = buildRankCheckResult(input, [
+      overview({
+        references: [{ domain: "rival.com" }, { url: "not a url" }],
+      }),
+    ]);
+    expect(result.serpFeatures).toEqual(["ai_overview"]);
+  });
+
+  it("does not add the flag when no overview is present", () => {
+    const result = buildRankCheckResult(input, [
+      { type: "organic", rank_group: 1, domain: "example.com", url: "https://example.com" },
+    ]);
+    expect(result.serpFeatures).toEqual(["organic"]);
+    expect(result.position).toBe(1);
+  });
+});
+
+describe("live rank check AI Overview fee", () => {
+  it("asks for the async AI Overview on desktop only", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () =>
+      Response.json({
+        status_code: 20000,
+        tasks: [
+          {
+            id: "live-1",
+            status_code: 20000,
+            cost: 0.004,
+            path: ["v3", "serp", "google", "organic", "live", "advanced"],
+            result: [{ items: [] }],
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    for (const device of ["desktop", "mobile"] as const) {
+      await fetchRankCheckSerp({
+        keyword: "alpha",
+        keywordId: "kw-1",
+        locationCode: 2840,
+        languageCode: "en",
+        device,
+        targetDomain: "example.com",
+        depth: 20,
+      });
+    }
+
+    expect(
+      fetchMock.mock.calls.map((call) => parseDataforseoRequestBody(call[1])),
+    ).toMatchObject([
+      [{ device: "desktop", load_async_ai_overview: true }],
+      [{ device: "mobile", load_async_ai_overview: false }],
+    ]);
   });
 });

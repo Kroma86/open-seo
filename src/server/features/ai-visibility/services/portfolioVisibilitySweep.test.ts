@@ -76,6 +76,7 @@ function latest(
       promptSetVersion: 3,
       costNote: null,
       error: null,
+      sweep: "legacy",
     },
     ...overrides,
   };

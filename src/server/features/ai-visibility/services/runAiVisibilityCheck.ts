@@ -8,6 +8,14 @@ import {
   type NameBudget,
 } from "@/server/features/ai-visibility/services/brandNameDecision";
 import { askJevNamed } from "@/server/features/ai-visibility/services/jevBrandName";
+import {
+  decideSweep,
+  findReusableLookup,
+  PULSE_MODEL_NAMES,
+  PULSE_MODELS,
+  type AiVisibilitySweep,
+  type StoredBrandLookup,
+} from "@/server/features/ai-visibility/services/aiVisibilitySweep";
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import {
   AiVisibilityManagementService,
@@ -27,11 +35,16 @@ import {
   promptExplorerModelsForPlatforms,
 } from "@/shared/ai-visibility";
 import { sumMentionsForPlatforms } from "@/shared/ai-visibility-mentions";
-import type { BrandLookupResult } from "@/types/schemas/ai-search";
-import type { PromptExplorerResult } from "@/types/schemas/ai-search";
+import type {
+  BrandLookupResult,
+  PromptExplorerModel,
+  PromptExplorerResult,
+} from "@/types/schemas/ai-search";
 
 type RunDetail = {
   source: "dataforseo_llm_mentions";
+  sweep: AiVisibilitySweep;
+  models: PromptExplorerModel[];
   promptsAttempted: number;
   jevSpendUsd: number;
   brandLookup: {
@@ -41,6 +54,8 @@ type RunDetail = {
     shareOfVoicePct: number | null;
     perPlatform: BrandLookupResult["perPlatform"];
     topCitedSources: BrandLookupResult["topPages"];
+    reused?: boolean;
+    reusedFromRunId?: string;
   };
   prompts: Array<{
     promptId: string;
@@ -107,10 +122,27 @@ function countPromptsWithBrand(
 
 // getBrandLookup exposes no cache/paid signal, and any freshness heuristic
 // mislabels in one direction or the other — say so honestly in both cases.
-function buildCostNote(input: { promptExplorerCalls: number }): string {
+function buildCostNote(input: {
+  promptExplorerCalls: number;
+  sweep: AiVisibilitySweep;
+  models: PromptExplorerModel[];
+  reusedFromRunId?: string;
+}): string {
+  const promptPart =
+    input.promptExplorerCalls === 0
+      ? null
+      : `${input.promptExplorerCalls} prompt check(s): cache/paid uncertain`;
+  if (input.sweep === "pulse") {
+    const engines =
+      input.models.length === 0 ? "no prompt engines" : "perplexity sonar";
+    const prefix = `pulse (${engines}); brand lookup reused from run ${input.reusedFromRunId ?? ""}`;
+    return promptPart ? `${prefix}; ${promptPart}` : prefix;
+  }
+  const prefix = `full sweep (${input.models.length} engine(s): ${input.models.join(", ")})`;
   const brandLabel = "brand lookup cache/paid uncertain";
-  if (input.promptExplorerCalls === 0) return brandLabel;
-  return `${brandLabel}; ${input.promptExplorerCalls} prompt check(s): cache/paid uncertain`;
+  return promptPart
+    ? `${prefix}; ${brandLabel}; ${promptPart}`
+    : `${prefix}; ${brandLabel}`;
 }
 
 async function applyNameGrades(
@@ -143,12 +175,24 @@ async function applyNameGrades(
   }
 }
 
+function reusedBrandLookup(reusable: {
+  runId: string;
+  brandLookup: StoredBrandLookup;
+}): RunDetail["brandLookup"] {
+  return {
+    ...reusable.brandLookup,
+    reused: true,
+    reusedFromRunId: reusable.runId,
+  };
+}
+
 async function executeRun(input: {
   runId: string;
   configId: string;
   projectId: string;
   billingCustomer: BillingCustomerContext;
   nameBudget: NameBudget;
+  trigger: AiVisibilityCheckTrigger;
 }): Promise<"completed" | "reclaimed"> {
   const config = await AiVisibilityManagementService.getValidatedConfig(
     input.configId,
@@ -167,7 +211,6 @@ async function executeRun(input: {
   const activePrompts = await AiVisibilityRepository.getActivePromptsForConfig(
     input.configId,
   );
-  const explorerModels = promptExplorerModelsForPlatforms(platforms);
   const lookupPlatforms = brandLookupPlatforms(platforms);
 
   // CAS like the terminal updates: if the reconciler reclaimed this run
@@ -185,26 +228,75 @@ async function executeRun(input: {
     return "reclaimed";
   }
 
+  let reusable: ReturnType<typeof findReusableLookup> = null;
+  try {
+    const priorRuns = await AiVisibilityRepository.getCompletedRunsForConfig(
+      input.configId,
+      8,
+    );
+    reusable = findReusableLookup(priorRuns);
+  } catch (error) {
+    console.warn(
+      `AI visibility: prior runs unavailable for ${input.configId}; running a full sweep`,
+      error,
+    );
+    reusable = null;
+  }
+  const decided = decideSweep({
+    trigger: input.trigger,
+    scheduleInterval: config.scheduleInterval,
+    configId: input.configId,
+    now: new Date(),
+    lastFreshLookupAt: reusable?.fetchedAt ?? null,
+  });
+  const sweep: AiVisibilitySweep =
+    decided === "pulse" && reusable ? "pulse" : "full";
+  const configuredModels = promptExplorerModelsForPlatforms(platforms);
+  // A config with no prompt engines (mentions only) stays prompt-free on pulses.
+  const explorerModels =
+    sweep === "pulse" && configuredModels.length > 0
+      ? PULSE_MODELS
+      : configuredModels;
+
   let promptExplorerCalls = 0;
   let promptRetries = 0;
   // The budget can be shared by every config in a scheduled tick; this run
   // stores only what it spent itself.
   const jevSpentBefore = input.nameBudget.spentUsd;
 
-  const brandLookup = await getBrandLookup(
-    {
-      projectId: input.projectId,
-      query: config.brand,
-      competitors,
-      locationCode: project.locationCode,
-      languageCode: project.languageCode,
-    },
-    input.billingCustomer,
-  );
+  let brandLookupBlock: RunDetail["brandLookup"];
+  if (sweep === "pulse" && reusable) {
+    brandLookupBlock = reusedBrandLookup(reusable);
+  } else {
+    const brandLookup = await getBrandLookup(
+      {
+        projectId: input.projectId,
+        query: config.brand,
+        competitors,
+        locationCode: project.locationCode,
+        languageCode: project.languageCode,
+      },
+      input.billingCustomer,
+    );
+    const filteredPlatformRows = brandLookup.perPlatform.filter((row) =>
+      lookupPlatforms.includes(row.platform),
+    );
+    const mentionsSum = sumMentionsForPlatforms(brandLookup, lookupPlatforms);
+    brandLookupBlock = {
+      fetchedAt: brandLookup.fetchedAt,
+      totalMentions: mentionsSum.total,
+      partialMentions: mentionsSum.partialMentions,
+      shareOfVoicePct: targetSharePct(brandLookup),
+      perPlatform: filteredPlatformRows,
+      topCitedSources: brandLookup.topPages.slice(0, 10),
+    };
+  }
   const promptResults: RunDetail["prompts"] = [];
-  // Up to 10 prompts, each explorePrompt call isolated in try/catch so one failure
-  // cannot abort the run. Worst case ~20 sequential calls (a question may be asked
-  // twice) still fits inside the 60-minute stale threshold
+  // Up to 10 prompts, each explorePrompt call isolated in try/catch so one
+  // failure cannot abort the run. Models for one prompt run in parallel
+  // inside explorePrompt, so a four-engine full sweep does not multiply the
+  // wait. Worst case is still about 20 sequential rounds (a question may be
+  // asked twice), which fits the 60-minute stale threshold
   // (STALE_AI_VISIBILITY_RUN_MS).
   for (const trackedPrompt of activePrompts) {
     if (explorerModels.length === 0) {
@@ -227,6 +319,9 @@ async function executeRun(input: {
             models: explorerModels,
             highlightBrand: config.brand,
             webSearch: true,
+            ...(sweep === "pulse"
+              ? { modelNameOverrides: PULSE_MODEL_NAMES }
+              : {}),
           },
           input.billingCustomer,
         );
@@ -257,25 +352,16 @@ async function executeRun(input: {
     }
   }
 
-  const filteredPlatformRows = brandLookup.perPlatform.filter((row) =>
-    lookupPlatforms.includes(row.platform),
-  );
-  const mentionsSum = sumMentionsForPlatforms(brandLookup, lookupPlatforms);
   const promptsChecked = countPromptsWithDefinitiveAnswer(promptResults);
   const promptsWithBrand = countPromptsWithBrand(promptResults);
 
   const detail: RunDetail = {
     source: "dataforseo_llm_mentions",
+    sweep,
+    models: explorerModels,
     promptsAttempted: promptExplorerCalls,
     jevSpendUsd: input.nameBudget.spentUsd - jevSpentBefore,
-    brandLookup: {
-      fetchedAt: brandLookup.fetchedAt,
-      totalMentions: mentionsSum.total,
-      partialMentions: mentionsSum.partialMentions,
-      shareOfVoicePct: targetSharePct(brandLookup),
-      perPlatform: filteredPlatformRows,
-      topCitedSources: brandLookup.topPages.slice(0, 10),
-    },
+    brandLookup: brandLookupBlock,
     prompts: promptResults,
   };
 
@@ -292,6 +378,9 @@ async function executeRun(input: {
       detail: JSON.stringify(detail),
       costNote: buildCostNote({
         promptExplorerCalls: promptExplorerCalls + promptRetries,
+        sweep,
+        models: explorerModels,
+        reusedFromRunId: reusable?.runId,
       }),
     },
     { requireRunning: true },
@@ -339,6 +428,7 @@ export async function runAiVisibilityCheck(input: {
       configId: input.configId,
       projectId: input.projectId,
       billingCustomer: input.billingCustomer,
+      trigger: input.trigger,
       nameBudget: input.nameBudget ?? {
         spentUsd: 0,
         capUsd: WEEKLY_JEV_CAP_USD,

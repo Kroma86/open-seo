@@ -97,6 +97,9 @@ export const getAiVisibilityTrendTool = {
           )}`,
           `Share of voice: ${formatNullable(latest.latestRun?.shareOfVoicePct)}${latest.latestRun?.shareOfVoicePct == null ? "" : "%"}`,
           `Prompts with brand: ${formatNullable(latest.latestRun?.promptsWithBrand)} / ${formatNullable(latest.latestRun?.promptsChecked)}`,
+          ...(latest.latestRun?.sweep && latest.latestRun.sweep !== "legacy"
+            ? [`Sweep: ${latest.latestRun.sweep}`]
+            : []),
           `Trend runs: ${trend.runs.length}`,
         ].join("\n")
       : "AI visibility: not measured yet for this project.";

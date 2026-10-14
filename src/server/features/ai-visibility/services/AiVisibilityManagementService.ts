@@ -1,4 +1,3 @@
-import type { BillingCustomerContext } from "@/server/billing/subscription";
 import { customerHasPaidPlan } from "@/server/billing/subscription";
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import { AppError } from "@/server/lib/errors";
@@ -7,7 +6,6 @@ import {
   computeNextRunAt,
   isScheduledAiVisibilityInterval,
   MAX_ACTIVE_PROMPTS_ERROR,
-  MAX_ACTIVE_PROMPTS_PER_CONFIG,
   parseCompetitorsJson,
   parsePlatformsJson,
 } from "@/shared/ai-visibility";
@@ -60,7 +58,9 @@ async function createConfig(input: {
   const scheduleInterval = input.scheduleInterval ?? "weekly";
   const nextRunAt = scheduleNextRunAt(scheduleInterval);
   const platforms = JSON.stringify(
-    input.platforms?.length ? input.platforms : ["chat_gpt", "google"],
+    input.platforms?.length
+      ? input.platforms
+      : ["chat_gpt", "google", "perplexity", "gemini", "claude"],
   );
   const competitors = JSON.stringify(input.competitors ?? []);
 

@@ -13,8 +13,9 @@ export const JEV_DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
  * One weekly pass over the whole client list stays at or under this. The
  * 23 Sep answers (336, 253 needing Jev) cost $0.0112, so this leaves room for
  * about 4x more clients before answers fall back to the matcher.
+ * Four-engine monthly sweeps roughly double weekly answers at ~100 clients.
  */
-export const WEEKLY_JEV_CAP_USD = 0.05;
+export const WEEKLY_JEV_CAP_USD = 0.10;
 /** Published Jev input price. Output tokens are not billed. */
 export const JEV_USD_PER_INPUT_TOKEN = 0.042 / 1_000_000;
 
