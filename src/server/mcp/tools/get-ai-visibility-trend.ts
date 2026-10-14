@@ -86,7 +86,11 @@ export const getAiVisibilityTrendTool = {
         : undefined,
     ]);
 
-    const externalObservations = parseExternalAiVisibility(feed.ai, context.project.domain ?? "", new Date());
+    const externalObservations = parseExternalAiVisibility(
+      feed.ai,
+      context.project.domain ?? "",
+      new Date(),
+    );
     const text = latest.measured
       ? [
           `Tracked AI visibility for ${latest.config?.brand ?? "project"}`,
@@ -97,6 +101,9 @@ export const getAiVisibilityTrendTool = {
           )}`,
           `Share of voice: ${formatNullable(latest.latestRun?.shareOfVoicePct)}${latest.latestRun?.shareOfVoicePct == null ? "" : "%"}`,
           `Prompts with brand: ${formatNullable(latest.latestRun?.promptsWithBrand)} / ${formatNullable(latest.latestRun?.promptsChecked)}`,
+          ...(latest.latestRun?.sweep && latest.latestRun.sweep !== "legacy"
+            ? [`Sweep: ${latest.latestRun.sweep}`]
+            : []),
           `Trend runs: ${trend.runs.length}`,
         ].join("\n")
       : "AI visibility: not measured yet for this project.";
@@ -110,7 +117,10 @@ export const getAiVisibilityTrendTool = {
           ).join("\n");
 
     return mcpResponse({
-      text: text + `\n\nHermes AI observations: ${externalObservations.status}; ${externalObservations.answers.length} saved ChatGPT answers; measured ${externalObservations.measuredAt ?? "unknown"}; run ${externalObservations.runStatus ?? "unknown"}. ${feed.error ?? externalObservations.note}` + promptResultsText,
+      text:
+        text +
+        `\n\nHermes AI observations: ${externalObservations.status}; ${externalObservations.answers.length} saved ChatGPT answers; measured ${externalObservations.measuredAt ?? "unknown"}; run ${externalObservations.runStatus ?? "unknown"}. ${feed.error ?? externalObservations.note}` +
+        promptResultsText,
       meta: buildProjectMeta(
         context,
         args.projectId,

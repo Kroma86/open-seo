@@ -78,6 +78,9 @@ export type AiVisibilityRunStatus =
   | "completed"
   | "failed";
 
+/** full and pulse are written by the sweep. legacy is a run from before that. */
+export type AiVisibilityRunSweep = "full" | "pulse" | "legacy";
+
 export type AiVisibilityLatestResults = {
   measured: boolean;
   source: "dataforseo_llm_mentions";
@@ -107,6 +110,7 @@ export type AiVisibilityLatestResults = {
     promptSetVersion: number;
     costNote: string | null;
     error: string | null;
+    sweep: AiVisibilityRunSweep;
   } | null;
 };
 
@@ -121,6 +125,7 @@ export type AiVisibilityTrendPoint = {
   shareOfVoicePct: number | null;
   promptsWithBrand: number | null;
   promptsChecked: number | null;
+  sweep: AiVisibilityRunSweep;
   delta: {
     totalMentions: number | null;
     shareOfVoicePct: number | null;
@@ -137,4 +142,5 @@ export type AiVisibilityTrend = {
   runs: AiVisibilityTrendPoint[];
 };
 
-export const MAX_ACTIVE_PROMPTS_PER_CONFIG_EXPORT = MAX_ACTIVE_PROMPTS_PER_CONFIG;
+export const MAX_ACTIVE_PROMPTS_PER_CONFIG_EXPORT =
+  MAX_ACTIVE_PROMPTS_PER_CONFIG;

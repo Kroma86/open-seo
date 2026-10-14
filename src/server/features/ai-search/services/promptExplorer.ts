@@ -97,6 +97,9 @@ type RunModelArgs = {
 async function runModel(
   args: RunModelArgs,
 ): Promise<PromptExplorerModelResult> {
+  const { override } = resolvedModelName(args);
+  // modelName is part of the key only when an override is used, so existing
+  // sonar-reasoning-pro entries stay byte-identical (do not bump systemPromptV).
   const cacheKey = await buildCacheKey(AI_SEARCH_PROMPT_CACHE_NAMESPACE, {
     organizationId: args.billingCustomer.organizationId,
     projectId: args.input.projectId,
@@ -109,6 +112,7 @@ async function runModel(
     webSearchCountryCode: args.input.webSearchCountryCode ?? null,
     // Bumped when prompt/payload shape changes — busts stale cache entries.
     systemPromptV: 5,
+    ...(override ? { modelName: override } : {}),
   });
 
   const cached = promptExplorerModelResultSchema.safeParse(
@@ -144,10 +148,19 @@ const MODEL_NAMES: Record<PromptExplorerModel, string> = {
   perplexity: "sonar-reasoning-pro",
 };
 
+function resolvedModelName(args: RunModelArgs): {
+  modelName: string;
+  override: string | undefined;
+} {
+  const override = args.input.modelNameOverrides?.[args.model];
+  if (override) return { modelName: override, override };
+  return { modelName: MODEL_NAMES[args.model], override: undefined };
+}
+
 function fetchModelResponse(args: RunModelArgs): Promise<LlmResponseResult> {
   return args.dataforseo.aiSearch.llmResponse({
     modelSlug: args.model,
-    modelName: MODEL_NAMES[args.model],
+    modelName: resolvedModelName(args).modelName,
     userPrompt: args.input.prompt,
     webSearch: args.input.webSearch,
     webSearchCountryCode: args.input.webSearchCountryCode,

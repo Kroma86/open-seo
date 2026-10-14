@@ -214,6 +214,15 @@ export const promptExplorerInputSchema = z.object({
     .optional(),
   webSearch: z.boolean().default(true),
   webSearchCountryCode: webSearchCountryCodeSchema.optional(),
+  // Internal to prompt explorer. Not part of the MCP explore_ai_prompt input.
+  modelNameOverrides: z
+    .object({
+      chat_gpt: z.string().optional(),
+      claude: z.string().optional(),
+      gemini: z.string().optional(),
+      perplexity: z.string().optional(),
+    })
+    .optional(),
 });
 
 export type PromptExplorerInput = z.infer<typeof promptExplorerInputSchema>;

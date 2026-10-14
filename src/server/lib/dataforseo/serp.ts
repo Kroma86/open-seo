@@ -116,7 +116,58 @@ export interface RankCheckResult {
   serpFeatures: string[];
 }
 
-function buildRankCheckResult(
+function normalizedHost(value: string): string {
+  return value.toLowerCase().replace(/^www\./, "");
+}
+
+function hostMatchesTarget(host: string, target: string): boolean {
+  const domain = normalizedHost(host);
+  const site = normalizedHost(target);
+  return domain === site || domain.endsWith(`.${site}`);
+}
+
+function referenceCitesTarget(reference: unknown, target: string): boolean {
+  if (!reference || typeof reference !== "object") return false;
+  const ref = reference as { domain?: unknown; url?: unknown };
+  if (
+    typeof ref.domain === "string" &&
+    ref.domain.trim() &&
+    hostMatchesTarget(ref.domain, target)
+  ) {
+    return true;
+  }
+  if (typeof ref.url !== "string" || !ref.url) return false;
+  try {
+    return hostMatchesTarget(new URL(ref.url).hostname, target);
+  } catch {
+    return false;
+  }
+}
+
+function unknownArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function aiOverviewCitesTarget(items: SerpLiveItem[], target: string): boolean {
+  for (const item of items) {
+    if (item.type !== "ai_overview") continue;
+    const references = [
+      ...unknownArray(item.references),
+      ...unknownArray(item.items).flatMap((element) => {
+        if (!element || typeof element !== "object") return [];
+        return unknownArray((element as { references?: unknown }).references);
+      }),
+    ];
+    if (
+      references.some((reference) => referenceCitesTarget(reference, target))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function buildRankCheckResult(
   input: { keywordId: string; keyword: string; targetDomain: string },
   items: SerpLiveItem[],
 ): RankCheckResult {
@@ -126,6 +177,13 @@ function buildRankCheckResult(
     const domain = item.domain.toLowerCase();
     return domain === target || domain.endsWith(`.${target}`);
   });
+
+  const serpFeatures = [
+    ...new Set(items.map((item) => item.type).filter(Boolean)),
+  ];
+  if (aiOverviewCitesTarget(items, target)) {
+    serpFeatures.push("ai_overview_cited");
+  }
 
   return {
     keywordId: input.keywordId,
@@ -137,7 +195,7 @@ function buildRankCheckResult(
       ? (organicMatch.rank_group ?? organicMatch.rank_absolute ?? null)
       : null,
     url: organicMatch?.url ?? null,
-    serpFeatures: [...new Set(items.map((item) => item.type).filter(Boolean))],
+    serpFeatures,
   };
 }
 
@@ -164,6 +222,9 @@ export async function fetchRankCheckSerp(input: {
       os: input.device === "desktop" ? "windows" : "android",
       depth,
       ...stopCrawlOnTarget(input.targetDomain),
+      // Desktop only (+$0.002 a check): without it the AI Overview arrives
+      // without references, so ai_overview_cited could never be set.
+      load_async_ai_overview: input.device === "desktop",
     }),
   ]);
 
@@ -232,6 +293,8 @@ export async function postRankCheckTasks(input: {
           // stopped early. We meter customers on the post-time amount —
           // collection-time metering is a possible future optimization.
           ...stopCrawlOnTarget(input.targetDomain),
+          // Desktop only, see fetchRankCheckSerp.
+          load_async_ai_overview: task.device === "desktop",
           // Echoed back on the response entry and task_get; used to map a
           // DataForSEO task id back to our keyword without relying on order.
           tag: `${task.keywordId}:${task.device}`,

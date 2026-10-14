@@ -18,12 +18,8 @@ export type AiVisibilityPlatform = (typeof AI_VISIBILITY_PLATFORMS)[number];
 
 // Set<string> so .has() accepts any platform value; the filter's type guard
 // still narrows matches to PromptExplorerModel.
-const PROMPT_EXPLORER_MODEL_SET: ReadonlySet<string> = new Set<PromptExplorerModel>([
-  "chat_gpt",
-  "claude",
-  "gemini",
-  "perplexity",
-]);
+const PROMPT_EXPLORER_MODEL_SET: ReadonlySet<string> =
+  new Set<PromptExplorerModel>(["chat_gpt", "claude", "gemini", "perplexity"]);
 
 export function isScheduledAiVisibilityInterval(
   interval: string,
@@ -56,13 +52,17 @@ export function parseCompetitorsJson(raw: string): string[] {
   }
 }
 
-/** Prompt-explorer models from config platforms (max 2 per spec / MCP cap). */
+/**
+ * Prompt-explorer models from config platforms, in config order, deduped.
+ * The MCP explore_ai_prompt tool keeps its own input cap of 2.
+ */
 export function promptExplorerModelsForPlatforms(
   platforms: AiVisibilityPlatform[],
 ): PromptExplorerModel[] {
-  return platforms
-    .filter((p): p is PromptExplorerModel => PROMPT_EXPLORER_MODEL_SET.has(p))
-    .slice(0, 2);
+  const models = platforms.filter((p): p is PromptExplorerModel =>
+    PROMPT_EXPLORER_MODEL_SET.has(p),
+  );
+  return [...new Set(models)];
 }
 
 export function brandLookupPlatforms(

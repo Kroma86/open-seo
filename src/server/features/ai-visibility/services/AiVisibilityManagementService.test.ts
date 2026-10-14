@@ -103,4 +103,25 @@ describe("AiVisibilityManagementService", () => {
       ),
     ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
+
+  it("defaults a new config to chat_gpt, google, perplexity, gemini, and claude", async () => {
+    mocks.getConfigByProjectBrand.mockResolvedValue(null);
+
+    await AiVisibilityManagementService.createConfig({
+      projectId: "project_1",
+      brand: "Acme",
+    });
+
+    expect(mocks.createConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platforms: JSON.stringify([
+          "chat_gpt",
+          "google",
+          "perplexity",
+          "gemini",
+          "claude",
+        ]),
+      }),
+    );
+  });
 });

@@ -10,11 +10,27 @@ import {
 } from "@/shared/ai-visibility";
 import type {
   AiVisibilityLatestResults,
+  AiVisibilityRunSweep,
   AiVisibilityTrend,
   AiVisibilityTrendPoint,
 } from "@/types/schemas/ai-visibility";
 
 const SOURCE = "dataforseo_llm_mentions" as const;
+
+function sweepFromRunDetail(
+  detail: string | null | undefined,
+): AiVisibilityRunSweep {
+  if (!detail) return "legacy";
+  try {
+    const parsed: unknown = JSON.parse(detail);
+    if (!parsed || typeof parsed !== "object") return "legacy";
+    const sweep = (parsed as { sweep?: unknown }).sweep;
+    if (sweep === "full" || sweep === "pulse") return sweep;
+    return "legacy";
+  } catch {
+    return "legacy";
+  }
+}
 
 function parsePartialMentionsFromDetail(detail: string | null): boolean {
   if (!detail) return false;
@@ -40,6 +56,10 @@ function notMeasuredLatest(): AiVisibilityLatestResults {
   };
 }
 
+function diffCount(next: number | null, prev: number | null): number | null {
+  return next == null || prev == null ? null : next - prev;
+}
+
 function computeDelta(
   current: Awaited<
     ReturnType<typeof AiVisibilityRepository.getCompletedRunsForConfig>
@@ -52,14 +72,17 @@ function computeDelta(
     return null;
   }
 
-  const diff = (next: number | null, prev: number | null) =>
-    next == null || prev == null ? null : next - prev;
-
   return {
-    totalMentions: diff(current.totalMentions, previous.totalMentions),
-    shareOfVoicePct: diff(current.shareOfVoicePct, previous.shareOfVoicePct),
-    promptsWithBrand: diff(current.promptsWithBrand, previous.promptsWithBrand),
-    promptsChecked: diff(current.promptsChecked, previous.promptsChecked),
+    totalMentions: diffCount(current.totalMentions, previous.totalMentions),
+    shareOfVoicePct: diffCount(
+      current.shareOfVoicePct,
+      previous.shareOfVoicePct,
+    ),
+    promptsWithBrand: diffCount(
+      current.promptsWithBrand,
+      previous.promptsWithBrand,
+    ),
+    promptsChecked: diffCount(current.promptsChecked, previous.promptsChecked),
   };
 }
 
@@ -146,6 +169,7 @@ export async function getLatestResults(
       promptSetVersion: latestRun.promptSetVersion,
       costNote: latestRun.costNote,
       error: latestRun.error,
+      sweep: sweepFromRunDetail(latestRun.detail),
     },
   };
 }
@@ -181,7 +205,10 @@ export async function getTrend(
   }
 
   const points: AiVisibilityTrendPoint[] = runs.map((run, index) => {
-    const previous = runs[index + 1];
+    const sweep = sweepFromRunDetail(run.detail);
+    const previous = runs
+      .slice(index + 1)
+      .find((older) => sweepFromRunDetail(older.detail) === sweep);
     return {
       id: run.id,
       finishedAt: run.finishedAt,
@@ -193,6 +220,7 @@ export async function getTrend(
       shareOfVoicePct: run.shareOfVoicePct,
       promptsWithBrand: run.promptsWithBrand,
       promptsChecked: run.promptsChecked,
+      sweep,
       delta: previous ? computeDelta(run, previous) : null,
     };
   });
@@ -250,9 +278,9 @@ export async function getPromptResults(
 
 /** Latest completed-run summary for agency score export. */
 export async function getAgencyExportBlock(projectId: string) {
-  let latest: AiVisibilityLatestResults;
+  let config: Awaited<ReturnType<typeof resolveConfig>>;
   try {
-    latest = await getLatestResults(projectId);
+    config = await resolveConfig(projectId);
   } catch (error) {
     // Several configs (several brands) on one project: the export cannot
     // know which brand is the client's, so it reports "not measured" rather
@@ -262,15 +290,22 @@ export async function getAgencyExportBlock(projectId: string) {
     }
     throw error;
   }
-  if (!latest.measured || !latest.latestRun) return null;
+  if (!config) return null;
+  const runs = await AiVisibilityRepository.getCompletedRunsForConfig(
+    config.id,
+    8,
+  );
+  const chosen =
+    runs.find((run) => sweepFromRunDetail(run.detail) !== "pulse") ?? runs[0];
+  if (!chosen) return null;
   return {
-    capturedAt: latest.fetchedAt,
+    capturedAt: chosen.finishedAt,
     source: SOURCE,
-    totalMentions: latest.latestRun.totalMentions,
-    partialMentions: latest.latestRun.partialMentions,
-    shareOfVoicePct: latest.latestRun.shareOfVoicePct,
-    promptsWithBrand: latest.latestRun.promptsWithBrand,
-    promptsChecked: latest.latestRun.promptsChecked,
-    promptSetVersion: latest.latestRun.promptSetVersion,
+    totalMentions: chosen.totalMentions,
+    partialMentions: parsePartialMentionsFromDetail(chosen.detail),
+    shareOfVoicePct: chosen.shareOfVoicePct,
+    promptsWithBrand: chosen.promptsWithBrand,
+    promptsChecked: chosen.promptsChecked,
+    promptSetVersion: chosen.promptSetVersion,
   };
 }

@@ -72,6 +72,7 @@ function dueConfig(overrides: Partial<DueConfigRow> = {}): DueConfigRow {
 async function runTick() {
   const { runScheduledAiVisibilityChecks } =
     await import("./scheduledAiVisibilityChecks");
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the scheduler under test never reads env bindings
   await runScheduledAiVisibilityChecks({} as Env);
 }
 
@@ -115,7 +116,7 @@ describe("runScheduledAiVisibilityChecks", () => {
     expect(mocks.runAiVisibilityCheck).toHaveBeenCalledWith(
       expect.objectContaining({
         trigger: "scheduled",
-        nameBudget: { spentUsd: 0, capUsd: 0.05 },
+        nameBudget: { spentUsd: 0, capUsd: 0.1 },
       }),
     );
   });
