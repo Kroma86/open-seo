@@ -36,6 +36,19 @@ function scheduleNextRunAt(interval: ScheduleInterval): string | null {
   return computeNextRunAt(interval);
 }
 
+// One active tracker per project: a second brand spelling for the same client
+// (e.g. "TWA Studio" and "twa.studio") doubles the cost and splits the history.
+async function assertNoOtherActiveConfig(projectId: string, exceptId?: string) {
+  const active = await AiVisibilityRepository.getConfigsForProject(projectId);
+  const other = active.find((c) => c.id !== exceptId);
+  if (other) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `This project already has an active AI visibility tracker ("${other.brand}"). Edit or turn that one off instead of adding another.`,
+    );
+  }
+}
+
 async function createConfig(input: {
   projectId: string;
   brand: string;
@@ -54,6 +67,8 @@ async function createConfig(input: {
       "This brand is already tracked for AI visibility",
     );
   }
+
+  await assertNoOtherActiveConfig(input.projectId);
 
   const scheduleInterval = input.scheduleInterval ?? "weekly";
   const nextRunAt = scheduleNextRunAt(scheduleInterval);
@@ -126,6 +141,7 @@ async function updateConfig(
     updates.platforms = JSON.stringify(input.platforms);
   }
   if (input.isActive !== undefined) {
+    if (input.isActive) await assertNoOtherActiveConfig(projectId, configId);
     updates.isActive = input.isActive;
   }
   if (input.scheduleInterval !== undefined) {

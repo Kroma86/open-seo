@@ -4,6 +4,7 @@ import { AiVisibilityManagementService } from "./AiVisibilityManagementService";
 const mocks = vi.hoisted(() => ({
   getConfigById: vi.fn(),
   getConfigByProjectBrand: vi.fn(),
+  getConfigsForProject: vi.fn(),
   createConfig: vi.fn(),
   updateConfig: vi.fn(),
   bumpPromptSetVersion: vi.fn(),
@@ -47,6 +48,7 @@ describe("AiVisibilityManagementService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getConfigById.mockResolvedValue(config);
+    mocks.getConfigsForProject.mockResolvedValue([]);
     mocks.bumpPromptSetVersion.mockResolvedValue(4);
   });
 
@@ -123,5 +125,43 @@ describe("AiVisibilityManagementService", () => {
         ]),
       }),
     );
+  });
+
+  it("refuses a second active tracker under a different brand spelling", async () => {
+    mocks.getConfigByProjectBrand.mockResolvedValue(null);
+    mocks.getConfigsForProject.mockResolvedValue([
+      { ...config, id: "config_old", brand: "TWA Studio" },
+    ]);
+
+    await expect(
+      AiVisibilityManagementService.createConfig({
+        projectId: "project_1",
+        brand: "twa.studio",
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(mocks.createConfig).not.toHaveBeenCalled();
+  });
+
+  it("refuses to switch a config back on while another is active", async () => {
+    mocks.getConfigsForProject.mockResolvedValue([
+      { ...config, id: "config_other", brand: "Other" },
+    ]);
+
+    await expect(
+      AiVisibilityManagementService.updateConfig("config_1", "project_1", {
+        isActive: true,
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(mocks.updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("lets the only active config be re-saved as active", async () => {
+    mocks.getConfigsForProject.mockResolvedValue([config]);
+
+    await AiVisibilityManagementService.updateConfig("config_1", "project_1", {
+      isActive: true,
+    });
+
+    expect(mocks.updateConfig).toHaveBeenCalled();
   });
 });
