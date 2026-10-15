@@ -164,4 +164,36 @@ describe("AiVisibilityManagementService", () => {
 
     expect(mocks.updateConfig).toHaveBeenCalled();
   });
+
+  it("refuses to reactivate an inactive same-brand config while another is active", async () => {
+    mocks.getConfigByProjectBrand.mockResolvedValue({
+      ...config,
+      id: "config_off",
+      isActive: false,
+    });
+    mocks.getConfigsForProject.mockResolvedValue([
+      { ...config, id: "config_other", brand: "Other" },
+    ]);
+
+    await expect(
+      AiVisibilityManagementService.createConfig({
+        projectId: "project_1",
+        brand: "Acme",
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(mocks.updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("still lets a config be turned off or edited", async () => {
+    mocks.getConfigsForProject.mockResolvedValue([
+      { ...config, id: "config_other", brand: "Other" },
+    ]);
+
+    await AiVisibilityManagementService.updateConfig("config_1", "project_1", {
+      isActive: false,
+      competitors: ["Rival"],
+    });
+
+    expect(mocks.updateConfig).toHaveBeenCalled();
+  });
 });
