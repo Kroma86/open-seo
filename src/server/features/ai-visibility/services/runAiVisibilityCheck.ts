@@ -131,7 +131,7 @@ function buildCostNote(input: {
   const promptPart =
     input.promptExplorerCalls === 0
       ? null
-      : `${input.promptExplorerCalls} prompt check(s): cache/paid uncertain`;
+      : `${input.promptExplorerCalls} prompt check(s): fresh (cache skipped)`;
   if (input.sweep === "pulse") {
     const engines =
       input.models.length === 0 ? "no prompt engines" : "perplexity sonar";
@@ -324,6 +324,9 @@ async function executeRun(input: {
               : {}),
           },
           input.billingCustomer,
+          // A tracker run must measure today's answers, never replay one
+          // cached by a run inside the 7-day TTL (NIC-1008).
+          { skipCacheRead: true },
         );
       const { explorer, retried } = await exploreWithOneRetry(ask);
       if (retried) promptRetries += 1;

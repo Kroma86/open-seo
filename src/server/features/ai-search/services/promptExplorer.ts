@@ -50,6 +50,11 @@ type DataforseoClient = ReturnType<typeof createDataforseoClient>;
 export async function explorePrompt(
   input: PromptExplorerInput,
   billingCustomer: BillingCustomerContext,
+  // Internal to server callers, never part of promptExplorerInputSchema.
+  // skipCacheRead always asks upstream (a paid call) but still refreshes the
+  // cache, so a scheduled measurement never replays an answer saved by an
+  // earlier run inside the TTL.
+  options: { skipCacheRead?: boolean } = {},
 ): Promise<PromptExplorerResult> {
   const dataforseo = createDataforseoClient(billingCustomer);
   const highlightBrand = input.highlightBrand?.trim() || null;
@@ -66,6 +71,7 @@ export async function explorePrompt(
         highlightBrand,
         billingCustomer,
         dataforseo,
+        skipCacheRead: options.skipCacheRead === true,
       }),
     ),
   );
@@ -92,6 +98,7 @@ type RunModelArgs = {
   highlightBrand: string | null;
   billingCustomer: BillingCustomerContext;
   dataforseo: DataforseoClient;
+  skipCacheRead: boolean;
 };
 
 async function runModel(
@@ -115,13 +122,15 @@ async function runModel(
     ...(override ? { modelName: override } : {}),
   });
 
-  const cached = promptExplorerModelResultSchema.safeParse(
-    await getCached(cacheKey),
-  );
-  if (cached.success && cached.data.status === "success") {
-    // highlightBrand is not part of the cache key — re-apply it so the same
-    // cached response can power different brand highlights for free.
-    return reapplyHighlightBrand(cached.data, args.highlightBrand);
+  if (!args.skipCacheRead) {
+    const cached = promptExplorerModelResultSchema.safeParse(
+      await getCached(cacheKey),
+    );
+    if (cached.success && cached.data.status === "success") {
+      // highlightBrand is not part of the cache key — re-apply it so the same
+      // cached response can power different brand highlights for free.
+      return reapplyHighlightBrand(cached.data, args.highlightBrand);
+    }
   }
 
   const rawResponse = await fetchModelResponse(args);
