@@ -366,9 +366,15 @@ describe("runAiVisibilityCheck", () => {
       (call) => call[1]?.status === "completed",
     );
     // No cache/paid signal exists on getBrandLookup, so the label never
-    // asserts either direction from latency.
+    // asserts either direction from latency. Prompt checks skip the cache
+    // read (NIC-1008), so every answer is asked fresh.
+    expect(mocks.explorePrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: "best tools" }),
+      billingCustomer,
+      { skipCacheRead: true },
+    );
     expect(completedUpdate?.[1]?.costNote).toBe(
-      "full sweep (1 engine(s): chat_gpt); brand lookup cache/paid uncertain; 1 prompt check(s): cache/paid uncertain",
+      "full sweep (1 engine(s): chat_gpt); brand lookup cache/paid uncertain; 1 prompt check(s): fresh (cache skipped)",
     );
   });
 
@@ -416,7 +422,7 @@ describe("runAiVisibilityCheck", () => {
       (call) => call[1]?.status === "completed",
     );
     expect(completedUpdate?.[1]?.costNote).toBe(
-      "full sweep (1 engine(s): chat_gpt); brand lookup cache/paid uncertain; 1 prompt check(s): cache/paid uncertain",
+      "full sweep (1 engine(s): chat_gpt); brand lookup cache/paid uncertain; 1 prompt check(s): fresh (cache skipped)",
     );
   });
 });
