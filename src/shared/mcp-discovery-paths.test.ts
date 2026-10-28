@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CURSOR_MCP_OAUTH_ALLOWED_URIS } from "./mcp-cursor-oauth";
 import {
   OAUTH_AUTHORIZE_PATH,
   OAUTH_CONSENT_RESPONSE_PATH,
@@ -8,6 +9,15 @@ import {
 } from "./mcp-discovery-paths";
 
 describe("self-host public OAuth Access prefixes", () => {
+  it("allows both Claude custom connector callbacks", () => {
+    expect(CURSOR_MCP_OAUTH_ALLOWED_URIS).toEqual(
+      expect.arrayContaining([
+        "https://claude.ai/api/mcp/auth_callback",
+        "https://claude.com/api/mcp/auth_callback",
+      ]),
+    );
+  });
+
   it("bypasses discovery plus token/register, never authorize or consent", () => {
     expect([...SELFHOST_OAUTH_PUBLIC_PATH_PREFIXES]).toEqual([
       "/.well-known/oauth-authorization-server",

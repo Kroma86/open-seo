@@ -1,6 +1,6 @@
 /**
- * Cursor MCP OAuth redirect URIs that Cloudflare Access Managed OAuth must
- * allow for Dynamic Client Registration (DCR).
+ * Cursor/Grok Bot and claude.ai custom connector OAuth redirect URIs that
+ * Cloudflare Access Managed OAuth must allow for Dynamic Client Registration (DCR).
  *
  * Evidence (Cursor 3.20.10 mcpProcessMain `V7()` + live CF Access DCR probe
  * on team throbbing-waterfall-366d, 2026-09-12):
@@ -44,6 +44,12 @@ export const CURSOR_MCP_OAUTH_CUSTOM_SCHEME_CALLBACK =
 export const CURSOR_MCP_OAUTH_GROKBOT_CALLBACK =
   "grokbot://mcp/oauth/callback" as const;
 
+export const CLAUDE_AI_MCP_OAUTH_CALLBACK =
+  "https://claude.ai/api/mcp/auth_callback" as const;
+
+export const CLAUDE_COM_MCP_OAUTH_CALLBACK =
+  "https://claude.com/api/mcp/auth_callback" as const;
+
 /**
  * Full `allowed_uris` for Access Managed OAuth (host + `/mcp` apps).
  * Loopback is also enabled via allow_any_on_localhost / allow_any_on_loopback;
@@ -55,4 +61,6 @@ export const CURSOR_MCP_OAUTH_ALLOWED_URIS = [
   CURSOR_MCP_OAUTH_CUSTOM_SCHEME_CALLBACK,
   CURSOR_MCP_OAUTH_LOOPBACK_CALLBACK,
   CURSOR_MCP_OAUTH_GROKBOT_CALLBACK,
+  CLAUDE_AI_MCP_OAUTH_CALLBACK,
+  CLAUDE_COM_MCP_OAUTH_CALLBACK,
 ] as const;
