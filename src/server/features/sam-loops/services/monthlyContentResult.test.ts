@@ -124,3 +124,19 @@ describe("monthly draft evidence", () => {
     expect(await hasVerifiedMonthlyDraft(report)).toBe(false);
   });
 });
+
+
+describe("monthly draft Markdown prose", () => {
+  it("accepts a complete article with prose directly below headings", async () => {
+    const body = article.body.replace(/(## Part \d+)\n\n/g, "$1\n");
+    const result = await validateMonthlyContent({ ...article, body }, [{ toolResults: [saved, source] }], "example.com");
+    expect(result.error).toBeNull();
+    expect(await hasVerifiedMonthlyDraft(result.report)).toBe(true);
+  });
+  it.each(["1)", "+", "•"])("rejects a long %s outline as article prose", async (marker) => {
+    const body = Array(5).fill(`${marker} ${paragraph.repeat(2)}`).join("\n\n");
+    const result = await validateMonthlyContent({ ...article, body }, [{ toolResults: [saved, source] }], "example.com");
+    expect(result.error).toContain("developed prose");
+    expect(await hasVerifiedMonthlyDraft(result.report)).toBe(false);
+  });
+});

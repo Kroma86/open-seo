@@ -1,3 +1,4 @@
+import { assertClientFieldsAllowed } from "@/server/features/agency/ClientFieldProtection";
 import { z } from "zod";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import {
@@ -106,7 +107,9 @@ async function checkRun(input: {
   if (!run) return { ok: false, response: httpError(404, "unknown_run") };
   const releasedBeforeModel =
     run.status === "failed" &&
-    run.error?.startsWith("Box runner released the run before any model call (");
+    run.error?.startsWith(
+      "Box runner released the run before any model call (",
+    );
   if (!run.costNote?.startsWith(SAM_BOX_COST_PREFIX) && !releasedBeforeModel) {
     return { ok: false, response: httpError(409, "not_a_box_run") };
   }
@@ -210,6 +213,13 @@ async function queueProposals(
   }
   for (const proposal of proposals) {
     const fixes = fixesFor(proposal);
+    try {
+      assertClientFieldsAllowed(domain, fixes);
+    } catch (cause) {
+      failed++;
+      error ??= generationErrorDetail(cause);
+      continue;
+    }
     if (
       pending.some(
         (row) => row.path === proposal.path && sameFixes(row.fixes, fixes),

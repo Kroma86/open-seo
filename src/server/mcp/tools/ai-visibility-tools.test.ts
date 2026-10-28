@@ -129,7 +129,7 @@ describe("ai visibility MCP tools", () => {
     );
   });
 
-  it("adds promptResults and one text line per question on request", async () => {
+  it("returns stored answers and citations in both text and structured content on request", async () => {
     mocks.getLatestResults.mockResolvedValue({
       measured: false,
       config: null,
@@ -143,7 +143,15 @@ describe("ai visibility MCP tools", () => {
             promptId: "p1",
             prompt: "best plumber",
             results: [
-              { status: "success", model: "chatgpt", brandMentioned: true },
+              {
+                status: "success",
+                model: "chatgpt",
+                brandMentioned: true,
+                text: "Acme and Another Plumbing are named.",
+                citations: [
+                  { url: "https://example.com/source", domain: "example.com" },
+                ],
+              },
             ],
           },
         ],
@@ -170,6 +178,12 @@ describe("ai visibility MCP tools", () => {
     expect(textContent(result)).toContain(
       "Prompt results (run run_1):\n- best plumber: named by chatgpt",
     );
+    expect(textContent(result)).toContain(
+      "Acme and Another Plumbing are named.",
+    );
+    expect(textContent(result)).toContain("https://example.com/source");
+    expect(mocks.runAiVisibilityCheck).not.toHaveBeenCalled();
+    expect(mocks.enqueueManualAiVisibilityCheck).not.toHaveBeenCalled();
   });
 
   it("run tool starts a check", async () => {

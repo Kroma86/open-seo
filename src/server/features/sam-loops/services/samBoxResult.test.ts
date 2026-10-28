@@ -1038,3 +1038,41 @@ describe("box abandon", () => {
     },
   );
 });
+
+describe("client-owned headings in box results", () => {
+  it.each([false, true])(
+    "does not count a forbidden proposal as queued, even if already pending (%s)",
+    async (alreadyPending) => {
+      mocks.getProjectById.mockResolvedValue({
+        id: "project-1",
+        domain: "www.cinnamoncounselling.ca",
+        organizationId: "org-1",
+      });
+      if (alreadyPending)
+        mocks.listProposals.mockResolvedValue([
+          {
+            path: "/pricing",
+            fixes: {
+              title: "Pricing",
+              description: "Compare plans",
+              h1: "Our plans",
+            },
+          },
+        ]);
+      const result = await handleSamBoxResult({ body: envelope() });
+      expect(result.body).toMatchObject({
+        status: "failed",
+        proposals_queued: 0,
+      });
+      expect(mocks.enqueueProposal).not.toHaveBeenCalled();
+      expect(mocks.finishRunIfRunning).toHaveBeenCalledWith(
+        "run-1",
+        expect.objectContaining({
+          status: "failed",
+          proposalsQueued: 0,
+          error: expect.stringContaining("client_owned_heading_title"),
+        }),
+      );
+    },
+  );
+});

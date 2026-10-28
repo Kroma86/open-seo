@@ -4,6 +4,7 @@
  * from this layer. Jon's OTTO gate remains the only path to approved/.
  */
 import { env } from "cloudflare:workers";
+import { assertClientFieldsAllowed } from "./ClientFieldProtection";
 import { ProposalRejectionsRepository } from "./repositories/ProposalRejectionsRepository";
 import { proposalPayloadHash } from "./ProposalRejectionService";
 
@@ -87,6 +88,8 @@ export async function enqueueHomegrownOttoProposal(input: {
   if (Object.keys(fixes).length === 0) {
     throw new Error("fixes_required");
   }
+
+  assertClientFieldsAllowed(domain, fixes);
 
   const proposal: HomegrownOttoProposal = {
     id: crypto.randomUUID(),

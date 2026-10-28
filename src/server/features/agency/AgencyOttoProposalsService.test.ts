@@ -133,14 +133,22 @@ describe("HomeGrown OTTO proposals — batched reads", () => {
 
   // 60 rows in the index, newest first, statuses cycling; row 7 is missing, row 9 is corrupt.
   function seed() {
-    const ids = Array.from({ length: 60 }, (_, i) => `id-${String(i).padStart(2, "0")}`);
+    const ids = Array.from(
+      { length: 60 },
+      (_, i) => `id-${String(i).padStart(2, "0")}`,
+    );
     ids.forEach((id, i) => {
       if (i === 7) return;
       store.set(
         `homegrown-otto:proposal:${id}`,
         i === 9
           ? "{not json"
-          : JSON.stringify({ id, domain: "client.com", status: statuses[i % 3], fixes: { title: id } }),
+          : JSON.stringify({
+              id,
+              domain: "client.com",
+              status: statuses[i % 3],
+              fixes: { title: id },
+            }),
       );
     });
     store.set("homegrown-otto:proposal-index", JSON.stringify(ids));
@@ -155,7 +163,9 @@ describe("HomeGrown OTTO proposals — batched reads", () => {
   it("keeps index order and status filtering across batches", async () => {
     const ids = seed();
     for (const status of statuses) {
-      const expected = ids.filter((_, i) => i !== 7 && i !== 9 && statuses[i % 3] === status);
+      const expected = ids.filter(
+        (_, i) => i !== 7 && i !== 9 && statuses[i % 3] === status,
+      );
       const got = await listHomegrownOttoProposals({ status, limit: 200 });
       expect(got.map((p) => p.id)).toEqual(expected);
     }
@@ -171,8 +181,104 @@ describe("HomeGrown OTTO proposals — batched reads", () => {
 
   it("stops reading once the limit is met", async () => {
     seed();
-    const got = await listHomegrownOttoProposals({ status: "pending", limit: 2 });
+    const got = await listHomegrownOttoProposals({
+      status: "pending",
+      limit: 2,
+    });
     expect(got.map((p) => p.id)).toEqual(["id-00", "id-03"]);
     expect(reads.calls).toBe(1 + 25); // index + one batch
+  });
+});
+
+describe("client-owned heading protection", () => {
+  beforeEach(() => store.clear());
+
+  it.each([
+    "cinnamoncounselling.com",
+    "cinnamoncounselling.ca",
+    "https://WWW.CINNAMONCOUNSELLING.COM/page",
+    "www.cinnamoncounselling.ca:443",
+    "cinnamoncounselling.ca.",
+  ])(
+    "refuses a protected heading/title before any write for %s",
+    async (domain) => {
+      store.set("unrelated", "preserve");
+      await expect(
+        enqueueHomegrownOttoProposal({
+          domain,
+          organizationId: "org_a",
+          path: "/inner",
+          fixes: {
+            h1: "Synthetic heading",
+            title: "Synthetic title",
+            description: "Synthetic description",
+          },
+        }),
+      ).rejects.toThrow("client_owned_heading_title");
+      expect([...store.entries()]).toEqual([["unrelated", "preserve"]]);
+    },
+  );
+
+  it.each(["h1", "title"])(
+    "rejects %s alone on the homepage",
+    async (field) => {
+      await expect(
+        enqueueHomegrownOttoProposal({
+          domain: "cinnamoncounselling.ca",
+          organizationId: "org_a",
+          fixes: { [field]: "Synthetic text" },
+        }),
+      ).rejects.toThrow("client_owned_heading_title");
+      expect(store.size).toBe(0);
+    },
+  );
+
+  it("preserves permitted fields and exact host boundaries", async () => {
+    const description = await enqueueHomegrownOttoProposal({
+      domain: "cinnamoncounselling.com",
+      organizationId: "org_a",
+      fixes: {
+        description: "Synthetic description",
+        og_title: "Synthetic social title",
+      },
+    });
+    expect(description.fixes).toEqual({
+      description: "Synthetic description",
+      og_title: "Synthetic social title",
+    });
+    for (const domain of [
+      "other.example",
+      "cinnamoncounselling.ca.other.example",
+      "other.cinnamoncounselling.ca",
+    ]) {
+      const row = await enqueueHomegrownOttoProposal({
+        domain,
+        organizationId: "org_a",
+        fixes: { title: "Synthetic title" },
+      });
+      expect(row.fixes.title).toBe("Synthetic title");
+    }
+  });
+
+  it("keeps historical proposals readable for explicit rejection", async () => {
+    store.set("homegrown-otto:proposal-index", JSON.stringify(["historical"]));
+    store.set(
+      "homegrown-otto:proposal:historical",
+      JSON.stringify({
+        id: "historical",
+        domain: "cinnamoncounselling.ca",
+        organizationId: "org_a",
+        status: "pending",
+        path: "/",
+        fixes: { h1: "Historical synthetic heading" },
+      }),
+    );
+    const before = [...store.entries()];
+    const rows = await listHomegrownOttoProposals({
+      domain: "cinnamoncounselling.ca",
+      visibleToOrganizationId: "org_a",
+    });
+    expect(rows.map((row) => row.id)).toEqual(["historical"]);
+    expect([...store.entries()]).toEqual(before);
   });
 });
