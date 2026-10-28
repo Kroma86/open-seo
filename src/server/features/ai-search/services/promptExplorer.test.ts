@@ -4,7 +4,7 @@ import type { PromptExplorerModel } from "@/types/schemas/ai-search";
 
 vi.mock("cloudflare:workers", () => ({ waitUntil: vi.fn() }));
 
-const { llmResponse, buildCacheKey, getCached } = vi.hoisted(() => ({
+const { llmResponse, buildCacheKey, getCached, setCached } = vi.hoisted(() => ({
   llmResponse: vi.fn(),
   buildCacheKey: vi.fn(
     async (prefix: string, params: Record<string, unknown>) => {
@@ -12,7 +12,8 @@ const { llmResponse, buildCacheKey, getCached } = vi.hoisted(() => ({
       return `${prefix}:${raw}`;
     },
   ),
-  getCached: vi.fn(async () => null),
+  getCached: vi.fn<() => Promise<unknown>>(async () => null),
+  setCached: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/server/lib/dataforseo", () => ({
@@ -25,7 +26,7 @@ vi.mock("@/server/lib/r2-cache", () => ({
   AI_SEARCH_PROMPT_CACHE_NAMESPACE: "ai-search:prompt-response",
   buildCacheKey,
   getCached,
-  setCached: vi.fn(async () => undefined),
+  setCached,
 }));
 
 const { extractCitations, explorePrompt } = await import("./promptExplorer");
@@ -172,5 +173,62 @@ describe("explorePrompt model name override", () => {
       webSearchCountryCode: null,
       systemPromptV: 5,
     });
+  });
+});
+
+describe("explorePrompt cache read", () => {
+  const billingCustomer = {
+    organizationId: "org_123",
+    userId: "user_123",
+    userEmail: "a@example.com",
+    projectId: "project_1",
+  };
+  const input = {
+    projectId: "project_1",
+    prompt: "best tools",
+    models: ["chat_gpt"] satisfies PromptExplorerModel[],
+    webSearch: true as const,
+  };
+  const cachedAnswer = {
+    status: "success",
+    model: "chat_gpt",
+    modelName: "gpt-5",
+    text: "cached answer",
+    citations: [],
+    fanOutQueries: [],
+    brandMentioned: null,
+    outputTokens: null,
+    webSearch: true,
+  };
+
+  it("reuses a cached answer by default", async () => {
+    getCached.mockResolvedValueOnce(cachedAnswer);
+
+    const result = await explorePrompt(input, billingCustomer);
+
+    expect(llmResponse).not.toHaveBeenCalled();
+    expect(result.results[0]).toMatchObject({ text: "cached answer" });
+  });
+
+  // Weekly tracker runs must measure today's answer: a cached answer from a
+  // run inside the 7-day TTL would replay last week's text (NIC-1008).
+  it("asks upstream and refreshes the cache when skipCacheRead is set", async () => {
+    getCached.mockResolvedValueOnce(cachedAnswer);
+    llmResponse.mockResolvedValueOnce(llmPayload("gpt-5"));
+
+    const result = await explorePrompt(input, billingCustomer, {
+      skipCacheRead: true,
+    });
+
+    expect(getCached).not.toHaveBeenCalled();
+    expect(llmResponse).toHaveBeenCalledTimes(1);
+    expect(setCached).toHaveBeenCalledTimes(1);
+    expect(setCached).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ status: "success", text: "hi" }),
+      604800,
+      expect.anything(),
+    );
+    expect(result.results[0]).toMatchObject({ text: "hi" });
   });
 });

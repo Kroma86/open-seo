@@ -195,6 +195,7 @@ describe("runAiVisibilityCheck", () => {
         modelNameOverrides: { perplexity: "sonar" },
       }),
       billingCustomer,
+      { skipCacheRead: true },
     );
     const completed = completedCall();
     expect(completed?.[1]).toMatchObject({
