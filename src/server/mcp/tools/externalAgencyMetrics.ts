@@ -51,7 +51,7 @@ export async function fetchExternalAgencyMetrics(domain: string | null, options?
     url.searchParams.delete("t");
     url.searchParams.delete("token");
     const response = await (options?.fetchImpl ?? fetch)(url.toString(), {
-      method: "GET", redirect: "error", signal: AbortSignal.timeout(5000),
+      method: "GET", redirect: "manual", signal: AbortSignal.timeout(5000),
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "User-Agent": "OpenSEO-SAM/1.0 (+stored-observations)" },
     });
     if (!response.ok) return empty("External observations unavailable: agency feed request failed.");
