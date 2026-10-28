@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Re-enable Cloudflare Access Managed OAuth + Cursor DCR redirect allow-list.
+"""Re-enable Cloudflare Access Managed OAuth + Cursor/Claude DCR redirect allow-list.
 
 Alchemy's Access.Application resource does not pass oauth_configuration, so a
 drift-sync PUT can turn Managed OAuth OFF and drop allowed_uris. A service-
@@ -69,6 +69,8 @@ ALLOWED_URIS = [
     CURSOR_CUSTOM_SCHEME,
     CURSOR_LOOPBACK,
     CURSOR_GROKBOT,
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://claude.com/api/mcp/auth_callback",
 ]
 
 # Exact multi-URI set Cursor mcpProcess V7(Rt) registers for desktop DCR.
