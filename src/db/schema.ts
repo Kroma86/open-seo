@@ -83,6 +83,7 @@ export const {
   samLoops,
   samLoopRuns,
   agencyOpsArtifacts,
+  proposalRejections,
   aiVisibilityConfigs,
   aiVisibilityPrompts,
   aiVisibilityRuns,

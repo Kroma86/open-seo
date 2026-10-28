@@ -6,6 +6,11 @@ import {
   markHomegrownOttoProposalsPulled,
 } from "@/server/features/agency/AgencyOttoProposalsService";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
+import {
+  getProposalRejections,
+  rejectHomegrownOttoProposal,
+  ProposalRejectionError,
+} from "@/server/features/agency/ProposalRejectionService";
 import { AppError } from "@/server/lib/errors";
 
 function timingSafeEqual(left: string, right: string): boolean {
@@ -46,6 +51,29 @@ export async function handleGet(request: Request): Promise<Response> {
   const denied = assertAgencyToken(request);
   if (denied) return denied;
   const url = new URL(request.url);
+  if (url.searchParams.get("action") === "rejection_status") {
+    try {
+      const rejections = await getProposalRejections(
+        url.searchParams.getAll("id"),
+      );
+      return Response.json(
+        { rejections },
+        { headers: { "cache-control": "no-store" } },
+      );
+    } catch (error) {
+      if (error instanceof ProposalRejectionError)
+        return Response.json(
+          { error: error.message },
+          { status: error.status },
+        );
+      return Response.json(
+        { error: "rejection_lookup_failed" },
+        { status: 503 },
+      );
+    }
+  }
+  if (url.searchParams.has("action"))
+    return Response.json({ error: "unknown_action" }, { status: 400 });
   const status = url.searchParams.get("status") as
     | "pending"
     | "pulled"
@@ -80,13 +108,40 @@ export async function handlePost(request: Request): Promise<Response> {
   }
 
   const record = body as Record<string, unknown>;
+  if (record.action === "reject") {
+    try {
+      const { action: _action, ...input } = record;
+      const rejection = await rejectHomegrownOttoProposal(input);
+      return Response.json(
+        { rejection },
+        { headers: { "cache-control": "no-store" } },
+      );
+    } catch (error) {
+      if (error instanceof ProposalRejectionError)
+        return Response.json(
+          { error: error.message },
+          { status: error.status },
+        );
+      // A transport/database failure may follow a committed insert. The caller
+      // must reconcile with the read-only exact-ID lookup, never blind retry.
+      return Response.json(
+        { error: "rejection_outcome_unconfirmed" },
+        { status: 503 },
+      );
+    }
+  }
   if (record.action === "mark_pulled") {
     const ids = Array.isArray(record.ids)
       ? record.ids.filter((id): id is string => typeof id === "string")
       : [];
+    if (ids.length > 200)
+      return Response.json({ error: "mark_pulled_limit" }, { status: 400 });
     const marked = await markHomegrownOttoProposalsPulled(ids);
     return Response.json({ marked });
   }
+
+  if ("action" in record)
+    return Response.json({ error: "unknown_action" }, { status: 400 });
 
   // Bearer path (Hermes): attach the owner when the domain resolves to exactly
   // one project. Two projects on the domain → 409, nothing stored: an unowned

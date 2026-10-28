@@ -657,3 +657,18 @@ export const agencyOpsArtifacts = sqliteTable(
     ),
   ],
 );
+
+// Permanent queue rejection receipts. Original proposal bodies stay in KV.
+// No foreign keys: deleting an organization must never revive rejected work.
+export const proposalRejections = sqliteTable("proposal_rejections", {
+  proposalId: text("proposal_id").primaryKey(),
+  payloadHash: text("payload_hash").notNull(),
+  domain: text("domain").notNull(),
+  path: text("path").notNull(),
+  organizationId: text("organization_id"),
+  requestId: text("request_id").notNull(),
+  reason: text("reason").notNull(),
+  rejectedAt: text("rejected_at").notNull(),
+  priorStatus: text("prior_status").notNull(),
+  priorPulledAt: text("prior_pulled_at"),
+});

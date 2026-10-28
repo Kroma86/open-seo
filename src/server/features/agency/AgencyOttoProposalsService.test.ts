@@ -1,3 +1,6 @@
+vi.mock("./repositories/ProposalRejectionsRepository", () => ({
+  ProposalRejectionsRepository: { findByIds: vi.fn(async () => []) },
+}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // In-memory stand-in for the Workers KV namespace.
