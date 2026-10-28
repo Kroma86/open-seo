@@ -311,3 +311,87 @@ describe("AiVisibilityRepository queries", () => {
     });
   });
 });
+
+describe("dated AI visibility scheduling hold", () => {
+  const pausedProject = "d6d3c442-bedf-4c4c-b65b-17d0fcf4ec4d";
+  async function seedPaused() {
+    await client.execute({
+      sql: "INSERT INTO projects(id, organization_id, name) VALUES (?, 'org_test', 'Synthetic')",
+      args: [pausedProject],
+    });
+    await client.execute({
+      sql: "INSERT INTO ai_visibility_configs(id, project_id, brand, schedule_interval, next_run_at, is_active) VALUES ('paused', ?, 'Synthetic', 'weekly', '2020-01-01T00:00:00.000Z', 1)",
+      args: [pausedProject],
+    });
+  }
+  it.each([
+    ["2026-10-01T05:49:59.999Z", ["paused", "config_1"]],
+    ["2026-10-01T05:50:00.000Z", ["config_1"]],
+    ["2026-12-01T06:59:59.999Z", ["config_1"]],
+    ["2026-12-01T07:00:00.000Z", ["paused", "config_1"]],
+  ])(
+    "filters the paused project at %s without changing saved settings",
+    async (now, ids) => {
+      await seedPaused();
+      const before = await client.execute(
+        "SELECT * FROM ai_visibility_configs ORDER BY id",
+      );
+      expect(
+        (await AiVisibilityRepository.getDueConfigsWithOrganization(now)).map(
+          (row) => row.id,
+        ),
+      ).toEqual(ids);
+      expect(
+        (
+          await client.execute(
+            "SELECT * FROM ai_visibility_configs ORDER BY id",
+          )
+        ).rows,
+      ).toEqual(before.rows);
+    },
+  );
+  it.each(["manual", "inactive", "archived"])(
+    "preserves a later %s hold after the dated hold expires",
+    async (hold) => {
+      await seedPaused();
+      if (hold === "manual")
+        await client.execute(
+          "UPDATE ai_visibility_configs SET schedule_interval='manual' WHERE id='paused'",
+        );
+      if (hold === "inactive")
+        await client.execute(
+          "UPDATE ai_visibility_configs SET is_active=0 WHERE id='paused'",
+        );
+      if (hold === "archived")
+        await client.execute({
+          sql: "UPDATE projects SET archived_at='2026-11-01T00:00:00.000Z' WHERE id=?",
+          args: [pausedProject],
+        });
+      expect(
+        (
+          await AiVisibilityRepository.getDueConfigsWithOrganization(
+            "2026-12-01T07:00:00.000Z",
+          )
+        ).map((row) => row.id),
+      ).toEqual(["config_1"]);
+    },
+  );
+  it("excludes held rows before the 500-row limit so other work is not starved", async () => {
+    await seedPaused();
+    const values = Array.from(
+      { length: 500 },
+      (_, i) =>
+        `('paused_${i}', '${pausedProject}', 'Synthetic${i}', 'weekly', '2020-01-01T00:00:00.000Z', 1)`,
+    ).join(",");
+    await client.execute(
+      `INSERT INTO ai_visibility_configs(id, project_id, brand, schedule_interval, next_run_at, is_active) VALUES ${values}`,
+    );
+    expect(
+      (
+        await AiVisibilityRepository.getDueConfigsWithOrganization(
+          "2026-10-15T08:00:00.000Z",
+        )
+      ).map((row) => row.id),
+    ).toEqual(["config_1"]);
+  });
+});

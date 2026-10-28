@@ -8,9 +8,11 @@ import {
   isNull,
   lte,
   ne,
+  notInArray,
 } from "drizzle-orm";
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
+import { pausedScheduledSeoProjects } from "@/server/features/projects/services/scheduledSeoPauses";
 import {
   aiVisibilityConfigs,
   aiVisibilityPrompts,
@@ -99,6 +101,7 @@ async function bumpPromptSetVersion(configId: string, projectId: string) {
 }
 
 async function getDueConfigsWithOrganization(nowIso: string) {
+  const pausedProjects = pausedScheduledSeoProjects(nowIso);
   return db
     .select({
       id: aiVisibilityConfigs.id,
@@ -119,6 +122,9 @@ async function getDueConfigsWithOrganization(nowIso: string) {
         ne(aiVisibilityConfigs.scheduleInterval, "manual"),
         lte(aiVisibilityConfigs.nextRunAt, nowIso),
         isNull(projects.archivedAt),
+        pausedProjects.length
+          ? notInArray(projects.id, pausedProjects)
+          : undefined,
       ),
     )
     .orderBy(asc(aiVisibilityConfigs.nextRunAt), asc(aiVisibilityConfigs.id))
@@ -331,7 +337,11 @@ async function addPromptRespectingCap(data: {
   const promptId = inserted[0]?.id;
   if (!promptId) return { ok: false, reason: "duplicate" };
 
-  const repaired = await repairActivePromptCap(data.configId, promptId, "insert");
+  const repaired = await repairActivePromptCap(
+    data.configId,
+    promptId,
+    "insert",
+  );
   if (repaired === "cap") return { ok: false, reason: "cap" };
   return { ok: true, promptId };
 }

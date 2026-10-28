@@ -276,3 +276,84 @@ describe("getKeywordCountsForConfigs", () => {
     );
   });
 });
+
+describe("dated rank scheduling hold", () => {
+  const pausedProject = "d6d3c442-bedf-4c4c-b65b-17d0fcf4ec4d";
+  it.each([
+    ["2026-10-01T05:49:59.999Z", ["paused", "control"]],
+    ["2026-10-01T05:50:00.000Z", ["control"]],
+    ["2026-12-01T06:59:59.999Z", ["control"]],
+    ["2026-12-01T07:00:00.000Z", ["paused", "control"]],
+  ])(
+    "filters the paused project at %s without changing saved settings",
+    async (now, ids) => {
+      await seedProject(pausedProject);
+      await seedProject("proj_1");
+      await seedConfig({
+        id: "paused",
+        projectId: pausedProject,
+        nextCheckAt: "2020-01-01T00:00:00.000Z",
+      });
+      await seedConfig({ id: "control" });
+      const before = await client.execute(
+        "SELECT * FROM rank_tracking_configs ORDER BY id",
+      );
+      expect(
+        (await RankTrackingRepository.getDueConfigsWithOrganization(now)).map(
+          (row) => row.id,
+        ),
+      ).toEqual(ids);
+      expect(
+        (
+          await client.execute(
+            "SELECT * FROM rank_tracking_configs ORDER BY id",
+          )
+        ).rows,
+      ).toEqual(before.rows);
+    },
+  );
+  it.each(["manual", "inactive", "archived"])(
+    "preserves a later %s hold after the dated hold expires",
+    async (hold) => {
+      await seedProject(
+        pausedProject,
+        hold === "archived" ? "2026-11-01T00:00:00.000Z" : null,
+      );
+      await seedProject("proj_1");
+      await seedConfig({
+        id: "paused",
+        projectId: pausedProject,
+        scheduleInterval: hold === "manual" ? "manual" : "weekly",
+        isActive: hold === "inactive" ? 0 : 1,
+      });
+      await seedConfig({ id: "control" });
+      expect(
+        (
+          await RankTrackingRepository.getDueConfigsWithOrganization(
+            "2026-12-01T07:00:00.000Z",
+          )
+        ).map((row) => row.id),
+      ).toEqual(["control"]);
+    },
+  );
+  it("excludes held rows before the 500-row limit so other work is not starved", async () => {
+    await seedProject(pausedProject);
+    await seedProject("proj_1");
+    const values = Array.from(
+      { length: 501 },
+      (_, i) =>
+        `('paused_${i}', '${pausedProject}', 'example.test', 20, 'weekly', 1, '2020-01-01T00:00:00.000Z')`,
+    ).join(",");
+    await client.execute(
+      `INSERT INTO rank_tracking_configs(id, project_id, domain, serp_depth, schedule_interval, is_active, next_check_at) VALUES ${values}`,
+    );
+    await seedConfig({ id: "control" });
+    expect(
+      (
+        await RankTrackingRepository.getDueConfigsWithOrganization(
+          "2026-10-15T08:00:00.000Z",
+        )
+      ).map((row) => row.id),
+    ).toEqual(["control"]);
+  });
+});
