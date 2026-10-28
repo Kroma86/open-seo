@@ -216,9 +216,9 @@ describe("AiVisibilityRepository queries", () => {
     ]);
     const outcomes = [raceFirst, raceSecond];
     expect(outcomes.filter((row) => row.ok)).toHaveLength(1);
-    expect(outcomes.filter((row) => !row.ok && row.reason === "cap")).toHaveLength(
-      1,
-    );
+    expect(
+      outcomes.filter((row) => !row.ok && row.reason === "cap"),
+    ).toHaveLength(1);
     expect(
       await AiVisibilityRepository.countActivePromptsForConfig("config_1"),
     ).toBe(10);
@@ -239,9 +239,8 @@ describe("AiVisibilityRepository queries", () => {
       args: [staleStarted, staleStarted],
     });
 
-    const { reclaimStaleRunsForConfig } = await import(
-      "../services/aiVisibilityReconciler"
-    );
+    const { reclaimStaleRunsForConfig } =
+      await import("../services/aiVisibilityReconciler");
     await reclaimStaleRunsForConfig("config_1");
 
     const created = await AiVisibilityRepository.tryCreateRun({
@@ -268,9 +267,8 @@ describe("AiVisibilityRepository queries", () => {
       args: [recentStarted, recentStarted],
     });
 
-    const { reclaimStaleRunsForConfig } = await import(
-      "../services/aiVisibilityReconciler"
-    );
+    const { reclaimStaleRunsForConfig } =
+      await import("../services/aiVisibilityReconciler");
     await reclaimStaleRunsForConfig("config_1");
 
     const created = await AiVisibilityRepository.tryCreateRun({
@@ -297,9 +295,8 @@ describe("AiVisibilityRepository queries", () => {
       args: [staleStarted, staleStarted],
     });
 
-    const { reconcileStaleAiVisibilityRuns } = await import(
-      "../services/aiVisibilityReconciler"
-    );
+    const { reconcileStaleAiVisibilityRuns } =
+      await import("../services/aiVisibilityReconciler");
     await reconcileStaleAiVisibilityRuns();
 
     const row = await client.execute({
@@ -393,5 +390,93 @@ describe("dated AI visibility scheduling hold", () => {
         )
       ).map((row) => row.id),
     ).toEqual(["config_1"]);
+  });
+});
+
+describe("manual queue persistence and ownership", () => {
+  const envelope = '{"queue":"manual_ai_visibility_v1","synthetic":true}';
+  it("deduplicates manual and scheduled inserts through the same database constraint", async () => {
+    const r = await Promise.all([
+      AiVisibilityRepository.tryCreateRun({
+        id: "manual",
+        configId: "config_1",
+        projectId: "project_1",
+        promptSetVersion: 1,
+        detail: envelope,
+      }),
+      AiVisibilityRepository.tryCreateRun({
+        id: "scheduled",
+        configId: "config_1",
+        projectId: "project_1",
+        promptSetVersion: 1,
+      }),
+    ]);
+    expect(r.filter(Boolean)).toHaveLength(1);
+    expect(
+      await AiVisibilityRepository.getActiveRunForConfig("config_1"),
+    ).not.toBeNull();
+  });
+  it("only one real database pending claim succeeds and pre-claim failure cannot overwrite it", async () => {
+    await AiVisibilityRepository.tryCreateRun({
+      id: "manual",
+      configId: "config_1",
+      projectId: "project_1",
+      promptSetVersion: 1,
+      detail: envelope,
+    });
+    const r = await Promise.all(
+      [1, 2].map(() =>
+        AiVisibilityRepository.updateRunIfInFlight(
+          "manual",
+          { status: "running", startedAt: new Date().toISOString() },
+          { requireRunning: false, requirePending: true },
+        ),
+      ),
+    );
+    expect(r.filter(Boolean)).toHaveLength(1);
+    expect(await AiVisibilityRepository.failPendingRun("manual", "loser")).toBe(
+      false,
+    );
+    expect((await AiVisibilityRepository.getRunById("manual"))?.status).toBe(
+      "running",
+    );
+    expect(await AiVisibilityRepository.getQueuedManualRuns()).toEqual([]);
+  });
+  it("selects marked pending only, with a bounded batch and no legacy replay", async () => {
+    for (let i = 0; i < 6; i++) {
+      await client.execute({
+        sql: "INSERT INTO ai_visibility_runs (id,config_id,project_id,prompt_set_version,status,detail,created_at) VALUES (?,?,?,1,?,?,?)",
+        args: [
+          `r${i}`,
+          `c${i}`,
+          "project_1",
+          i === 4 ? "running" : "pending",
+          i === 5 ? null : envelope,
+          `2026-10-15T01:00:0${i}.000Z`,
+        ],
+      });
+    }
+    expect(
+      (await AiVisibilityRepository.getQueuedManualRuns()).map((r) => r.id),
+    ).toEqual(["r0", "r1", "r2"]);
+  });
+  it("attempt summaries cannot return stored billing envelopes", async () => {
+    await AiVisibilityRepository.tryCreateRun({
+      id: "manual",
+      configId: "config_1",
+      projectId: "project_1",
+      promptSetVersion: 1,
+      detail: envelope,
+    });
+    const row =
+      await AiVisibilityRepository.getLatestAttemptForConfig("config_1");
+    expect(Object.keys(row!).sort()).toEqual([
+      "createdAt",
+      "error",
+      "finishedAt",
+      "id",
+      "startedAt",
+      "status",
+    ]);
   });
 });

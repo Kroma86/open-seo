@@ -81,7 +81,18 @@ export type AiVisibilityRunStatus =
 /** full and pulse are written by the sweep. legacy is a run from before that. */
 export type AiVisibilityRunSweep = "full" | "pulse" | "legacy";
 
+export type AiVisibilityAttemptSummary = {
+  id: string;
+  status: AiVisibilityRunStatus;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: string | null;
+};
+
 export type AiVisibilityLatestResults = {
+  activeRun?: AiVisibilityAttemptSummary | null;
+  latestAttempt?: AiVisibilityAttemptSummary | null;
   measured: boolean;
   source: "dataforseo_llm_mentions";
   fetchedAt: string | null;

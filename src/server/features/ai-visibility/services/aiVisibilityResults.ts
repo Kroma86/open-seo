@@ -111,13 +111,40 @@ export async function getLatestResults(
   const config = await resolveConfig(projectId, configId);
   if (!config) return notMeasuredLatest();
 
-  const [prompts, latestRun] = await Promise.all([
+  const [prompts, latestRun, active, attempt] = await Promise.all([
     AiVisibilityRepository.getPromptsForConfig(config.id),
     AiVisibilityRepository.getLatestCompletedRunForConfig(config.id),
+    AiVisibilityRepository.getActiveRunForConfig(config.id),
+    AiVisibilityRepository.getLatestAttemptForConfig(config.id),
   ]);
+  const latestAttempt = attempt
+    ? {
+        id: attempt.id,
+        status: attempt.status,
+        createdAt: attempt.createdAt,
+        startedAt: attempt.startedAt,
+        finishedAt: attempt.finishedAt,
+        error:
+          attempt.status === "failed"
+            ? "The check did not complete. This run was not restarted automatically."
+            : null,
+      }
+    : null;
+  const activeRun = active
+    ? {
+        id: active.id,
+        status: active.status,
+        createdAt: active.createdAt,
+        startedAt: active.startedAt,
+        finishedAt: active.finishedAt,
+        error: null,
+      }
+    : null;
 
   if (!latestRun) {
     return {
+      activeRun,
+      latestAttempt,
       measured: false,
       source: SOURCE,
       fetchedAt: null,
@@ -141,6 +168,8 @@ export async function getLatestResults(
   const partialMentions = parsePartialMentionsFromDetail(latestRun.detail);
 
   return {
+    activeRun,
+    latestAttempt,
     measured: true,
     source: SOURCE,
     fetchedAt: latestRun.finishedAt,

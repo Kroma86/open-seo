@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { waitUntil } from "cloudflare:workers";
-import { runAiVisibilityCheck } from "@/server/features/ai-visibility/services/runAiVisibilityCheck";
+import { enqueueManualAiVisibilityCheck } from "@/server/features/ai-visibility/services/manualAiVisibilityQueue";
 import { captureServerEvent } from "@/server/lib/posthog";
 import { buildProjectMeta } from "@/server/mcp/context";
 import { mcpResponse } from "@/server/mcp/formatters";
@@ -23,7 +23,7 @@ export const runAiVisibilityCheckTool = {
   config: {
     title: "Run AI visibility check",
     description:
-      "Explicitly run a tracked AI visibility check now: one DataForSEO brand lookup plus one prompt-explorer call per active tracked prompt. Spends DataForSEO credits on cache miss; cached brand lookups (24h) and prompt responses (7d) reduce cost. Hosted accounts require a paid plan. If a check is already in progress, reports the blocking run without starting another paid run.",
+      "Queue an explicit tracked AI visibility check for the background worker: one DataForSEO brand lookup plus one prompt-explorer call per active tracked prompt. Spends DataForSEO credits on cache miss; cached brand lookups (24h) and prompt responses (7d) reduce cost. Hosted accounts require a paid plan. If a check is already in progress, reports the blocking run without starting another paid run.",
     inputSchema,
     outputSchema: z
       .object({
@@ -41,11 +41,10 @@ export const runAiVisibilityCheckTool = {
     },
   },
   handler: withMcpProjectAuth(async (args: Args, context) => {
-    const result = await runAiVisibilityCheck({
+    const result = await enqueueManualAiVisibilityCheck({
       configId: args.configId,
       projectId: args.projectId,
       billingCustomer: context.billing,
-      trigger: "manual",
     });
     const path = `/p/${args.projectId}/ai-visibility`;
 
@@ -75,27 +74,14 @@ export const runAiVisibilityCheckTool = {
       }),
     );
 
-    if (result.outcome === "reclaimed") {
-      return mcpResponse({
-        text: `AI visibility check ${result.runId} was reclaimed as stale before it could record results — nothing was stored. Run the check again.`,
-        meta: buildProjectMeta(context, args.projectId, path),
-        structuredContent: {
-          configId: args.configId,
-          started: true,
-          runId: result.runId,
-          outcome: "reclaimed",
-        },
-      });
-    }
-
     return mcpResponse({
-      text: `AI visibility check ${result.runId} completed for config ${args.configId}. Read results with get_ai_visibility_trend.`,
+      text: `AI visibility check ${result.runId} queued for config ${args.configId}. The background worker will run it; read status and results with get_ai_visibility_trend.`,
       meta: buildProjectMeta(context, args.projectId, path),
       structuredContent: {
         configId: args.configId,
         started: true,
         runId: result.runId,
-        outcome: "completed",
+        outcome: "queued",
       },
     });
   }),

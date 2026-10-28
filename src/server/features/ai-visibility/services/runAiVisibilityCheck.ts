@@ -1,3 +1,5 @@
+import { aiVisibilityRequestFingerprint } from "./manualAiVisibilityQueueContract";
+import { pausedScheduledSeoProjects } from "@/server/features/projects/services/scheduledSeoPauses";
 import type { BillingCustomerContext } from "@/server/billing/subscription";
 import { textMentionsBrand } from "@/server/features/ai-search/services/brandMatch";
 import { getBrandLookup } from "@/server/features/ai-search/services/brandLookup";
@@ -186,13 +188,15 @@ function reusedBrandLookup(reusable: {
   };
 }
 
-async function executeRun(input: {
+export async function executeAiVisibilityRun(input: {
   runId: string;
   configId: string;
   projectId: string;
   billingCustomer: BillingCustomerContext;
   nameBudget: NameBudget;
   trigger: AiVisibilityCheckTrigger;
+  expectedFingerprint?: string;
+  expectedPromptSetVersion?: number;
 }): Promise<"completed" | "reclaimed"> {
   const config = await AiVisibilityManagementService.getValidatedConfig(
     input.configId,
@@ -211,6 +215,31 @@ async function executeRun(input: {
   const activePrompts = await AiVisibilityRepository.getActivePromptsForConfig(
     input.configId,
   );
+  if (input.expectedFingerprint) {
+    if (
+      config.promptSetVersion !== input.expectedPromptSetVersion ||
+      !config.isActive ||
+      !activePrompts.length ||
+      pausedScheduledSeoProjects(new Date().toISOString()).includes(
+        input.projectId,
+      )
+    ) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "Queued AI visibility check is held",
+      );
+    }
+    const current = await aiVisibilityRequestFingerprint({
+      config,
+      project,
+      prompts: activePrompts,
+    });
+    if (current !== input.expectedFingerprint)
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "AI visibility settings changed after the check was queued",
+      );
+  }
   const lookupPlatforms = brandLookupPlatforms(platforms);
 
   // CAS like the terminal updates: if the reconciler reclaimed this run
@@ -219,7 +248,7 @@ async function executeRun(input: {
   const claimed = await AiVisibilityRepository.updateRunIfInFlight(
     input.runId,
     { status: "running", startedAt },
-    { requireRunning: false },
+    { requireRunning: false, requirePending: true },
   );
   if (!claimed) {
     console.warn(
@@ -228,174 +257,182 @@ async function executeRun(input: {
     return "reclaimed";
   }
 
-  let reusable: ReturnType<typeof findReusableLookup> = null;
   try {
-    const priorRuns = await AiVisibilityRepository.getCompletedRunsForConfig(
-      input.configId,
-      8,
-    );
-    reusable = findReusableLookup(priorRuns);
-  } catch (error) {
-    console.warn(
-      `AI visibility: prior runs unavailable for ${input.configId}; running a full sweep`,
-      error,
-    );
-    reusable = null;
-  }
-  const decided = decideSweep({
-    trigger: input.trigger,
-    scheduleInterval: config.scheduleInterval,
-    configId: input.configId,
-    now: new Date(),
-    lastFreshLookupAt: reusable?.fetchedAt ?? null,
-  });
-  const sweep: AiVisibilitySweep =
-    decided === "pulse" && reusable ? "pulse" : "full";
-  const configuredModels = promptExplorerModelsForPlatforms(platforms);
-  // A config with no prompt engines (mentions only) stays prompt-free on pulses.
-  const explorerModels =
-    sweep === "pulse" && configuredModels.length > 0
-      ? PULSE_MODELS
-      : configuredModels;
-
-  let promptExplorerCalls = 0;
-  let promptRetries = 0;
-  // The budget can be shared by every config in a scheduled tick; this run
-  // stores only what it spent itself.
-  const jevSpentBefore = input.nameBudget.spentUsd;
-
-  let brandLookupBlock: RunDetail["brandLookup"];
-  if (sweep === "pulse" && reusable) {
-    brandLookupBlock = reusedBrandLookup(reusable);
-  } else {
-    const brandLookup = await getBrandLookup(
-      {
-        projectId: input.projectId,
-        query: config.brand,
-        competitors,
-        locationCode: project.locationCode,
-        languageCode: project.languageCode,
-      },
-      input.billingCustomer,
-    );
-    const filteredPlatformRows = brandLookup.perPlatform.filter((row) =>
-      lookupPlatforms.includes(row.platform),
-    );
-    const mentionsSum = sumMentionsForPlatforms(brandLookup, lookupPlatforms);
-    brandLookupBlock = {
-      fetchedAt: brandLookup.fetchedAt,
-      totalMentions: mentionsSum.total,
-      partialMentions: mentionsSum.partialMentions,
-      shareOfVoicePct: targetSharePct(brandLookup),
-      perPlatform: filteredPlatformRows,
-      topCitedSources: brandLookup.topPages.slice(0, 10),
-    };
-  }
-  const promptResults: RunDetail["prompts"] = [];
-  // Up to 10 prompts, each explorePrompt call isolated in try/catch so one
-  // failure cannot abort the run. Models for one prompt run in parallel
-  // inside explorePrompt, so a four-engine full sweep does not multiply the
-  // wait. Worst case is still about 20 sequential rounds (a question may be
-  // asked twice), which fits the 60-minute stale threshold
-  // (STALE_AI_VISIBILITY_RUN_MS).
-  for (const trackedPrompt of activePrompts) {
-    if (explorerModels.length === 0) {
-      promptResults.push({
-        promptId: trackedPrompt.id,
-        prompt: trackedPrompt.prompt,
-        fetchedAt: null,
-        results: [],
-      });
-      continue;
-    }
-
-    promptExplorerCalls += 1;
+    let reusable: ReturnType<typeof findReusableLookup> = null;
     try {
-      const ask = () =>
-        explorePrompt(
-          {
-            projectId: input.projectId,
-            prompt: trackedPrompt.prompt,
-            models: explorerModels,
-            highlightBrand: config.brand,
-            webSearch: true,
-            ...(sweep === "pulse"
-              ? { modelNameOverrides: PULSE_MODEL_NAMES }
-              : {}),
-          },
-          input.billingCustomer,
-        );
-      const { explorer, retried } = await exploreWithOneRetry(ask);
-      if (retried) promptRetries += 1;
-      await applyNameGrades(
-        explorer.results,
-        config.brand,
-        project.domain ?? "",
-        input.nameBudget,
+      const priorRuns = await AiVisibilityRepository.getCompletedRunsForConfig(
+        input.configId,
+        8,
       );
-      promptResults.push({
-        promptId: trackedPrompt.id,
-        prompt: trackedPrompt.prompt,
-        fetchedAt: explorer.fetchedAt,
-        results: explorer.results,
-      });
+      reusable = findReusableLookup(priorRuns);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Prompt explorer failed";
-      promptResults.push({
-        promptId: trackedPrompt.id,
-        prompt: trackedPrompt.prompt,
-        fetchedAt: null,
-        error: message,
-        results: [],
-      });
+      console.warn(
+        `AI visibility: prior runs unavailable for ${input.configId}; running a full sweep`,
+        error,
+      );
+      reusable = null;
     }
-  }
+    const decided = decideSweep({
+      trigger: input.trigger,
+      scheduleInterval: config.scheduleInterval,
+      configId: input.configId,
+      now: new Date(),
+      lastFreshLookupAt: reusable?.fetchedAt ?? null,
+    });
+    const sweep: AiVisibilitySweep =
+      decided === "pulse" && reusable ? "pulse" : "full";
+    const configuredModels = promptExplorerModelsForPlatforms(platforms);
+    // A config with no prompt engines (mentions only) stays prompt-free on pulses.
+    const explorerModels =
+      sweep === "pulse" && configuredModels.length > 0
+        ? PULSE_MODELS
+        : configuredModels;
 
-  const promptsChecked = countPromptsWithDefinitiveAnswer(promptResults);
-  const promptsWithBrand = countPromptsWithBrand(promptResults);
+    let promptExplorerCalls = 0;
+    let promptRetries = 0;
+    // The budget can be shared by every config in a scheduled tick; this run
+    // stores only what it spent itself.
+    const jevSpentBefore = input.nameBudget.spentUsd;
 
-  const detail: RunDetail = {
-    source: "dataforseo_llm_mentions",
-    sweep,
-    models: explorerModels,
-    promptsAttempted: promptExplorerCalls,
-    jevSpendUsd: input.nameBudget.spentUsd - jevSpentBefore,
-    brandLookup: brandLookupBlock,
-    prompts: promptResults,
-  };
+    let brandLookupBlock: RunDetail["brandLookup"];
+    if (sweep === "pulse" && reusable) {
+      brandLookupBlock = reusedBrandLookup(reusable);
+    } else {
+      const brandLookup = await getBrandLookup(
+        {
+          projectId: input.projectId,
+          query: config.brand,
+          competitors,
+          locationCode: project.locationCode,
+          languageCode: project.languageCode,
+        },
+        input.billingCustomer,
+      );
+      const filteredPlatformRows = brandLookup.perPlatform.filter((row) =>
+        lookupPlatforms.includes(row.platform),
+      );
+      const mentionsSum = sumMentionsForPlatforms(brandLookup, lookupPlatforms);
+      brandLookupBlock = {
+        fetchedAt: brandLookup.fetchedAt,
+        totalMentions: mentionsSum.total,
+        partialMentions: mentionsSum.partialMentions,
+        shareOfVoicePct: targetSharePct(brandLookup),
+        perPlatform: filteredPlatformRows,
+        topCitedSources: brandLookup.topPages.slice(0, 10),
+      };
+    }
+    const promptResults: RunDetail["prompts"] = [];
+    // Up to 10 prompts, each explorePrompt call isolated in try/catch so one
+    // failure cannot abort the run. Models for one prompt run in parallel
+    // inside explorePrompt, so a four-engine full sweep does not multiply the
+    // wait. Worst case is still about 20 sequential rounds (a question may be
+    // asked twice), which fits the 60-minute stale threshold
+    // (STALE_AI_VISIBILITY_RUN_MS).
+    for (const trackedPrompt of activePrompts) {
+      if (explorerModels.length === 0) {
+        promptResults.push({
+          promptId: trackedPrompt.id,
+          prompt: trackedPrompt.prompt,
+          fetchedAt: null,
+          results: [],
+        });
+        continue;
+      }
 
-  const finishedAt = new Date().toISOString();
-  const completed = await AiVisibilityRepository.updateRunIfInFlight(
-    input.runId,
-    {
-      status: "completed",
-      finishedAt,
-      totalMentions: detail.brandLookup.totalMentions,
-      shareOfVoicePct: detail.brandLookup.shareOfVoicePct,
-      promptsWithBrand,
-      promptsChecked,
-      detail: JSON.stringify(detail),
-      costNote: buildCostNote({
-        promptExplorerCalls: promptExplorerCalls + promptRetries,
-        sweep,
-        models: explorerModels,
-        reusedFromRunId: reusable?.runId,
-      }),
-    },
-    { requireRunning: true },
-  );
-  if (!completed) {
-    console.log(
-      `AI visibility: run ${input.runId} was reclaimed before completion`,
+      promptExplorerCalls += 1;
+      try {
+        const ask = () =>
+          explorePrompt(
+            {
+              projectId: input.projectId,
+              prompt: trackedPrompt.prompt,
+              models: explorerModels,
+              highlightBrand: config.brand,
+              webSearch: true,
+              ...(sweep === "pulse"
+                ? { modelNameOverrides: PULSE_MODEL_NAMES }
+                : {}),
+            },
+            input.billingCustomer,
+          );
+        const { explorer, retried } = await exploreWithOneRetry(ask);
+        if (retried) promptRetries += 1;
+        await applyNameGrades(
+          explorer.results,
+          config.brand,
+          project.domain ?? "",
+          input.nameBudget,
+        );
+        promptResults.push({
+          promptId: trackedPrompt.id,
+          prompt: trackedPrompt.prompt,
+          fetchedAt: explorer.fetchedAt,
+          results: explorer.results,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Prompt explorer failed";
+        promptResults.push({
+          promptId: trackedPrompt.id,
+          prompt: trackedPrompt.prompt,
+          fetchedAt: null,
+          error: message,
+          results: [],
+        });
+      }
+    }
+
+    const promptsChecked = countPromptsWithDefinitiveAnswer(promptResults);
+    const promptsWithBrand = countPromptsWithBrand(promptResults);
+
+    const detail: RunDetail = {
+      source: "dataforseo_llm_mentions",
+      sweep,
+      models: explorerModels,
+      promptsAttempted: promptExplorerCalls,
+      jevSpendUsd: input.nameBudget.spentUsd - jevSpentBefore,
+      brandLookup: brandLookupBlock,
+      prompts: promptResults,
+    };
+
+    const finishedAt = new Date().toISOString();
+    const completed = await AiVisibilityRepository.updateRunIfInFlight(
+      input.runId,
+      {
+        status: "completed",
+        finishedAt,
+        totalMentions: detail.brandLookup.totalMentions,
+        shareOfVoicePct: detail.brandLookup.shareOfVoicePct,
+        promptsWithBrand,
+        promptsChecked,
+        detail: JSON.stringify(detail),
+        costNote: buildCostNote({
+          promptExplorerCalls: promptExplorerCalls + promptRetries,
+          sweep,
+          models: explorerModels,
+          reusedFromRunId: reusable?.runId,
+        }),
+      },
+      { requireRunning: true },
     );
-    return "reclaimed";
-  }
+    if (!completed) {
+      console.log(
+        `AI visibility: run ${input.runId} was reclaimed before completion`,
+      );
+      return "reclaimed";
+    }
 
-  await AiVisibilityRepository.updateConfig(input.configId, input.projectId, {
-    lastRunAt: finishedAt,
-  });
-  return "completed";
+    await AiVisibilityRepository.updateConfig(input.configId, input.projectId, {
+      lastRunAt: finishedAt,
+    });
+    return "completed";
+  } catch (error) {
+    await failRunIfActive(
+      input.runId,
+      error instanceof Error ? error.message : "AI visibility check failed",
+    );
+    throw error;
+  }
 }
 
 export async function runAiVisibilityCheck(input: {
@@ -423,7 +460,7 @@ export async function runAiVisibilityCheck(input: {
   if (!begin.ok) return begin;
 
   try {
-    const outcome = await executeRun({
+    const outcome = await executeAiVisibilityRun({
       runId: begin.runId,
       configId: input.configId,
       projectId: input.projectId,
@@ -438,7 +475,7 @@ export async function runAiVisibilityCheck(input: {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "AI visibility check failed";
-    await failRunIfActive(begin.runId, message);
+    await AiVisibilityRepository.failPendingRun(begin.runId, message);
     throw error;
   }
 }

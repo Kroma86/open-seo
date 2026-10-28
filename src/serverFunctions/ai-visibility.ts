@@ -5,7 +5,7 @@ import {
   getLatestResults,
   getTrend,
 } from "@/server/features/ai-visibility/services/aiVisibilityResults";
-import { runAiVisibilityCheck } from "@/server/features/ai-visibility/services/runAiVisibilityCheck";
+import { enqueueManualAiVisibilityCheck } from "@/server/features/ai-visibility/services/manualAiVisibilityQueue";
 import { captureServerEvent } from "@/server/lib/posthog";
 import { requireProjectContext } from "@/serverFunctions/middleware";
 import {
@@ -143,11 +143,10 @@ export const triggerAiVisibilityCheck = createServerFn({ method: "POST" })
   .middleware(requireProjectContext)
   .validator(runAiVisibilityCheckSchema)
   .handler(async ({ data, context }) => {
-    const result = await runAiVisibilityCheck({
+    const result = await enqueueManualAiVisibilityCheck({
       configId: data.configId,
       projectId: context.projectId,
       billingCustomer: context,
-      trigger: "manual",
     });
 
     if (result.ok) {

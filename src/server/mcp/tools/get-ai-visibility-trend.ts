@@ -119,6 +119,12 @@ export const getAiVisibilityTrendTool = {
     return mcpResponse({
       text:
         text +
+        (latest.activeRun
+          ? `\nCurrent check ${latest.activeRun.id}: ${latest.activeRun.status === "pending" ? "queued for the background worker" : "running"}.`
+          : "") +
+        (!latest.activeRun && latest.latestAttempt?.status === "failed"
+          ? `\nLatest check ${latest.latestAttempt.id}: failed. This run was not restarted automatically.`
+          : "") +
         `\n\nHermes AI observations: ${externalObservations.status}; ${externalObservations.answers.length} saved ChatGPT answers; measured ${externalObservations.measuredAt ?? "unknown"}; run ${externalObservations.runStatus ?? "unknown"}. ${feed.error ?? externalObservations.note}` +
         promptResultsText,
       meta: buildProjectMeta(

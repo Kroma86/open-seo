@@ -19,10 +19,14 @@ const mocks = vi.hoisted(() => ({
   claimDueConfig: vi.fn(),
   updateConfig: vi.fn(),
   runAiVisibilityCheck: vi.fn(),
+  runQueuedManualAiVisibilityChecks: vi.fn(),
   customerHasPaidPlan: vi.fn(),
   isHostedServerAuthMode: vi.fn(),
 }));
 
+vi.mock("./manualAiVisibilityQueue", () => ({
+  runQueuedManualAiVisibilityChecks: mocks.runQueuedManualAiVisibilityChecks,
+}));
 vi.mock("cloudflare:workers", () => ({ env: {} }));
 vi.mock(
   "@/server/features/ai-visibility/repositories/AiVisibilityRepository",
@@ -139,5 +143,42 @@ describe("runScheduledAiVisibilityChecks", () => {
       }),
     );
     vi.useRealTimers();
+  });
+});
+
+describe("manual queue shares the scheduled tick", () => {
+  it("passes one budget object to the manual worker and scheduled engine", async () => {
+    mocks.isHostedServerAuthMode.mockResolvedValue(false);
+    mocks.getDueConfigsWithOrganization.mockResolvedValue([dueConfig()]);
+    mocks.getActivePromptsForConfig.mockResolvedValue([
+      { id: "p", prompt: "test" },
+    ]);
+    mocks.claimDueConfig.mockResolvedValue(true);
+    mocks.runAiVisibilityCheck.mockResolvedValue({ ok: true, runId: "r" });
+    mocks.runQueuedManualAiVisibilityChecks.mockImplementation(
+      async (budget) => {
+        budget.spentUsd = 0.001;
+      },
+    );
+    await runTick();
+    const budget = mocks.runQueuedManualAiVisibilityChecks.mock.lastCall?.[0];
+    expect(mocks.runAiVisibilityCheck).toHaveBeenLastCalledWith(
+      expect.objectContaining({ nameBudget: budget }),
+    );
+    expect(budget.spentUsd).toBe(0.001);
+  });
+  it("a manual queue error does not suppress due scheduled work", async () => {
+    mocks.isHostedServerAuthMode.mockResolvedValue(false);
+    mocks.getDueConfigsWithOrganization.mockResolvedValue([dueConfig()]);
+    mocks.getActivePromptsForConfig.mockResolvedValue([
+      { id: "p", prompt: "test" },
+    ]);
+    mocks.claimDueConfig.mockResolvedValue(true);
+    mocks.runAiVisibilityCheck.mockResolvedValue({ ok: true, runId: "r" });
+    mocks.runQueuedManualAiVisibilityChecks.mockRejectedValue(
+      new Error("queue read unavailable"),
+    );
+    await runTick();
+    expect(mocks.runAiVisibilityCheck).toHaveBeenCalled();
   });
 });
