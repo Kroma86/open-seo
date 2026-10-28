@@ -11,10 +11,17 @@ const mocks = vi.hoisted(() => ({
   getTrend: vi.fn(),
   getPromptResults: vi.fn(),
   runAiVisibilityCheck: vi.fn(),
+  enqueueManualAiVisibilityCheck: vi.fn(),
   captureServerEvent: vi.fn(),
   waitUntil: vi.fn((promise: Promise<unknown>) => void promise.catch(() => {})),
 }));
 
+vi.mock(
+  "@/server/features/ai-visibility/services/manualAiVisibilityQueue",
+  () => ({
+    enqueueManualAiVisibilityCheck: mocks.enqueueManualAiVisibilityCheck,
+  }),
+);
 vi.mock("cloudflare:workers", () => ({
   env: {},
   waitUntil: mocks.waitUntil,
@@ -29,9 +36,12 @@ vi.mock("@/server/features/ai-visibility/services/aiVisibilityResults", () => ({
   getTrend: mocks.getTrend,
   getPromptResults: mocks.getPromptResults,
 }));
-vi.mock("@/server/features/ai-visibility/services/runAiVisibilityCheck", () => ({
-  runAiVisibilityCheck: mocks.runAiVisibilityCheck,
-}));
+vi.mock(
+  "@/server/features/ai-visibility/services/runAiVisibilityCheck",
+  () => ({
+    runAiVisibilityCheck: mocks.runAiVisibilityCheck,
+  }),
+);
 vi.mock("@/server/lib/posthog", () => ({
   captureServerEvent: mocks.captureServerEvent,
 }));
@@ -114,11 +124,17 @@ describe("ai visibility MCP tools", () => {
     expect(mocks.getPromptResults).not.toHaveBeenCalled();
     expect(JSON.stringify(explicitFalse)).toBe(JSON.stringify(result));
     // Captured from the tool before includePromptResults existed.
-    expect(JSON.stringify(result)).toMatchInlineSnapshot(`"{"content":[{"type":"text","text":"Tracked AI visibility for Acme\\nFetched at: 2026-09-20T00:00:00.000Z\\nTotal mentions: 4\\nShare of voice: 25%\\nPrompts with brand: 1 / 2\\nTrend runs: 1\\n\\nHermes AI observations: missing; 0 saved ChatGPT answers; measured unknown; run unknown. External observations unavailable: agency feed is not configured."}],"structuredContent":{"measured":true,"source":"dataforseo_llm_mentions","latest":{"measured":true,"source":"dataforseo_llm_mentions","fetchedAt":"2026-09-20T00:00:00.000Z","config":{"id":"22222222-2222-4222-8222-222222222222","brand":"Acme"},"latestRun":{"id":"run_1","totalMentions":4,"partialMentions":false,"shareOfVoicePct":25,"promptsWithBrand":1,"promptsChecked":2}},"trend":{"measured":true,"source":"dataforseo_llm_mentions","configId":"22222222-2222-4222-8222-222222222222","promptSetVersion":1,"runs":[{"id":"run_1"}]},"externalObservations":{"source":"Hermes AI visibility","status":"missing","measuredAt":null,"stale":null,"runStatus":null,"answers":[],"googleScanPresent":false,"comparisonsSupported":false,"note":"No Hermes AI visibility data was provided. Captured answers and Google brand-scan results are unavailable from this feed."},"meta":{"projectId":"11111111-1111-4111-8111-111111111111","url":"https://open-seo.test/p/11111111-1111-4111-8111-111111111111/ai-visibility"}},"_meta":{"projectId":"11111111-1111-4111-8111-111111111111","url":"https://open-seo.test/p/11111111-1111-4111-8111-111111111111/ai-visibility"}}"`);
+    expect(JSON.stringify(result)).toMatchInlineSnapshot(
+      `"{"content":[{"type":"text","text":"Tracked AI visibility for Acme\\nFetched at: 2026-09-20T00:00:00.000Z\\nTotal mentions: 4\\nShare of voice: 25%\\nPrompts with brand: 1 / 2\\nTrend runs: 1\\n\\nHermes AI observations: missing; 0 saved ChatGPT answers; measured unknown; run unknown. External observations unavailable: agency feed is not configured."}],"structuredContent":{"measured":true,"source":"dataforseo_llm_mentions","latest":{"measured":true,"source":"dataforseo_llm_mentions","fetchedAt":"2026-09-20T00:00:00.000Z","config":{"id":"22222222-2222-4222-8222-222222222222","brand":"Acme"},"latestRun":{"id":"run_1","totalMentions":4,"partialMentions":false,"shareOfVoicePct":25,"promptsWithBrand":1,"promptsChecked":2}},"trend":{"measured":true,"source":"dataforseo_llm_mentions","configId":"22222222-2222-4222-8222-222222222222","promptSetVersion":1,"runs":[{"id":"run_1"}]},"externalObservations":{"source":"Hermes AI visibility","status":"missing","measuredAt":null,"stale":null,"runStatus":null,"answers":[],"googleScanPresent":false,"comparisonsSupported":false,"note":"No Hermes AI visibility data was provided. Captured answers and Google brand-scan results are unavailable from this feed."},"meta":{"projectId":"11111111-1111-4111-8111-111111111111","url":"https://open-seo.test/p/11111111-1111-4111-8111-111111111111/ai-visibility"}},"_meta":{"projectId":"11111111-1111-4111-8111-111111111111","url":"https://open-seo.test/p/11111111-1111-4111-8111-111111111111/ai-visibility"}}"`,
+    );
   });
 
-  it("adds promptResults and one text line per question on request", async () => {
-    mocks.getLatestResults.mockResolvedValue({ measured: false, config: null, latestRun: null });
+  it("returns stored answers and citations in both text and structured content on request", async () => {
+    mocks.getLatestResults.mockResolvedValue({
+      measured: false,
+      config: null,
+      latestRun: null,
+    });
     mocks.getTrend.mockResolvedValue({ measured: false, runs: [] });
     const promptResults = extractPromptResults(
       JSON.stringify({
@@ -126,7 +142,17 @@ describe("ai visibility MCP tools", () => {
           {
             promptId: "p1",
             prompt: "best plumber",
-            results: [{ status: "success", model: "chatgpt", brandMentioned: true }],
+            results: [
+              {
+                status: "success",
+                model: "chatgpt",
+                brandMentioned: true,
+                text: "Acme and Another Plumbing are named.",
+                citations: [
+                  { url: "https://example.com/source", domain: "example.com" },
+                ],
+              },
+            ],
           },
         ],
       }),
@@ -143,15 +169,28 @@ describe("ai visibility MCP tools", () => {
     });
     const result = await getAiVisibilityTrendTool.handler(parsed, toolContext);
 
-    expect(mocks.getPromptResults).toHaveBeenCalledWith(projectId, configId, runId);
+    expect(mocks.getPromptResults).toHaveBeenCalledWith(
+      projectId,
+      configId,
+      runId,
+    );
     expect(result.structuredContent).toMatchObject({ promptResults });
     expect(textContent(result)).toContain(
       "Prompt results (run run_1):\n- best plumber: named by chatgpt",
     );
+    expect(textContent(result)).toContain(
+      "Acme and Another Plumbing are named.",
+    );
+    expect(textContent(result)).toContain("https://example.com/source");
+    expect(mocks.runAiVisibilityCheck).not.toHaveBeenCalled();
+    expect(mocks.enqueueManualAiVisibilityCheck).not.toHaveBeenCalled();
   });
 
   it("run tool starts a check", async () => {
-    mocks.runAiVisibilityCheck.mockResolvedValue({ ok: true, runId: "run_1" });
+    mocks.enqueueManualAiVisibilityCheck.mockResolvedValue({
+      ok: true,
+      runId: "run_1",
+    });
 
     const parsed = z.object(runAiVisibilityCheckTool.config.inputSchema).parse({
       projectId,
@@ -159,7 +198,7 @@ describe("ai visibility MCP tools", () => {
     });
     const result = await runAiVisibilityCheckTool.handler(parsed, toolContext);
 
-    expect(mocks.runAiVisibilityCheck).toHaveBeenCalledTimes(1);
+    expect(mocks.enqueueManualAiVisibilityCheck).toHaveBeenCalledTimes(1);
     expect(textContent(result)).toContain("run_1");
   });
 });

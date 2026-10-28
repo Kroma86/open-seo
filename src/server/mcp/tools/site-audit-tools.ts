@@ -189,7 +189,7 @@ export const getAuditStatusTool = {
           ? ` The audit stopped early but kept results for the ${status.pagesCrawled} pages it crawled — call get_audit_issues for the partial issue report.`
           : "";
     return mcpResponse({
-      text: `Audit ${status.id} (${status.startUrl}): ${status.status} — phase ${status.currentPhase}, ${status.pagesCrawled}/${status.pagesTotal} pages${lighthouseNote}.${nextStep}`,
+      text: `Audit ${status.id} (${status.startUrl}): ${status.status} — phase ${status.currentPhase}, ${status.pagesCrawled}/${status.pagesTotal} pages${lighthouseNote}. Started: ${status.startedAt ?? "unknown"}; finished: ${status.completedAt ?? "not recorded"}.${nextStep}`,
       meta: buildProjectMeta(
         context,
         args.projectId,

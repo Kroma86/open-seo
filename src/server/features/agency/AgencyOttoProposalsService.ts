@@ -4,6 +4,9 @@
  * from this layer. Jon's OTTO gate remains the only path to approved/.
  */
 import { env } from "cloudflare:workers";
+import { assertClientFieldsAllowed } from "./ClientFieldProtection";
+import { ProposalRejectionsRepository } from "./repositories/ProposalRejectionsRepository";
+import { proposalPayloadHash } from "./ProposalRejectionService";
 
 const KEY_PREFIX = "homegrown-otto:proposal:";
 const INDEX_KEY = "homegrown-otto:proposal-index";
@@ -86,6 +89,8 @@ export async function enqueueHomegrownOttoProposal(input: {
     throw new Error("fixes_required");
   }
 
+  assertClientFieldsAllowed(domain, fixes);
+
   const proposal: HomegrownOttoProposal = {
     id: crypto.randomUUID(),
     domain,
@@ -121,7 +126,8 @@ export async function enqueueHomegrownOttoProposal(input: {
  */
 function toProposal(raw: unknown): HomegrownOttoProposal | null {
   const r = raw as Partial<HomegrownOttoProposal> | null;
-  if (!r || typeof r.id !== "string" || typeof r.domain !== "string") return null;
+  if (!r || typeof r.id !== "string" || typeof r.domain !== "string")
+    return null;
   return {
     id: r.id,
     domain: r.domain,
@@ -164,37 +170,57 @@ export async function listHomegrownOttoProposals(input?: {
   // filters run after the read). Read in parallel batches; rows keep index order.
   for (let at = 0; at < index.length && out.length < limit; at += READ_BATCH) {
     const batch = index.slice(at, at + READ_BATCH);
-    const raws = await Promise.all(batch.map((id) => kv().get(proposalKey(id))));
-    for (const raw of raws) {
+    const raws = await Promise.all(
+      batch.map((id) => kv().get(proposalKey(id))),
+    );
+    // This read is deliberately outside the corrupt-KV catch: a database
+    // failure must not make rejected work visible again.
+    const rejected = new Map(
+      (await ProposalRejectionsRepository.findByIds(batch)).map((row) => [
+        row.proposalId,
+        row,
+      ]),
+    );
+    for (const [offset, raw] of raws.entries()) {
       if (out.length >= limit) break;
       if (!raw) continue;
+      let stored: Record<string, unknown>;
+      let proposal: HomegrownOttoProposal | null;
       try {
-        const proposal = toProposal(JSON.parse(raw));
-        if (!proposal) continue;
-        if (input?.status && proposal.status !== input.status) continue;
-        if (
-          scoped &&
-          proposal.organizationId != null &&
-          proposal.organizationId !== input.visibleToOrganizationId
-        ) {
-          continue;
-        }
-        if (
-          input?.domain &&
-          proposal.domain !==
-            input.domain
-              .trim()
-              .toLowerCase()
-              .replace(/^https?:\/\//, "")
-              .replace(/^www\./, "")
-              .split("/")[0]
-        ) {
-          continue;
-        }
-        out.push(proposal);
+        stored = JSON.parse(raw);
+        proposal = toProposal(stored);
       } catch {
-        // skip corrupt rows
+        continue; // skip corrupt rows, never database failures
       }
+      if (!proposal || proposal.id !== batch[offset]) continue;
+      const rejection = rejected.get(proposal.id);
+      if (rejection) {
+        if (rejection.payloadHash !== (await proposalPayloadHash(stored))) {
+          throw new Error("rejected_proposal_payload_changed");
+        }
+        proposal.status = "rejected";
+      }
+      if (input?.status && proposal.status !== input.status) continue;
+      if (
+        scoped &&
+        proposal.organizationId != null &&
+        proposal.organizationId !== input.visibleToOrganizationId
+      ) {
+        continue;
+      }
+      if (
+        input?.domain &&
+        proposal.domain !==
+          input.domain
+            .trim()
+            .toLowerCase()
+            .replace(/^https?:\/\//, "")
+            .replace(/^www\./, "")
+            .split("/")[0]
+      ) {
+        continue;
+      }
+      out.push(proposal);
     }
   }
   return out;
@@ -203,21 +229,28 @@ export async function listHomegrownOttoProposals(input?: {
 export async function markHomegrownOttoProposalsPulled(
   ids: string[],
 ): Promise<number> {
+  if (ids.length > 200) throw new Error("mark_pulled_limit");
   let marked = 0;
   const now = new Date().toISOString();
-  for (const id of ids) {
+  for (const id of new Set(ids)) {
+    if ((await ProposalRejectionsRepository.findByIds([id])).length) continue;
     const raw = await kv().get(proposalKey(id));
     if (!raw) continue;
+    let proposal: HomegrownOttoProposal;
     try {
-      const proposal = JSON.parse(raw) as HomegrownOttoProposal;
-      if (proposal.status !== "pending") continue;
-      proposal.status = "pulled";
-      proposal.pulledAt = now;
-      await kv().put(proposalKey(id), JSON.stringify(proposal));
-      marked += 1;
+      proposal = JSON.parse(raw);
     } catch {
-      // skip
+      continue;
     }
+    if (!proposal || proposal.id !== id || proposal.status !== "pending")
+      continue;
+    proposal.status = "pulled";
+    proposal.pulledAt = now;
+    await kv().put(proposalKey(id), JSON.stringify(proposal));
+    // A concurrent rejection wins permanently even if this lifecycle write
+    // arrived later. Never count the now-rejected row as successfully pulled.
+    if (!(await ProposalRejectionsRepository.findByIds([id])).length)
+      marked += 1;
   }
   return marked;
 }

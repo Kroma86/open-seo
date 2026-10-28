@@ -101,7 +101,7 @@ describe("extractPromptResults", () => {
       questionsWithBrand: 2,
       namedByModel: { chatgpt: 1, claude: 1 },
     });
-    expect(formatPromptResultLines(results)).toEqual([
+    expect(formatPromptResultLines(results).slice(0, 3)).toEqual([
       "Prompt results (run run_1):",
       "- best plumber: named by chatgpt",
       "- cheap plumber: named by claude",
@@ -188,5 +188,64 @@ describe("extractPromptResults", () => {
       answer: "a".repeat(1500),
       answerTruncated: true,
     });
+  });
+
+  it("exposes stored answers and citations to text-only readers without changing their evidence", () => {
+    const results = extractPromptResults(
+      detailWith([
+        {
+          promptId: "p1",
+          prompt: "best plumber",
+          results: [
+            success({
+              text: 'Try Another Plumbing.\nQuoted: "best"',
+              brandMentioned: false,
+            }),
+            success({
+              model: "claude",
+              text: "x".repeat(1501),
+              brandMentioned: null,
+            }),
+            {
+              status: "error",
+              model: "gemini",
+              message: "Unavailable",
+              text: "Do not expose failed answer",
+            },
+          ],
+        },
+        { promptId: "p2", prompt: "unmeasured question", results: [] },
+      ]),
+      run,
+    );
+    const before = JSON.stringify(results);
+    const lines = formatPromptResultLines(results);
+    const rows = JSON.parse(lines.at(-1)!);
+    expect(rows[0]).toMatchObject({
+      promptId: "p1",
+      model: "chatgpt",
+      status: "success",
+      brandMentioned: false,
+      answer: 'Try Another Plumbing.\nQuoted: "best"',
+      citations: [{ url: "https://acme.com/", matchedBrand: true }],
+    });
+    expect(rows[1]).toMatchObject({
+      model: "claude",
+      answer: "x".repeat(1500),
+      answerTruncated: true,
+      brandMentioned: null,
+    });
+    expect(rows[2]).toMatchObject({
+      status: "error",
+      answer: null,
+      error: "Unavailable",
+    });
+    expect(rows[3]).toMatchObject({
+      status: "not_measured",
+      answer: null,
+      brandMentioned: null,
+    });
+    expect(lines.join("\n")).not.toContain("Do not expose failed answer");
+    expect(JSON.stringify(results)).toBe(before);
   });
 });

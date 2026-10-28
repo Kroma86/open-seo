@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   getConfigById: vi.fn(),
   getPromptsForConfig: vi.fn(),
   getLatestCompletedRunForConfig: vi.fn(),
+  getActiveRunForConfig: vi.fn().mockResolvedValue(null),
+  getLatestAttemptForConfig: vi.fn().mockResolvedValue(null),
   getCompletedRunsForConfig: vi.fn(),
   getRunById: vi.fn(),
 }));
@@ -55,6 +57,8 @@ describe("aiVisibilityResults", () => {
     mocks.getConfigsForProject.mockResolvedValue([config]);
     mocks.getConfigById.mockResolvedValue(config);
     mocks.getPromptsForConfig.mockResolvedValue([]);
+    mocks.getActiveRunForConfig.mockResolvedValue(null);
+    mocks.getLatestAttemptForConfig.mockResolvedValue(null);
   });
 
   it("refuses to pick a config silently when the project has more than one", async () => {
@@ -101,6 +105,8 @@ describe("aiVisibilityResults", () => {
     mocks.getLatestCompletedRunForConfig.mockResolvedValue(null);
 
     await expect(getLatestResults("project_1")).resolves.toEqual({
+      activeRun: null,
+      latestAttempt: null,
       measured: false,
       source: "dataforseo_llm_mentions",
       fetchedAt: null,
@@ -390,5 +396,53 @@ describe("aiVisibilityResults", () => {
         ).rejects.toMatchObject({ code: "NOT_FOUND" });
       },
     );
+  });
+});
+
+describe("manual attempt status privacy", () => {
+  it("returns active state without stored queue context and keeps completed results separate", async () => {
+    mocks.getConfigById.mockResolvedValue(config);
+    mocks.getPromptsForConfig.mockResolvedValue([]);
+    mocks.getLatestCompletedRunForConfig.mockResolvedValue(null);
+    mocks.getActiveRunForConfig.mockResolvedValue({
+      id: "pending1",
+      status: "pending",
+      createdAt: "2026-10-15T00:00:00Z",
+      startedAt: null,
+      finishedAt: null,
+      error: null,
+      detail: "private billing snapshot",
+      costNote: "private",
+    });
+    mocks.getLatestAttemptForConfig.mockResolvedValue({
+      id: "pending1",
+      status: "pending",
+      createdAt: "2026-10-15T00:00:00Z",
+      startedAt: null,
+      finishedAt: null,
+      error: null,
+    });
+    const result = await getLatestResults("project_1", "config_1");
+    expect(result.activeRun?.status).toBe("pending");
+    expect(result.latestRun).toBeNull();
+    expect(result.measured).toBe(false);
+    expect(JSON.stringify(result)).not.toContain("private");
+  });
+  it("does not publish raw failure payloads", async () => {
+    mocks.getConfigById.mockResolvedValue(config);
+    mocks.getPromptsForConfig.mockResolvedValue([]);
+    mocks.getLatestCompletedRunForConfig.mockResolvedValue(null);
+    mocks.getActiveRunForConfig.mockResolvedValue(null);
+    mocks.getLatestAttemptForConfig.mockResolvedValue({
+      id: "failed1",
+      status: "failed",
+      createdAt: "2026-10-15T00:00:00Z",
+      startedAt: null,
+      finishedAt: "2026-10-15T00:01:00Z",
+      error: "private upstream data",
+    });
+    const result = await getLatestResults("project_1", "config_1");
+    expect(result.latestAttempt?.status).toBe("failed");
+    expect(JSON.stringify(result)).not.toContain("private upstream data");
   });
 });

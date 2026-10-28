@@ -9,9 +9,11 @@ import {
   lte,
   max,
   ne,
+  notInArray,
 } from "drizzle-orm";
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
+import { pausedScheduledSeoProjects } from "@/server/features/projects/services/scheduledSeoPauses";
 import {
   rankTrackingConfigs,
   rankCheckRuns,
@@ -121,6 +123,7 @@ async function updateConfig(
 const DUE_CONFIGS_PER_TICK = 500;
 
 async function getDueConfigsWithOrganization(nowIso: string) {
+  const pausedProjects = pausedScheduledSeoProjects(nowIso);
   return (
     db
       .select({
@@ -146,6 +149,9 @@ async function getDueConfigsWithOrganization(nowIso: string) {
           ne(rankTrackingConfigs.scheduleInterval, "manual"),
           lte(rankTrackingConfigs.nextCheckAt, nowIso),
           isNull(projects.archivedAt),
+          pausedProjects.length
+            ? notInArray(projects.id, pausedProjects)
+            : undefined,
         ),
       )
       // Oldest first so a large backlog drains in order instead of the same

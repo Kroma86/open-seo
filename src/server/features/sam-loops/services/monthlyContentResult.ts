@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { developedProseBlocks } from "./monthlyProse";
 
 export const monthlyContentSchema = z.object({
   outcome: z.enum(["draft", "blocked"]),
@@ -114,7 +115,7 @@ export async function validateMonthlyContent(output: unknown, steps: MonthlyEvid
   if (!draft.targetKeyword.trim() || !demand.has(normalized(draft.targetKeyword))) return fail("The selected topic was not found in saved keywords, tracked terms or measured Search Console queries from this run.");
   const title = stripDraftEvidence(draft.title).trim();
   const body = stripDraftEvidence(draft.body).trim();
-  const paragraphs = body.split(/\n\s*\n/).filter((p) => !/^\s*(#|[-*]|\d+\.)/.test(p) && p.trim().split(/\s+/).length >= 35);
+  const paragraphs = developedProseBlocks(body);
   if (title.length < 8 || body.split(/\s+/).length < 600 || paragraphs.length < 4) return fail("The article is missing a title or developed prose; an outline is not a completed draft.");
   if (!draft.sources.length) return fail("No supporting source pages were supplied.");
   const sources: string[] = [];

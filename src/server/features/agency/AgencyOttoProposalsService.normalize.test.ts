@@ -1,3 +1,6 @@
+vi.mock("./repositories/ProposalRejectionsRepository", () => ({
+  ProposalRejectionsRepository: { findByIds: vi.fn(async () => []) },
+}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The KV rows these tests feed are real shapes taken from production on

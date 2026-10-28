@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   HostedPlanGate,
   type HostedPlanGateState,
@@ -52,6 +52,7 @@ function AiVisibilityPageInner({
 
   const latestQuery = useQuery({
     queryKey: ["ai-visibility", projectId, activeConfigId ?? null],
+    refetchInterval: (query) => (query.state.data?.activeRun ? 5000 : false),
     enabled: configsQuery.isSuccess,
     queryFn: () =>
       getAiVisibilityTracking({
@@ -113,6 +114,12 @@ function AiVisibilityPageInner({
   });
 
   const latest = latestQuery.data;
+  useEffect(() => {
+    if (latest?.latestRun?.id)
+      void queryClient.invalidateQueries({
+        queryKey: ["ai-visibility-trend", projectId, activeConfigId ?? null],
+      });
+  }, [latest?.latestRun?.id, queryClient, projectId, activeConfigId]);
   const config = latest?.config;
   const blockedByPlan = planGate.isFreePlan;
 
@@ -193,13 +200,24 @@ function AiVisibilityPageInner({
                 disabled={
                   blockedByPlan ||
                   runCheck.isPending ||
+                  Boolean(latest?.activeRun) ||
                   config.prompts.filter((row) => row.isActive).length === 0
                 }
                 onClick={() => runCheck.mutate(config.id)}
               >
-                Run check now
+                {latest?.activeRun?.status === "pending"
+                  ? "Check queued"
+                  : latest?.activeRun
+                    ? "Checking…"
+                    : "Run check now"}
               </button>
             </div>
+
+            {latest?.latestAttempt?.status === "failed" && !latest.activeRun ? (
+              <p role="status">
+                The latest check did not finish. {latest.latestAttempt.error}
+              </p>
+            ) : null}
 
             {latest?.measured && latest.latestRun ? (
               <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">

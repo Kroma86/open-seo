@@ -250,6 +250,43 @@ describe("runHeadlessSamLoop", () => {
     expect(await hasVerifiedMonthlyDraft(result.report)).toBe(false);
   });
 
+  it.each([
+    { label: "a failed saved-keyword flag", saved: { data: { ok: false, rows: [] } }, failed: true },
+    { label: "a non-string saved keyword", saved: { data: { rows: [{ keyword: 42 }] } }, failed: true },
+    { label: "a null saved-keyword row", saved: { data: { rows: [null] } }, failed: true },
+    { label: "genuinely empty valid saved rows", saved: { data: { rows: [] } }, failed: false },
+  ])("admits monthly topics from real readers for $label", async ({ saved, failed }) => {
+    mocks.getProjectById.mockResolvedValue({ domain: "example.com", loopsEnabled: true, archivedAt: null });
+    mocks.buildSamMcpTools.mockReturnValue({
+      list_saved_keywords: { execute: vi.fn().mockResolvedValue(saved) },
+      get_rank_tracker: { execute: vi.fn().mockResolvedValue({ data: { configs: [] } }) },
+      get_search_console_performance: { execute: vi.fn().mockResolvedValue({ data: { ok: false, reason: "not_connected" } }) },
+    });
+    const result = await runHeadlessSamLoop({
+      ...input("example.com"),
+      sourceType: "custom",
+      skillName: null,
+      loopName: "Monthly content",
+      customPrompt: DEFAULT_SAM_LOOP_TEMPLATES.find((template) => template.name === "Monthly content")!.customPrompt!,
+    });
+    expect(mocks.generateText).not.toHaveBeenCalled();
+    expect(mocks.getChatAgentModel).not.toHaveBeenCalled();
+    expect(result.stepsUsed).toBe(0);
+    expect(result.proposalsQueued).toBe(0);
+    expect(result.costNote).toBe("no model call");
+    expect(await hasVerifiedMonthlyDraft(result.report)).toBe(false);
+    if (failed) {
+      expect(result.status).toBe("failed");
+      expect(result.error).toBe("Monthly topic sources could not all be checked.");
+      expect(result.report).toContain("topic data was unavailable");
+      expect(result.report).not.toContain("NO DATA");
+    } else {
+      expect(result.status).toBe("completed");
+      expect(result.error).toBeNull();
+      expect(result.report).toContain("NO DATA");
+    }
+  });
+
   it("marks stale audit evidence in the saved report only when explicitly enabled", async () => {
     vi.stubEnv("SAM_LOOP_ALLOW_STALE_AUDIT", "true");
     mocks.getProjectById.mockResolvedValue({ domain: "example.com", loopsEnabled: true });

@@ -1,3 +1,4 @@
+import { runQueuedManualAiVisibilityChecks } from "./manualAiVisibilityQueue";
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import { reconcileStaleAiVisibilityRuns } from "@/server/features/ai-visibility/services/aiVisibilityReconciler";
 import { WEEKLY_JEV_CAP_USD } from "@/server/features/ai-visibility/services/brandNameDecision";
@@ -18,6 +19,15 @@ function scheduleRetryAfterFailure(): string {
 
 export async function runScheduledAiVisibilityChecks(_env: Env) {
   await reconcileStaleAiVisibilityRuns();
+  const nameBudget = { spentUsd: 0, capUsd: WEEKLY_JEV_CAP_USD };
+  try {
+    await runQueuedManualAiVisibilityChecks(nameBudget);
+  } catch (error) {
+    console.error(
+      "[cron] Manual AI queue could not finish; scheduled checks will still be evaluated",
+      error,
+    );
+  }
 
   const nowIso = new Date().toISOString();
   const dueConfigs =
@@ -35,8 +45,7 @@ export async function runScheduledAiVisibilityChecks(_env: Env) {
     return check;
   };
 
-  // One cap for every client in this pass, not one cap per client.
-  const nameBudget = { spentUsd: 0, capUsd: WEEKLY_JEV_CAP_USD };
+  // The same cap also covers manually queued work processed above.
   let started = 0;
   let skippedFree = 0;
   let skippedNoPrompts = 0;

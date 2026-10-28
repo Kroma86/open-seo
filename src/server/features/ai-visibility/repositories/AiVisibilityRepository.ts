@@ -7,10 +7,13 @@ import {
   inArray,
   isNull,
   lte,
+  like,
   ne,
+  notInArray,
 } from "drizzle-orm";
 import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/db";
+import { pausedScheduledSeoProjects } from "@/server/features/projects/services/scheduledSeoPauses";
 import {
   aiVisibilityConfigs,
   aiVisibilityPrompts,
@@ -18,6 +21,8 @@ import {
   projects,
 } from "@/db/schema";
 import { MAX_ACTIVE_PROMPTS_PER_CONFIG } from "@/shared/ai-visibility";
+
+import { MANUAL_AI_QUEUE_PREFIX } from "@/server/features/ai-visibility/services/manualAiVisibilityQueueContract";
 
 const DUE_CONFIGS_PER_TICK = 500;
 
@@ -68,7 +73,9 @@ async function getConfigByProjectBrand(projectId: string, brand: string) {
   return rows[0] ?? null;
 }
 
-async function createConfig(data: InferInsertModel<typeof aiVisibilityConfigs>) {
+async function createConfig(
+  data: InferInsertModel<typeof aiVisibilityConfigs>,
+) {
   await db.insert(aiVisibilityConfigs).values(data);
 }
 
@@ -99,6 +106,7 @@ async function bumpPromptSetVersion(configId: string, projectId: string) {
 }
 
 async function getDueConfigsWithOrganization(nowIso: string) {
+  const pausedProjects = pausedScheduledSeoProjects(nowIso);
   return db
     .select({
       id: aiVisibilityConfigs.id,
@@ -119,6 +127,9 @@ async function getDueConfigsWithOrganization(nowIso: string) {
         ne(aiVisibilityConfigs.scheduleInterval, "manual"),
         lte(aiVisibilityConfigs.nextRunAt, nowIso),
         isNull(projects.archivedAt),
+        pausedProjects.length
+          ? notInArray(projects.id, pausedProjects)
+          : undefined,
       ),
     )
     .orderBy(asc(aiVisibilityConfigs.nextRunAt), asc(aiVisibilityConfigs.id))
@@ -151,10 +162,11 @@ async function tryCreateRun(data: {
   configId: string;
   projectId: string;
   promptSetVersion: number;
+  detail?: string;
 }) {
   const inserted = await db
     .insert(aiVisibilityRuns)
-    .values({ ...data, status: "pending" })
+    .values({ ...data, status: "pending", createdAt: new Date().toISOString() })
     .onConflictDoNothing()
     .returning({ id: aiVisibilityRuns.id });
   return Boolean(inserted[0]);
@@ -174,17 +186,58 @@ async function updateRun(
 async function updateRunIfInFlight(
   runId: string,
   data: Partial<InferInsertModel<typeof aiVisibilityRuns>>,
-  options: { requireRunning: boolean },
+  options: { requireRunning: boolean; requirePending?: boolean },
 ): Promise<boolean> {
-  const statusFilter = options.requireRunning
-    ? eq(aiVisibilityRuns.status, "running")
-    : inArray(aiVisibilityRuns.status, ["pending", "running"]);
+  const statusFilter = options.requirePending
+    ? eq(aiVisibilityRuns.status, "pending")
+    : options.requireRunning
+      ? eq(aiVisibilityRuns.status, "running")
+      : inArray(aiVisibilityRuns.status, ["pending", "running"]);
   const updated = await db
     .update(aiVisibilityRuns)
     .set(data)
     .where(and(eq(aiVisibilityRuns.id, runId), statusFilter))
     .returning({ id: aiVisibilityRuns.id });
   return updated.length > 0;
+}
+
+async function getQueuedManualRuns() {
+  return db
+    .select()
+    .from(aiVisibilityRuns)
+    .where(
+      and(
+        eq(aiVisibilityRuns.status, "pending"),
+        like(aiVisibilityRuns.detail, `${MANUAL_AI_QUEUE_PREFIX}%`),
+      ),
+    )
+    .orderBy(asc(aiVisibilityRuns.createdAt), asc(aiVisibilityRuns.id))
+    .limit(3);
+}
+
+async function failPendingRun(runId: string, error: string) {
+  return updateRunIfInFlight(
+    runId,
+    { status: "failed", error, finishedAt: new Date().toISOString() },
+    { requireRunning: false, requirePending: true },
+  );
+}
+
+async function getLatestAttemptForConfig(configId: string) {
+  const rows = await db
+    .select({
+      id: aiVisibilityRuns.id,
+      status: aiVisibilityRuns.status,
+      createdAt: aiVisibilityRuns.createdAt,
+      startedAt: aiVisibilityRuns.startedAt,
+      finishedAt: aiVisibilityRuns.finishedAt,
+      error: aiVisibilityRuns.error,
+    })
+    .from(aiVisibilityRuns)
+    .where(eq(aiVisibilityRuns.configId, configId))
+    .orderBy(desc(aiVisibilityRuns.createdAt), desc(aiVisibilityRuns.id))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 async function getRunById(runId: string) {
@@ -331,7 +384,11 @@ async function addPromptRespectingCap(data: {
   const promptId = inserted[0]?.id;
   if (!promptId) return { ok: false, reason: "duplicate" };
 
-  const repaired = await repairActivePromptCap(data.configId, promptId, "insert");
+  const repaired = await repairActivePromptCap(
+    data.configId,
+    promptId,
+    "insert",
+  );
   if (repaired === "cap") return { ok: false, reason: "cap" };
   return { ok: true, promptId };
 }
@@ -417,6 +474,9 @@ export const AiVisibilityRepository = {
   getDueConfigsWithOrganization,
   claimDueConfig,
   tryCreateRun,
+  getQueuedManualRuns,
+  failPendingRun,
+  getLatestAttemptForConfig,
   updateRun,
   updateRunIfInFlight,
   getRunById,

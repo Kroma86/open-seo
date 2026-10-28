@@ -12,7 +12,7 @@ describe("project-scoped stored observation feed", () => {
     const result = await fetchExternalAgencyMetrics("example.com", { ...config, fetchImpl });
     expect(result.ai).toEqual({ source: "expected" });
     expect(result.error).toBeNull();
-    expect(fetchImpl.mock.calls[0]![1].redirect).toBe("error");
+    expect(fetchImpl.mock.calls[0]![1].redirect).toBe("manual");
     expect(fetchImpl.mock.calls[0]![1].signal).toBeInstanceOf(AbortSignal);
     const url = new URL(String(fetchImpl.mock.calls[0]![0]));
     expect(url.searchParams.has("t")).toBe(false);
@@ -66,5 +66,23 @@ describe("project-scoped stored observation feed", () => {
       expect(result.error).toBeTruthy();
       expect(cancel).toHaveBeenCalled();
     }
+  });
+  it("accepts redirect manual on a workerd-like fetch and returns the stored feed", async () => {
+    const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      if (init?.redirect !== "follow" && init?.redirect !== "manual") throw new TypeError("Invalid redirect value, must be follow or manual");
+      return new Response(JSON.stringify({ clients: [{ domain: "example.com", external_ai_visibility: { source: "stored" }, external_rank_observations: { observations: [] } }] }));
+    });
+    await expect(fetchImpl(config.metricsUrl, { redirect: "error" })).rejects.toThrow(/Invalid redirect value/);
+    expect(await fetchExternalAgencyMetrics("example.com", { ...config, fetchImpl })).toEqual({ rank: { observations: [] }, ai: { source: "stored" }, error: null });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[1]![1]!.redirect).toBe("manual");
+  });
+  it.each([301, 302, 303, 307, 308])("returns a generic failure for redirect %s without following Location", async (status) => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ clients: [{ domain: "example.com", external_ai_visibility: { source: "stored" }, external_rank_observations: { observations: [1] } }] }), { status, headers: { Location: "https://evil.example/collect?token=synthetic" } }));
+    const result = await fetchExternalAgencyMetrics("example.com", { ...config, fetchImpl });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ rank: null, ai: null, error: "External observations unavailable: agency feed request failed." });
+    expect(JSON.stringify(result)).not.toContain("synthetic");
+    expect(JSON.stringify(result)).not.toContain("evil.example");
   });
 });
