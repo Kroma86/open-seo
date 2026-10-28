@@ -9,6 +9,60 @@ import {
 import { withMcpProjectAuth } from "@/server/mcp/project-auth";
 import { projectIdSchema } from "@/server/mcp/schemas";
 
+const updateInputSchema = z
+  .object({
+    projectId: projectIdSchema,
+    loopId: z.string().uuid(),
+    isEnabled: z.boolean().optional(),
+    cadence: z.enum(["daily", "weekly", "monthly"]).optional(),
+  })
+  .strict()
+  .refine(
+    (input) => input.isEnabled !== undefined || input.cadence !== undefined,
+    "Provide isEnabled, cadence, or both.",
+  );
+
+export const updateSamLoopTool = {
+  name: "update_sam_loop",
+  config: {
+    title: "Update Sam loop schedule",
+    description:
+      "Enable or disable one existing project loop and/or set its daily, weekly, or monthly cadence. Changes saved settings only; does not start a run or use credits itself. Enabled loops may run on their normal schedules under existing project holds and usage limits. Does not enable the project, create loops, change prompts, or grant publication permission. Read list_sam_loops first to get the loopId.",
+    inputSchema: updateInputSchema,
+    outputSchema: {
+      loop: looseObjectOutputSchema,
+      ...optionalMetaOutputSchema,
+    },
+    annotations: {
+      readOnlyHint: false,
+      openWorldHint: false,
+      destructiveHint: false,
+    },
+  },
+  handler: withMcpProjectAuth(
+    async (input: z.infer<typeof updateInputSchema>, context) => {
+      // Validate here too: direct callers must not bypass the transport schema.
+      const args = updateInputSchema.parse(input);
+      // Project authorization excludes archived projects before this handler.
+      const loop = await SamLoopService.updateSamLoop({
+        projectId: args.projectId,
+        loopId: args.loopId,
+        ...(args.isEnabled !== undefined ? { isEnabled: args.isEnabled } : {}),
+        ...(args.cadence !== undefined ? { cadence: args.cadence } : {}),
+      });
+      return mcpResponse({
+        text: `Saved Sam loop ${loop.id}: ${loop.isEnabled ? "on" : "off"}, ${loop.cadence}; next:${loop.nextRunAt ?? "not scheduled"}. No run was started by this request. Project holds and usage limits still apply.`,
+        meta: buildProjectMeta(
+          context,
+          args.projectId,
+          `/p/${args.projectId}/loops`,
+        ),
+        structuredContent: { loop },
+      });
+    },
+  ),
+};
+
 const listInputSchema = {
   projectId: projectIdSchema,
 } as const;

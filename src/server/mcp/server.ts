@@ -86,6 +86,7 @@ import {
 import {
   getSamLoopRunsTool,
   listSamLoopsTool,
+  updateSamLoopTool,
 } from "@/server/mcp/tools/sam-loop-tools";
 
 type ToolSchema = z.ZodType | z.ZodRawShape;
@@ -178,6 +179,7 @@ export function createOpenSeoMcpServer(authProps: McpProps) {
   register(getNiceseoOpsStatusTool);
   register(listSamLoopsTool);
   register(getSamLoopRunsTool);
+  register(updateSamLoopTool);
   register(listProjectsTool);
   register(createProjectTool);
   register(getProjectContextTool);
