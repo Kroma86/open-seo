@@ -23,7 +23,7 @@ export const runAiVisibilityCheckTool = {
   config: {
     title: "Run AI visibility check",
     description:
-      "Queue an explicit tracked AI visibility check for the background worker: one DataForSEO brand lookup plus one prompt-explorer call per active tracked prompt. Spends DataForSEO credits on cache miss; cached brand lookups (24h) and prompt responses (7d) reduce cost. Hosted accounts require a paid plan. If a check is already in progress, reports the blocking run without starting another paid run.",
+      "Queue an explicit tracked AI visibility check for the background worker: one DataForSEO brand lookup plus one prompt-explorer call per active tracked prompt. Every tracked prompt check asks fresh and spends DataForSEO credits; only the brand lookup can reuse its 24h cache. Hosted accounts require a paid plan. If a check is already in progress, reports the blocking run without starting another paid run.",
     inputSchema,
     outputSchema: z
       .object({
