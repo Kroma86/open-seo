@@ -12,6 +12,10 @@ import {
   ProposalRejectionError,
 } from "@/server/features/agency/ProposalRejectionService";
 import { AppError } from "@/server/lib/errors";
+import {
+  ProposalInventoryError,
+  readProposalInventoryPage,
+} from "@/server/features/agency/ProposalInventoryService";
 
 function timingSafeEqual(left: string, right: string): boolean {
   const leftBytes = new TextEncoder().encode(left);
@@ -51,6 +55,37 @@ export async function handleGet(request: Request): Promise<Response> {
   const denied = assertAgencyToken(request);
   if (denied) return denied;
   const url = new URL(request.url);
+  if (url.searchParams.get("action") === "inventory_page") {
+    if (
+      [...url.searchParams.keys()].some(
+        (key) => !["action", "cursor"].includes(key),
+      ) ||
+      url.searchParams.getAll("action").length !== 1 ||
+      url.searchParams.getAll("cursor").length > 1
+    )
+      return Response.json(
+        { error: "invalid_inventory_request" },
+        { status: 400, headers: { "cache-control": "no-store" } },
+      );
+    try {
+      return Response.json(
+        await readProposalInventoryPage(url.searchParams.get("cursor")),
+        { headers: { "cache-control": "no-store" } },
+      );
+    } catch (error) {
+      const status =
+        error instanceof ProposalInventoryError ? error.status : 503;
+      return Response.json(
+        {
+          error:
+            status === 400
+              ? "invalid_inventory_request"
+              : "proposal_inventory_unavailable",
+        },
+        { status, headers: { "cache-control": "no-store" } },
+      );
+    }
+  }
   if (url.searchParams.get("action") === "rejection_status") {
     try {
       const rejections = await getProposalRejections(

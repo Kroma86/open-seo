@@ -10,10 +10,25 @@ const { mockEnv, mocks } = vi.hoisted(() => ({
     markPulled: vi.fn(),
     reject: vi.fn(),
     rejections: vi.fn(),
+    inventory: vi.fn(),
   },
 }));
 
 vi.mock("cloudflare:workers", () => ({ env: mockEnv }));
+vi.mock(
+  "@/server/features/agency/ProposalInventoryService",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@/server/features/agency/ProposalInventoryService")
+      >();
+    return {
+      ...actual,
+      readProposalInventoryPage: (...args: unknown[]) =>
+        mocks.inventory(...args),
+    };
+  },
+);
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => () => ({}),
 }));
@@ -54,6 +69,60 @@ import { ProposalRejectionError } from "@/server/features/agency/ProposalRejecti
 import { handleGet, handlePost } from "./agency-otto-proposals";
 
 const TOKEN = "test-export-token";
+
+describe("GET inventory_page (reporting only)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockEnv.AGENCY_SCORE_EXPORT_TOKEN = TOKEN;
+  });
+  const get = (query: string, token = TOKEN) =>
+    handleGet(
+      new Request(
+        "https://example.test/api/internal/agency-otto-proposals?" + query,
+        { headers: { authorization: "Bearer " + token } },
+      ),
+    );
+  it("requires the existing agency credential before inventory access", async () => {
+    expect((await get("action=inventory_page", "wrong")).status).toBe(401);
+    expect(mocks.inventory).not.toHaveBeenCalled();
+  });
+  it("returns a bound cursor page without touching queue operations", async () => {
+    mocks.inventory.mockResolvedValue({
+      schema: "otto-inventory-page/1",
+      request_cursor: "page2",
+      count: 0,
+    });
+    const response = await get("action=inventory_page&cursor=page2");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(mocks.inventory).toHaveBeenCalledWith("page2");
+    for (const fn of [
+      mocks.enqueue,
+      mocks.markPulled,
+      mocks.reject,
+      mocks.list,
+    ])
+      expect(fn).not.toHaveBeenCalled();
+  });
+  it.each([
+    "&status=pending",
+    "&domain=example.test",
+    "&limit=200",
+    "&cursor=a&cursor=b",
+    "&action=inventory_page",
+  ])("rejects scope modifiers %s", async (suffix) => {
+    expect((await get("action=inventory_page" + suffix)).status).toBe(400);
+    expect(mocks.inventory).not.toHaveBeenCalled();
+  });
+  it("suppresses raw storage errors", async () => {
+    mocks.inventory.mockRejectedValue(new Error("private storage detail"));
+    const response = await get("action=inventory_page");
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: "proposal_inventory_unavailable",
+    });
+  });
+});
 
 function post(body: unknown): Request {
   return new Request("http://localhost/api/internal/agency-otto-proposals", {
