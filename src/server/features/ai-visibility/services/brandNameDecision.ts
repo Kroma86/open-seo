@@ -12,7 +12,7 @@ export const JEV_DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
 /**
  * One weekly pass over the whole client list stays at or under this. The
  * 23 Sep answers (336, 253 needing Jev) cost $0.0112, so this leaves room for
- * about 4x more clients before answers fall back to the matcher.
+ * about 4x more clients before answers are marked unsure.
  * Four-engine monthly sweeps roughly double weekly answers at ~100 clients.
  */
 export const WEEKLY_JEV_CAP_USD = 0.1;
@@ -28,7 +28,7 @@ export type NameGrade = {
   named: boolean;
   /** Null when Jev was not asked. */
   p: number | null;
-  /** True when Jev was asked and 0.1 < p < 0.9. */
+  /** True when Jev is unavailable or returns 0.1 < p < 0.9. */
   unsure: boolean;
   source: NameSource;
 };
@@ -376,42 +376,40 @@ export function gradeFromProbability(p: number): {
   };
 }
 
-function fallbackGrade(named: boolean): NameGrade {
-  return { named, p: null, unsure: false, source: "matcher_fallback" };
+function fallbackGrade(): NameGrade {
+  return { named: false, p: null, unsure: true, source: "matcher_fallback" };
 }
 
 /**
  * Literal brand string → named, and Jev is not called.
  * Otherwise ask Jev. p >= 0.5 counts as named. 0.1 < p < 0.9 is unsure.
- * A failed or over-budget call keeps the previous matcher result.
+ * A missing, failed or over-budget Jev decision is not named and is unsure.
  */
 export async function gradeAnswerName(input: {
   brand: string;
   website: string;
   text: string;
   askJev?: (body: JevDecisionBody) => Promise<JevNamedAnswer>;
-  fallbackNamed?: boolean;
   budget?: NameBudget;
 }): Promise<NameGrade> {
   if (literalBrandInAnswer(input.text, input.brand)) {
     return { named: true, p: null, unsure: false, source: "literal" };
   }
-  const fallbackNamed = input.fallbackNamed === true;
-  if (!input.askJev) return fallbackGrade(fallbackNamed);
+  if (!input.askJev) return fallbackGrade();
 
   // After MAX_JEV_FAILURES failed calls in a row (Jev down or hanging), stop
   // asking for the rest of the pass so a dead Jev costs at most 3 timeouts.
   if (input.budget && (input.budget.failures ?? 0) >= MAX_JEV_FAILURES) {
-    return fallbackGrade(fallbackNamed);
+    return fallbackGrade();
   }
   const body = jevDecisionBody(input.brand, input.website, input.text);
   const estimate = estimateJevCostUsd(body);
   if (input.budget && input.budget.spentUsd + estimate > input.budget.capUsd) {
-    return fallbackGrade(fallbackNamed);
+    return fallbackGrade();
   }
   const failed = () => {
     if (input.budget) input.budget.failures = (input.budget.failures ?? 0) + 1;
-    return fallbackGrade(fallbackNamed);
+    return fallbackGrade();
   };
 
   try {

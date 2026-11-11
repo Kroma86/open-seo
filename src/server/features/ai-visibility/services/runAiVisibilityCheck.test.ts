@@ -1,6 +1,7 @@
 /* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-member-access -- tests read stored run detail back with JSON.parse */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
+import { extractPromptResults } from "./aiVisibilityPromptResults";
 import { runAiVisibilityCheck } from "./runAiVisibilityCheck";
 
 const mocks = vi.hoisted(() => ({
@@ -195,10 +196,10 @@ describe("runAiVisibilityCheck", () => {
     expect(detail.jevSpendUsd).toBeCloseTo(0.00004);
   });
 
-  it("keeps promptExplorer's own verdict when Jev fails (Grok r2)", async () => {
+  it("does not count a citation-only match when Jev fails", async () => {
     mocks.getValidatedConfig.mockResolvedValue({
       ...config,
-      brand: "Truewoods",
+      brand: "TWA Studio",
       platforms: '["chat_gpt"]',
     });
     mocks.getActivePromptsForConfig.mockResolvedValue([
@@ -207,17 +208,15 @@ describe("runAiVisibilityCheck", () => {
     mocks.askJevNamed.mockRejectedValue(new Error("jev_timeout"));
     mocks.explorePrompt.mockResolvedValueOnce({
       prompt: "who",
-      highlightBrand: "Truewoods",
+      highlightBrand: "TWA Studio",
       fetchedAt: new Date().toISOString(),
       results: [
         {
           status: "success",
           model: "chat_gpt",
           modelName: "gpt",
-          text: "A Vernon timber shop is often recommended for live-edge tables.",
-          citations: [
-            { url: "https://truewoodstimber.com/about", title: "About" },
-          ],
+          text: "See this agency for marketing help.",
+          citations: [{ url: "https://twa.studio/about", title: "About" }],
           fanOutQueries: [],
           brandMentioned: true,
           outputTokens: 10,
@@ -236,9 +235,24 @@ describe("runAiVisibilityCheck", () => {
     const completedUpdate = mocks.updateRunIfInFlight.mock.calls.find(
       (call) => call[1]?.status === "completed",
     );
+    expect(completedUpdate?.[1]).toMatchObject({
+      promptsChecked: 1,
+      promptsWithBrand: 0,
+    });
+    const summary = extractPromptResults(String(completedUpdate?.[1]?.detail), {
+      runId: "run_1",
+      completedAt: null,
+      promptSetVersion: 1,
+    }).summary;
+    expect(summary).toEqual({
+      questionsChecked: 1,
+      questionsWithBrand: 0,
+      namedByModel: { chat_gpt: 0 },
+    });
     const detail = JSON.parse(String(completedUpdate?.[1]?.detail));
     expect(detail.prompts[0].results[0]).toMatchObject({
-      brandMentioned: true,
+      brandMentioned: false,
+      nameUnsure: true,
       nameSource: "matcher_fallback",
       nameProbability: null,
     });

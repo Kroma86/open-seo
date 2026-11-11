@@ -1,7 +1,7 @@
+import { buildCostNote } from "./aiVisibilityCostNote";
 import { aiVisibilityRequestFingerprint } from "./manualAiVisibilityQueueContract";
 import { pausedScheduledSeoProjects } from "@/server/features/projects/services/scheduledSeoPauses";
 import type { BillingCustomerContext } from "@/server/billing/subscription";
-import { textMentionsBrand } from "@/server/features/ai-search/services/brandMatch";
 import { getBrandLookup } from "@/server/features/ai-search/services/brandLookup";
 import { explorePrompt } from "@/server/features/ai-search/services/promptExplorer";
 import {
@@ -16,7 +16,6 @@ import {
   PULSE_MODEL_NAMES,
   PULSE_MODELS,
   type AiVisibilitySweep,
-  type StoredBrandLookup,
 } from "@/server/features/ai-visibility/services/aiVisibilitySweep";
 import { AiVisibilityRepository } from "@/server/features/ai-visibility/repositories/AiVisibilityRepository";
 import {
@@ -68,11 +67,6 @@ type RunDetail = {
   }>;
 };
 
-function targetSharePct(brandLookup: BrandLookupResult): number | null {
-  const entry = brandLookup.shareOfVoice?.entries.find((row) => row.isTarget);
-  return entry?.sharePct ?? null;
-}
-
 function promptRowMentionsBrand(
   results: PromptExplorerResult["results"],
 ): boolean | null {
@@ -102,14 +96,6 @@ async function exploreWithOneRetry(
   }
 }
 
-function countPromptsWithDefinitiveAnswer(
-  promptResults: RunDetail["prompts"],
-): number {
-  return promptResults.filter(
-    (row) => promptRowMentionsBrand(row.results) !== null,
-  ).length;
-}
-
 function countPromptsWithBrand(
   promptResults: RunDetail["prompts"],
 ): number | null {
@@ -120,31 +106,6 @@ function countPromptsWithBrand(
   return withAnswer.filter(
     (row) => promptRowMentionsBrand(row.results) === true,
   ).length;
-}
-
-// getBrandLookup exposes no cache/paid signal, and any freshness heuristic
-// mislabels in one direction or the other — say so honestly in both cases.
-function buildCostNote(input: {
-  promptExplorerCalls: number;
-  sweep: AiVisibilitySweep;
-  models: PromptExplorerModel[];
-  reusedFromRunId?: string;
-}): string {
-  const promptPart =
-    input.promptExplorerCalls === 0
-      ? null
-      : `${input.promptExplorerCalls} prompt check(s): fresh (cache skipped)`;
-  if (input.sweep === "pulse") {
-    const engines =
-      input.models.length === 0 ? "no prompt engines" : "perplexity sonar";
-    const prefix = `pulse (${engines}); brand lookup reused from run ${input.reusedFromRunId ?? ""}`;
-    return promptPart ? `${prefix}; ${promptPart}` : prefix;
-  }
-  const prefix = `full sweep (${input.models.length} engine(s): ${input.models.join(", ")})`;
-  const brandLabel = "brand lookup cache/paid uncertain";
-  return promptPart
-    ? `${prefix}; ${brandLabel}; ${promptPart}`
-    : `${prefix}; ${brandLabel}`;
 }
 
 async function applyNameGrades(
@@ -161,13 +122,6 @@ async function applyNameGrades(
       website,
       text: row.text,
       askJev: askJevNamed,
-      // A Jev failure, full cap or open breaker keeps the old verdict exactly:
-      // the one promptExplorer already stored (citation title or hostname,
-      // then the token matcher), not the token matcher alone (Grok r2).
-      fallbackNamed:
-        typeof row.brandMentioned === "boolean"
-          ? row.brandMentioned
-          : textMentionsBrand(row.text, brand),
       budget,
     });
     row.brandMentioned = grade.named;
@@ -175,17 +129,6 @@ async function applyNameGrades(
     row.nameUnsure = grade.unsure;
     row.nameSource = grade.source;
   }
-}
-
-function reusedBrandLookup(reusable: {
-  runId: string;
-  brandLookup: StoredBrandLookup;
-}): RunDetail["brandLookup"] {
-  return {
-    ...reusable.brandLookup,
-    reused: true,
-    reusedFromRunId: reusable.runId,
-  };
 }
 
 export async function executeAiVisibilityRun(input: {
@@ -296,7 +239,11 @@ export async function executeAiVisibilityRun(input: {
 
     let brandLookupBlock: RunDetail["brandLookup"];
     if (sweep === "pulse" && reusable) {
-      brandLookupBlock = reusedBrandLookup(reusable);
+      brandLookupBlock = {
+        ...reusable.brandLookup,
+        reused: true,
+        reusedFromRunId: reusable.runId,
+      };
     } else {
       const brandLookup = await getBrandLookup(
         {
@@ -316,7 +263,9 @@ export async function executeAiVisibilityRun(input: {
         fetchedAt: brandLookup.fetchedAt,
         totalMentions: mentionsSum.total,
         partialMentions: mentionsSum.partialMentions,
-        shareOfVoicePct: targetSharePct(brandLookup),
+        shareOfVoicePct:
+          brandLookup.shareOfVoice?.entries.find((row) => row.isTarget)
+            ?.sharePct ?? null,
         perPlatform: filteredPlatformRows,
         topCitedSources: brandLookup.topPages.slice(0, 10),
       };
@@ -385,7 +334,9 @@ export async function executeAiVisibilityRun(input: {
       }
     }
 
-    const promptsChecked = countPromptsWithDefinitiveAnswer(promptResults);
+    const promptsChecked = promptResults.filter(
+      (row) => promptRowMentionsBrand(row.results) !== null,
+    ).length;
     const promptsWithBrand = countPromptsWithBrand(promptResults);
 
     const detail: RunDetail = {
