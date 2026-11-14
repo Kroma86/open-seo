@@ -1,3 +1,4 @@
+import { assertMeasurementRequestPath } from "./measurementPaths";
 import {
   AiOptimizationApi,
   AppendixApi,
@@ -146,3 +147,18 @@ export const backlinksApi = (classify?: DataforseoErrorClassifier) =>
   new BacklinksApi(API_BASE, http(classify));
 export const aiOptimizationApi = (classify?: DataforseoErrorClassifier) =>
   new AiOptimizationApi(API_BASE, http(classify));
+
+export const measurementAiTaskApi = () =>
+  new AiOptimizationApi(API_BASE, measurementHttp());
+export const measurementSerpTaskApi = () =>
+  new SerpApi(API_BASE, measurementHttp());
+
+function measurementHttp() {
+  const client = http(undefined, 0);
+  return {
+    fetch: (url: RequestInfo, init?: RequestInit) => {
+      assertMeasurementRequestPath(typeof url === "string" ? url : url.url);
+      return client.fetch(url, init);
+    },
+  };
+}

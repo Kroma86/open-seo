@@ -1,3 +1,5 @@
+import * as sqliteMeasurement from "./measurement.schema";
+import * as pgMeasurement from "./pg/measurement.schema";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getTableColumns, getTableName, is, Table } from "drizzle-orm";
@@ -145,6 +147,7 @@ function checkNames(table: Table, dialect: Dialect): string[] {
 
 const sqliteAppTables = tablesFrom(
   sqliteApp,
+  sqliteMeasurement,
   sqliteProjectContext,
   sqliteAudit,
   sqliteSam,
@@ -155,6 +158,7 @@ const sqliteAppTables = tablesFrom(
 );
 const pgAppTables = tablesFrom(
   pgApp,
+  pgMeasurement,
   pgProjectContext,
   pgAudit,
   pgSam,
