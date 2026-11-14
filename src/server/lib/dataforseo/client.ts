@@ -138,6 +138,13 @@ export function createDataforseoClient(customer: BillingCustomerContext) {
     lighthouse: {
       live: meter(customer, (s) => s.fetchLighthouseResult),
     },
+    measurement: {
+      taskPost: meter(
+        customer,
+        (s) => s.postMeasurementTasks,
+        "ai_prompt_responses",
+      ),
+    },
     aiSearch: {
       mentionsSearch: meter(customer, (s) => s.fetchLlmMentionsSearch),
       aggregatedMetrics: meter(customer, (s) => s.fetchLlmAggregatedMetrics),

@@ -176,6 +176,13 @@
       "when": 1792036935202,
       "tag": "0024_proposal_rejections",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794634844576,
+      "tag": "0025_measurement_v2",
+      "breakpoints": true
     }
   ]
 }

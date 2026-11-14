@@ -41,6 +41,8 @@ export function mapDataforseoPathToCreditFeature(
     case "backlinks":
       return "backlinks";
     case "serp":
+      if (normalizedPath[2] === "google" && normalizedPath[3] === "ai_mode")
+        return "ai_prompt_responses";
       return normalizedPath[2] === "google" &&
         ["maps", "local_finder"].includes(normalizedPath[3])
         ? "local_seo"

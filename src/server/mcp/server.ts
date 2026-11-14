@@ -1,3 +1,4 @@
+import { getAiVisibilityV2ReportTool } from "@/server/mcp/tools/get-ai-visibility-v2-report";
 import {
   type CallToolResult,
   McpServer,
@@ -212,6 +213,7 @@ export function createOpenSeoMcpServer(authProps: McpProps) {
   register(getAiBrandVisibilityTool);
   register(exploreAiPromptTool);
   register(getAiVisibilityTrendTool);
+  register(getAiVisibilityV2ReportTool);
   register(runAiVisibilityCheckTool);
   register(manageAiVisibilityTrackingTool);
   register(getSearchConsolePerformanceTool);
